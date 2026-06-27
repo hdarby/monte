@@ -1,25 +1,33 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:poker_client/features/settings/domain/game_settings.dart';
 import 'package:poker_client/core/theme/app_theme.dart';
+import 'package:poker_client/features/settings/domain/game_settings.dart';
+import 'package:poker_client/features/settings/presentation/settings_controller.dart';
 
-/// Lets the player choose the table size and display units.
-///
-/// Returns the updated [GameSettings] via [Navigator.pop], or null if dismissed
-/// without applying.
-class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key, required this.settings});
-
-  final GameSettings settings;
+/// Lets the player choose the table size and display units, writing changes
+/// through the [settingsControllerProvider] (which persists them).
+class SettingsScreen extends ConsumerStatefulWidget {
+  const SettingsScreen({super.key});
 
   @override
-  State<SettingsScreen> createState() => _SettingsScreenState();
+  ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
 }
 
-class _SettingsScreenState extends State<SettingsScreen> {
-  late int _count = widget.settings.playerCount;
-  late bool _showBigBlinds = widget.settings.showBigBlinds;
-  late bool _allBots = widget.settings.allBots;
+class _SettingsScreenState extends ConsumerState<SettingsScreen> {
+  late int _count;
+  late bool _showBigBlinds;
+  late bool _allBots;
+
+  @override
+  void initState() {
+    super.initState();
+    final settings =
+        ref.read(settingsControllerProvider).value ?? const GameSettings();
+    _count = settings.playerCount;
+    _showBigBlinds = settings.showBigBlinds;
+    _allBots = settings.allBots;
+  }
 
   String get _countLabel {
     if (_count == 2) return 'Heads-up';
@@ -152,14 +160,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           foregroundColor: Colors.black,
                           padding: const EdgeInsets.symmetric(vertical: 16),
                         ),
-                        onPressed: () => Navigator.pop(
-                          context,
-                          GameSettings(
-                            playerCount: _count,
-                            showBigBlinds: _showBigBlinds,
-                            allBots: _allBots,
-                          ),
-                        ),
+                        onPressed: () {
+                          ref.read(settingsControllerProvider.notifier).save(
+                                GameSettings(
+                                  playerCount: _count,
+                                  showBigBlinds: _showBigBlinds,
+                                  allBots: _allBots,
+                                ),
+                              );
+                          Navigator.pop(context);
+                        },
                         child: const Text('Apply'),
                       ),
                     ),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:poker_client/main.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -13,7 +14,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(const PokerApp());
+    await tester.pumpWidget(const ProviderScope(child: PokerApp()));
     // Settings load asynchronously, then bots take their delayed turns; let it
     // all drain so no timers are pending at teardown.
     await tester.pumpAndSettle(const Duration(seconds: 1));
