@@ -4,6 +4,7 @@ import '../../data/game_repository.dart';
 import '../../data/table_snapshot.dart';
 import '../../engine/actions.dart';
 import '../../theme/app_theme.dart';
+import '../money_format.dart';
 
 /// The bottom control strip: betting actions on the human's turn, otherwise a
 /// status line or the "next hand" controls.
@@ -36,6 +37,7 @@ class _ActionBarState extends State<ActionBar> {
   }
 
   Widget _actions(ActionContext ctx) {
+    final money = MoneyScope.of(context);
     final canRaise = ctx.canRaise;
     final min = ctx.minRaiseTo.toDouble();
     final max = ctx.maxRaiseTo.toDouble();
@@ -50,10 +52,43 @@ class _ActionBarState extends State<ActionBar> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      '${isBet ? 'Bet' : 'Raise to'}: ${raiseTo.round()}',
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w600, fontSize: 15),
+                    Row(
+                      children: [
+                        Text(
+                          '${isBet ? 'Bet' : 'Raise to'}: '
+                          '${money.format(raiseTo.round())}',
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 16,
+                              color: AppTheme.gold),
+                        ),
+                        const SizedBox(width: 12),
+                        Text('Pot ${money.format(widget.snapshot.pot)}',
+                            style: const TextStyle(
+                                fontSize: 13, color: Colors.white54)),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      children: [
+                        _PresetChip(
+                            label: '¼ Pot',
+                            onTap: () => _setFraction(ctx, 0.25)),
+                        _PresetChip(
+                            label: '½ Pot',
+                            onTap: () => _setFraction(ctx, 0.5)),
+                        _PresetChip(
+                            label: '¾ Pot',
+                            onTap: () => _setFraction(ctx, 0.75)),
+                        _PresetChip(
+                            label: 'Pot', onTap: () => _setFraction(ctx, 1.0)),
+                        _PresetChip(
+                            label: 'All-In',
+                            accent: true,
+                            onTap: () => _setRaiseTo(ctx, max)),
+                      ],
                     ),
                     SliderTheme(
                       data: SliderTheme.of(context).copyWith(
@@ -89,7 +124,7 @@ class _ActionBarState extends State<ActionBar> {
         ),
         const SizedBox(width: 12),
         _ActionButton(
-          label: ctx.canCheck ? 'Check' : 'Call ${ctx.callAmount}',
+          label: ctx.canCheck ? 'Check' : 'Call ${money.format(ctx.callAmount)}',
           color: const Color(0xFF27AE60),
           enabled: true,
           onPressed: () => _send(
@@ -161,9 +196,60 @@ class _ActionBarState extends State<ActionBar> {
         child: Row(children: children),
       );
 
+  /// Sets the raise target to a fraction of the pot above the current bet,
+  /// clamped to the legal range.
+  void _setFraction(ActionContext ctx, double fraction) {
+    final target = ctx.currentBet + widget.snapshot.pot * fraction;
+    _setRaiseTo(ctx, target);
+  }
+
+  void _setRaiseTo(ActionContext ctx, double target) {
+    final clamped =
+        target.clamp(ctx.minRaiseTo.toDouble(), ctx.maxRaiseTo.toDouble());
+    setState(() => _raiseTo = clamped);
+  }
+
   void _send(GameAction action) {
     setState(() => _raiseTo = null);
     widget.repository.submitAction(action);
+  }
+}
+
+/// A compact bet-sizing preset (¼/½/¾/full pot, All-in).
+class _PresetChip extends StatelessWidget {
+  const _PresetChip({
+    required this.label,
+    required this.onTap,
+    this.accent = false,
+  });
+
+  final String label;
+  final VoidCallback onTap;
+  final bool accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: accent
+          ? AppTheme.chip.withValues(alpha: 0.85)
+          : Colors.white.withValues(alpha: 0.08),
+      borderRadius: BorderRadius.circular(8),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: accent ? Colors.white : Colors.white70,
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 

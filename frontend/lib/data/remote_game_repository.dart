@@ -1,4 +1,5 @@
 import '../engine/actions.dart';
+import '../history/hand_history.dart';
 import 'game_repository.dart';
 import 'table_snapshot.dart';
 
@@ -20,6 +21,15 @@ class RemoteGameRepository extends GameRepository {
   TableSnapshot get snapshot => TableSnapshot.empty;
 
   @override
+  bool get isAllBots => false;
+
+  @override
+  List<HandHistory> get history => const [];
+
+  @override
+  void clearHistory() {}
+
+  @override
   Future<void> newGame() => throw UnimplementedError(
         'RemoteGameRepository is a stub for the upcoming Ktor backend.',
       );
@@ -29,4 +39,7 @@ class RemoteGameRepository extends GameRepository {
 
   @override
   Future<void> submitAction(GameAction action) => throw UnimplementedError();
+
+  @override
+  Future<void> simulate(int hands) => throw UnimplementedError();
 }

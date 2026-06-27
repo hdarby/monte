@@ -17,12 +17,14 @@ class TableScreen extends StatelessWidget {
     required this.repository,
     required this.playerCount,
     required this.onOpenSettings,
+    required this.onOpenAnalytics,
   });
 
   final TableSnapshot snapshot;
   final GameRepository repository;
   final int playerCount;
   final VoidCallback onOpenSettings;
+  final VoidCallback onOpenAnalytics;
 
   @override
   Widget build(BuildContext context) {
@@ -67,10 +69,18 @@ class TableScreen extends StatelessWidget {
                 color: Colors.black26,
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: Text('$playerCount players · client-only',
+              child: Text(
+                  repository.isAllBots
+                      ? '$playerCount bots · evaluation'
+                      : '$playerCount players · client-only',
                   style: const TextStyle(fontSize: 12, color: Colors.white60)),
             ),
             const SizedBox(width: 8),
+            IconButton(
+              tooltip: 'Analytics',
+              icon: const Icon(Icons.bar_chart, color: Colors.white70),
+              onPressed: onOpenAnalytics,
+            ),
             IconButton(
               tooltip: 'Table settings',
               icon: const Icon(Icons.settings, color: Colors.white70),

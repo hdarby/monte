@@ -5,6 +5,7 @@ import '../engine/bot.dart';
 import '../engine/game.dart';
 import '../engine/hand_evaluator.dart';
 import '../engine/player.dart';
+import '../history/hand_history.dart';
 import 'game_repository.dart';
 import 'table_snapshot.dart';
 
@@ -16,11 +17,15 @@ class TableConfig {
     this.startingStack = 1000,
     this.smallBlind = 5,
     this.bigBlind = 10,
+    this.allBots = false,
     this.botThinkTime = const Duration(milliseconds: 700),
   });
 
   /// Total seats including the human. 2 = heads-up, up to 10 for a full table.
   final int playerCount;
+
+  /// When true, every seat is a bot (evaluation mode, no human).
+  final bool allBots;
 
   final String humanName;
   final int startingStack;
@@ -34,14 +39,15 @@ class TableConfig {
 
   /// Names assigned to bots, in seat order (enough for a full table).
   static const List<String> botNamePool = [
-    'Ada', 'Boris', 'Chen', 'Dora', 'Eli', 'Farah', 'Gus', 'Hana', 'Ivan',
+    'Ada', 'Boris', 'Chen', 'Dora', 'Eli', 'Farah', 'Gus', 'Hana', 'Ivan', 'Jo',
   ];
 
-  int get botCount => playerCount - 1;
+  int get botCount => allBots ? playerCount : playerCount - 1;
 }
 
 /// Client-only implementation: the entire game runs on-device. Bots act
-/// automatically with a short delay so the table feels alive.
+/// automatically with a short delay so the table feels alive. In all-bots mode
+/// the engine plays itself, recording every hand for analysis.
 class LocalGameRepository extends GameRepository {
   LocalGameRepository({this.config = const TableConfig()});
 
@@ -50,20 +56,46 @@ class LocalGameRepository extends GameRepository {
 
   PokerGame? _game;
   bool _botsRunning = false;
+  bool _disposed = false;
+
+  final List<HandHistory> _history = [];
+  int _handCounter = 0;
+  List<HandPlayer> _recPlayers = [];
+  List<ActionRecord> _recActions = [];
 
   TableSnapshot _snapshot = TableSnapshot.empty;
+
   @override
   TableSnapshot get snapshot => _snapshot;
 
   @override
-  Future<void> newGame() async {
+  bool get isAllBots => config.allBots;
+
+  @override
+  List<HandHistory> get history => List.unmodifiable(_history);
+
+  @override
+  void clearHistory() {
+    _history.clear();
+    notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
+
+  /// Builds a fresh table (players + engine) without dealing a hand.
+  void _createGame() {
     final players = <Player>[
-      Player(
-        id: 'human',
-        name: config.humanName,
-        stack: config.startingStack,
-        isHuman: true,
-      ),
+      if (!config.allBots)
+        Player(
+          id: 'human',
+          name: config.humanName,
+          stack: config.startingStack,
+          isHuman: true,
+        ),
       for (var i = 0; i < config.botCount; i++)
         Player(
           id: 'bot_$i',
@@ -76,17 +108,21 @@ class LocalGameRepository extends GameRepository {
       smallBlind: config.smallBlind,
       bigBlind: config.bigBlind,
     );
+  }
+
+  @override
+  Future<void> newGame() async {
+    _createGame();
     await startNextHand();
   }
 
   @override
   Future<void> startNextHand() async {
-    final game = _game;
-    if (game == null) {
+    if (_game == null) {
       await newGame();
       return;
     }
-    game.startHand();
+    _beginHand();
     _publish();
     await _runBots();
   }
@@ -98,13 +134,31 @@ class LocalGameRepository extends GameRepository {
     final current = game.currentPlayer;
     if (current == null || !current.isHuman) return;
 
-    game.applyAction(action);
+    _applyAndRecord(current, action);
     _publish();
     await _runBots();
   }
 
-  /// Advances the game by letting bots act until it's the human's turn or the
-  /// hand ends.
+  @override
+  Future<void> simulate(int hands) async {
+    if (_game == null) _createGame();
+    final game = _game!;
+    for (var h = 0; h < hands; h++) {
+      if (_disposed) break;
+      _beginHand();
+      if (game.isHandOver) break; // not enough funded players
+      while (!game.isHandOver) {
+        final current = game.currentPlayer;
+        if (current == null) break;
+        _applyAndRecord(current, _bot.decide(game, current));
+      }
+    }
+    _publish();
+  }
+
+  /// Lets bots act with a short delay until it's the human's turn or the hand
+  /// ends. In all-bots mode there's no human, so it plays the whole hand out;
+  /// the next hand is dealt via [startNextHand] (or batched via [simulate]).
   Future<void> _runBots() async {
     if (_botsRunning) return;
     _botsRunning = true;
@@ -116,14 +170,108 @@ class LocalGameRepository extends GameRepository {
         if (current.isHuman) break;
 
         await Future<void>.delayed(config.botThinkTime);
-        final action = _bot.decide(game, current);
-        game.applyAction(action);
+        if (_disposed) return;
+        _applyAndRecord(current, _bot.decide(game, current));
         _publish();
       }
     } finally {
       _botsRunning = false;
     }
   }
+
+  // ---- Recording ------------------------------------------------------------
+
+  /// Deals a fresh hand and starts a new history record. In evaluation mode
+  /// stacks are topped back up so every hand is full and independent.
+  void _beginHand() {
+    final game = _game!;
+    if (config.allBots) {
+      for (final p in game.players) {
+        p.stack = config.startingStack;
+      }
+    }
+
+    game.startHand();
+    _handCounter++;
+    _recActions = [];
+    _recPlayers = [
+      for (final p in game.players)
+        if (p.hole.length == 2)
+          HandPlayer(
+            id: p.id,
+            name: p.name,
+            startingStack: p.stack + p.totalContributed, // pre-blind stack
+            holeCards: p.hole.map((c) => c.code).toList(),
+            isButton: game.players.indexOf(p) == game.buttonIndex,
+          ),
+    ];
+
+    if (game.isHandOver) _finalizeHand(); // e.g. not enough players
+  }
+
+  void _applyAndRecord(Player player, GameAction action) {
+    final game = _game!;
+    final street = game.round;
+    final callBefore = game.callAmount(player);
+
+    game.applyAction(action);
+
+    final int amount;
+    switch (action.type) {
+      case ActionType.bet:
+      case ActionType.raise:
+        amount = action.amount;
+      case ActionType.call:
+        amount = callBefore;
+      case ActionType.allIn:
+        amount = player.currentBet;
+      case ActionType.fold:
+      case ActionType.check:
+        amount = 0;
+    }
+
+    _recActions.add(ActionRecord(
+      playerId: player.id,
+      street: street,
+      type: action.type,
+      amount: amount,
+      potAfter: game.pot,
+    ));
+
+    if (game.isHandOver) _finalizeHand();
+  }
+
+  void _finalizeHand() {
+    final game = _game!;
+    if (_recPlayers.isEmpty) return;
+
+    _history.add(HandHistory(
+      handNumber: _handCounter,
+      smallBlind: game.smallBlind,
+      bigBlind: game.bigBlind,
+      players: _recPlayers,
+      actions: _recActions,
+      board: game.board.map((c) => c.code).toList(),
+      results: [
+        for (final r in game.results)
+          HandResultRecord(
+            playerId: r.player.id,
+            amountWon: r.amountWon,
+            handRank: r.handValue?.rank.label,
+          ),
+      ],
+      finalStacks: {
+        for (final p in _recPlayers) p.id: _stackOf(p.id),
+      },
+    ));
+    _recPlayers = [];
+    _recActions = [];
+  }
+
+  int _stackOf(String id) =>
+      _game!.players.firstWhere((p) => p.id == id).stack;
+
+  // ---- Snapshot -------------------------------------------------------------
 
   void _publish() {
     _snapshot = _buildSnapshot();
@@ -139,7 +287,9 @@ class LocalGameRepository extends GameRepository {
     final seats = <SeatView>[];
     for (var i = 0; i < game.players.length; i++) {
       final p = game.players[i];
-      final reveal = p.isHuman || (showdownHappened && p.inHand);
+      // In all-bots mode there's no human to protect, so reveal everyone.
+      final reveal =
+          p.isHuman || config.allBots || (showdownHappened && p.inHand);
       String? label;
       if (reveal && p.inHand && game.board.length == 5 && p.hole.length == 2) {
         label = HandEvaluator.evaluate([...p.hole, ...game.board]).rank.label;

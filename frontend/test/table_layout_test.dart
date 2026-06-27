@@ -51,6 +51,7 @@ Future<void> _pumpTable(WidgetTester tester, int playerCount) async {
       repository: LocalGameRepository(),
       playerCount: playerCount,
       onOpenSettings: () {},
+      onOpenAnalytics: () {},
     ),
   ));
   await tester.pump();

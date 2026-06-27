@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../data/table_snapshot.dart';
 import '../../theme/app_theme.dart';
+import '../money_format.dart';
 import 'playing_card_widget.dart';
 
 /// One player's seat: name, stack, hole cards and live status.
@@ -15,7 +16,17 @@ class PlayerSeat extends StatelessWidget {
   Widget build(BuildContext context) {
     final cardWidth = compact ? 34.0 : 60.0;
     final highlight = seat.isCurrent;
+    final money = MoneyScope.of(context);
 
+    // A dead (folded) hand fades back so it's obviously out of play.
+    return AnimatedOpacity(
+      duration: const Duration(milliseconds: 250),
+      opacity: seat.folded ? 0.4 : 1,
+      child: _seat(cardWidth, highlight, money),
+    );
+  }
+
+  Widget _seat(double cardWidth, bool highlight, MoneyFormat money) {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
       padding: const EdgeInsets.all(8),
@@ -48,14 +59,14 @@ class PlayerSeat extends StatelessWidget {
           ),
           const SizedBox(height: 2),
           Text(
-            '${seat.stack} chips',
+            money.format(seat.stack),
             style: TextStyle(
               color: AppTheme.gold,
               fontSize: compact ? 12 : 14,
               fontWeight: FontWeight.w500,
             ),
           ),
-          _statusLine(),
+          _statusLine(money),
         ],
       ),
     );
@@ -72,7 +83,6 @@ class PlayerSeat extends StatelessWidget {
             card: faceDown ? null : (i < cards.length ? cards[i] : null),
             faceDown: faceDown,
             width: width,
-            dimmed: seat.folded,
           ),
           if (i == 0) const SizedBox(width: 4),
         ],
@@ -80,9 +90,10 @@ class PlayerSeat extends StatelessWidget {
     );
   }
 
-  Widget _statusLine() {
+  Widget _statusLine(MoneyFormat money) {
     if (seat.wonAmount > 0) {
-      return _tag('WON +${seat.wonAmount}', AppTheme.gold, Colors.black);
+      return _tag('WON +${money.format(seat.wonAmount)}', AppTheme.gold,
+          Colors.black);
     }
     if (seat.folded) return _tag('FOLDED', Colors.white24, Colors.white);
     if (seat.allIn) return _tag('ALL-IN', AppTheme.chip, Colors.white);
@@ -90,7 +101,8 @@ class PlayerSeat extends StatelessWidget {
       return _tag(seat.handLabel!.toUpperCase(), Colors.white12, Colors.white);
     }
     if (seat.currentBet > 0) {
-      return _tag('BET ${seat.currentBet}', AppTheme.feltEdge, Colors.white);
+      return _tag('BET ${money.format(seat.currentBet)}', AppTheme.feltEdge,
+          Colors.white);
     }
     return const SizedBox(height: 22);
   }

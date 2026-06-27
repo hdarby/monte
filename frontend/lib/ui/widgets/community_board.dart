@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../data/table_snapshot.dart';
 import '../../theme/app_theme.dart';
+import '../money_format.dart';
 import 'playing_card_widget.dart';
 
 /// The centre of the table: pot, round label and the five community slots.
@@ -23,7 +24,7 @@ class CommunityBoard extends StatelessWidget {
             border: Border.all(color: AppTheme.gold.withValues(alpha: 0.5)),
           ),
           child: Text(
-            'POT  ${snapshot.pot}',
+            'POT  ${MoneyScope.of(context).format(snapshot.pot)}',
             style: const TextStyle(
               color: AppTheme.gold,
               fontSize: 20,
