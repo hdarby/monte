@@ -8,11 +8,36 @@ class Deck {
     reset();
   }
 
+  /// Creates a deck that deals [dealOrder] from the top, front-to-back, with no
+  /// shuffle. Used for deterministic tests and for injecting a determinized
+  /// future (sampled opponent holes + board) during search.
+  Deck.stacked(List<Card> dealOrder, {Random? random})
+    : _random = random ?? Random() {
+    _cards.addAll(dealOrder.reversed);
+  }
+
   final Random _random;
   final List<Card> _cards = [];
 
   /// Cards remaining to be dealt.
   int get remaining => _cards.length;
+
+  /// A copy that preserves the exact remaining cards and their deal order, so a
+  /// cloned game deals identically. Randomness is independent — no reshuffle
+  /// occurs during forward simulation, so this never diverges.
+  Deck copy() {
+    final d = Deck.stacked(const []);
+    d._cards.addAll(_cards);
+    return d;
+  }
+
+  /// Replaces the remaining cards with [dealOrder] (dealt front-to-back). Used
+  /// by the determinizer to inject a sampled future onto a cloned game.
+  void loadRemaining(List<Card> dealOrder) {
+    _cards
+      ..clear()
+      ..addAll(dealOrder.reversed);
+  }
 
   /// Rebuilds a full, ordered 52-card deck.
   void reset() {

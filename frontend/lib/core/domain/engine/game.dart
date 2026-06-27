@@ -97,6 +97,37 @@ class PokerGame {
   /// Largest total "to" amount the player can put out (their entire stack).
   int maxRaiseTo(Player p) => p.currentBet + p.stack;
 
+  /// A deep copy of the entire game state, including a position-preserving copy
+  /// of the deck, so the clone can be played forward without affecting this
+  /// game. This is the forward model the search relies on.
+  PokerGame clone() {
+    final clonedPlayers = [for (final p in players) p.clone()];
+    final g =
+        PokerGame(
+            players: clonedPlayers,
+            smallBlind: smallBlind,
+            bigBlind: bigBlind,
+            deck: _deck.copy(),
+          )
+          ..board.addAll(board)
+          ..log.addAll(log)
+          ..buttonIndex = buttonIndex
+          ..round = round
+          ..currentBet = currentBet
+          ..minRaise = minRaise
+          .._actorIndex = _actorIndex
+          .._handOver = _handOver;
+    g.results = [
+      for (final r in results)
+        HandResult(
+          player: clonedPlayers[players.indexOf(r.player)],
+          amountWon: r.amountWon,
+          handValue: r.handValue,
+        ),
+    ];
+    return g;
+  }
+
   // ---- Hand lifecycle -------------------------------------------------------
 
   /// Deals a new hand: rotates the button, posts blinds, deals hole cards.

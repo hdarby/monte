@@ -40,6 +40,19 @@ class Player {
   /// Still contesting the pot (not folded).
   bool get inHand => !hasFolded;
 
+  /// A deep copy of this player's current state, used by the search forward
+  /// model. Cards are immutable, so the hole list is copied by value.
+  Player clone() {
+    final p = Player(id: id, name: name, stack: stack, isHuman: isHuman)
+      ..currentBet = currentBet
+      ..totalContributed = totalContributed
+      ..hasFolded = hasFolded
+      ..isAllIn = isAllIn
+      ..hasActedThisRound = hasActedThisRound;
+    p.hole.addAll(hole);
+    return p;
+  }
+
   /// Resets per-hand state (called when a new hand is dealt).
   void resetForHand() {
     hole.clear();
