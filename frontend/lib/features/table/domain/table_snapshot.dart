@@ -92,11 +92,10 @@ class TableSnapshot {
 
   bool get isHumanTurn => actionContext != null;
 
-  SeatView? get human =>
-      seats.where((s) => s.isHuman).cast<SeatView?>().firstWhere(
-            (s) => true,
-            orElse: () => null,
-          );
+  SeatView? get human => seats
+      .where((s) => s.isHuman)
+      .cast<SeatView?>()
+      .firstWhere((s) => true, orElse: () => null);
 
   /// An empty pre-game snapshot.
   static const empty = TableSnapshot(

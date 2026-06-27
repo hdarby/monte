@@ -2,9 +2,9 @@ import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:poker_client/core/di/game_providers.dart';
 import 'package:poker_client/features/analytics/domain/analytics.dart';
 import 'package:poker_client/features/table/domain/game_repository.dart';
-import 'package:poker_client/features/table/presentation/table_view_model.dart';
 
 /// Immutable analytics view state.
 class AnalyticsState {
@@ -28,9 +28,9 @@ class AnalyticsViewModel extends Notifier<AnalyticsState> {
   }
 
   AnalyticsState _compute() => AnalyticsState(
-        stats: PokerAnalytics.compute(_repo.history),
-        handCount: _repo.history.length,
-      );
+    stats: PokerAnalytics.compute(_repo.history),
+    handCount: _repo.history.length,
+  );
 
   /// Plays [hands] hands as fast as possible, then refreshes the stats.
   Future<void> simulate(int hands) async {
@@ -45,11 +45,12 @@ class AnalyticsViewModel extends Notifier<AnalyticsState> {
   }
 
   /// The recorded hand history as pretty-printed JSON, for export/mining.
-  String exportJson() => const JsonEncoder.withIndent('  ')
-      .convert(_repo.history.map((h) => h.toJson()).toList());
+  String exportJson() => const JsonEncoder.withIndent(
+    '  ',
+  ).convert(_repo.history.map((h) => h.toJson()).toList());
 }
 
 final analyticsViewModelProvider =
     NotifierProvider<AnalyticsViewModel, AnalyticsState>(
-  AnalyticsViewModel.new,
-);
+      AnalyticsViewModel.new,
+    );

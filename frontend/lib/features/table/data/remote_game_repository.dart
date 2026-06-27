@@ -34,8 +34,8 @@ class RemoteGameRepository extends GameRepository {
 
   @override
   Future<void> newGame() => throw UnimplementedError(
-        'RemoteGameRepository is a stub for the upcoming Ktor backend.',
-      );
+    'RemoteGameRepository is a stub for the upcoming Ktor backend.',
+  );
 
   @override
   Future<void> startNextHand() => throw UnimplementedError();

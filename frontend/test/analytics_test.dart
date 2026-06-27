@@ -5,7 +5,13 @@ import 'package:poker_client/features/analytics/domain/analytics.dart';
 import 'package:poker_client/core/domain/hand_history.dart';
 
 ActionRecord _action(String id, BettingRound street, ActionType type) =>
-    ActionRecord(playerId: id, street: street, type: type, amount: 0, potAfter: 0);
+    ActionRecord(
+      playerId: id,
+      street: street,
+      type: type,
+      amount: 0,
+      potAfter: 0,
+    );
 
 HandHistory _hand({
   required int number,
@@ -18,17 +24,19 @@ HandHistory _hand({
     bigBlind: 10,
     players: const [
       HandPlayer(
-          id: 'a',
-          name: 'A',
-          startingStack: 1000,
-          holeCards: ['As', 'Ks'],
-          isButton: true),
+        id: 'a',
+        name: 'A',
+        startingStack: 1000,
+        holeCards: ['As', 'Ks'],
+        isButton: true,
+      ),
       HandPlayer(
-          id: 'b',
-          name: 'B',
-          startingStack: 1000,
-          holeCards: ['2c', '7d'],
-          isButton: false),
+        id: 'b',
+        name: 'B',
+        startingStack: 1000,
+        holeCards: ['2c', '7d'],
+        isButton: false,
+      ),
     ],
     actions: actions,
     board: const [],
@@ -42,18 +50,26 @@ void main() {
     test('VPIP and PFR are counted per hand, not per action', () {
       final histories = [
         // Hand 1: A raises preflop (VPIP + PFR), B folds (neither).
-        _hand(number: 1, actions: [
-          _action('a', BettingRound.preflop, ActionType.raise),
-          _action('b', BettingRound.preflop, ActionType.fold),
-        ]),
+        _hand(
+          number: 1,
+          actions: [
+            _action('a', BettingRound.preflop, ActionType.raise),
+            _action('b', BettingRound.preflop, ActionType.fold),
+          ],
+        ),
         // Hand 2: A calls preflop (VPIP, not PFR), B raises (VPIP + PFR).
-        _hand(number: 2, actions: [
-          _action('a', BettingRound.preflop, ActionType.call),
-          _action('b', BettingRound.preflop, ActionType.raise),
-        ]),
+        _hand(
+          number: 2,
+          actions: [
+            _action('a', BettingRound.preflop, ActionType.call),
+            _action('b', BettingRound.preflop, ActionType.raise),
+          ],
+        ),
       ];
 
-      final stats = {for (final s in PokerAnalytics.compute(histories)) s.id: s};
+      final stats = {
+        for (final s in PokerAnalytics.compute(histories)) s.id: s,
+      };
 
       expect(stats['a']!.hands, 2);
       expect(stats['a']!.vpip, 100); // voluntary both hands
@@ -64,13 +80,16 @@ void main() {
 
     test('aggression factor uses postflop bets/raises over calls', () {
       final histories = [
-        _hand(number: 1, actions: [
-          _action('a', BettingRound.flop, ActionType.bet),
-          _action('a', BettingRound.turn, ActionType.raise),
-          _action('a', BettingRound.river, ActionType.call),
-          // Preflop aggression must NOT count toward AF.
-          _action('a', BettingRound.preflop, ActionType.raise),
-        ]),
+        _hand(
+          number: 1,
+          actions: [
+            _action('a', BettingRound.flop, ActionType.bet),
+            _action('a', BettingRound.turn, ActionType.raise),
+            _action('a', BettingRound.river, ActionType.call),
+            // Preflop aggression must NOT count toward AF.
+            _action('a', BettingRound.preflop, ActionType.raise),
+          ],
+        ),
       ];
 
       final a = PokerAnalytics.compute(histories).first;
@@ -82,9 +101,10 @@ void main() {
 
     test('infinite aggression when never calling', () {
       final histories = [
-        _hand(number: 1, actions: [
-          _action('a', BettingRound.flop, ActionType.bet),
-        ]),
+        _hand(
+          number: 1,
+          actions: [_action('a', BettingRound.flop, ActionType.bet)],
+        ),
       ];
       final a = PokerAnalytics.compute(histories).first;
       expect(a.aggressionFactor, double.infinity);
@@ -99,7 +119,9 @@ void main() {
           finalStacks: {'a': 1100, 'b': 900},
         ),
       ];
-      final stats = {for (final s in PokerAnalytics.compute(histories)) s.id: s};
+      final stats = {
+        for (final s in PokerAnalytics.compute(histories)) s.id: s,
+      };
       expect(stats['a']!.netChips, 100);
       expect(stats['b']!.netChips, -100);
       // 100 chips / 10 bb = 10 bb over 1 hand => 1000 bb/100.

@@ -36,7 +36,9 @@ class BotStrategy {
 
     if (adjusted > 0.8 && p.stack > toCall) {
       final raiseTo = game.minRaiseTo(p) + (game.pot * 0.5).round();
-      return GameAction.raise(raiseTo.clamp(game.minRaiseTo(p), game.maxRaiseTo(p)));
+      return GameAction.raise(
+        raiseTo.clamp(game.minRaiseTo(p), game.maxRaiseTo(p)),
+      );
     }
     if (adjusted > potOdds || toCall <= game.bigBlind) {
       return const GameAction.call();

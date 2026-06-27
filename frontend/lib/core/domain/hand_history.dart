@@ -20,12 +20,12 @@ class ActionRecord {
   final int potAfter;
 
   Map<String, dynamic> toJson() => {
-        'playerId': playerId,
-        'street': street.name,
-        'type': type.name,
-        'amount': amount,
-        'potAfter': potAfter,
-      };
+    'playerId': playerId,
+    'street': street.name,
+    'type': type.name,
+    'amount': amount,
+    'potAfter': potAfter,
+  };
 }
 
 /// A player as they were dealt into a hand.
@@ -45,12 +45,12 @@ class HandPlayer {
   final bool isButton;
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'name': name,
-        'startingStack': startingStack,
-        'holeCards': holeCards,
-        'isButton': isButton,
-      };
+    'id': id,
+    'name': name,
+    'startingStack': startingStack,
+    'holeCards': holeCards,
+    'isButton': isButton,
+  };
 }
 
 /// The outcome for one player who won chips.
@@ -66,10 +66,10 @@ class HandResultRecord {
   final String? handRank;
 
   Map<String, dynamic> toJson() => {
-        'playerId': playerId,
-        'amountWon': amountWon,
-        if (handRank != null) 'handRank': handRank,
-      };
+    'playerId': playerId,
+    'amountWon': amountWon,
+    if (handRank != null) 'handRank': handRank,
+  };
 }
 
 /// A complete, parsable record of one played hand.
@@ -98,22 +98,25 @@ class HandHistory {
 
   /// Net chips for a player this hand (end - start), or 0 if not dealt in.
   int netFor(String playerId) {
-    final player =
-        players.where((p) => p.id == playerId).cast<HandPlayer?>().firstOrNull;
+    final player = players
+        .where((p) => p.id == playerId)
+        .cast<HandPlayer?>()
+        .firstOrNull;
     if (player == null) return 0;
-    return (finalStacks[playerId] ?? player.startingStack) - player.startingStack;
+    return (finalStacks[playerId] ?? player.startingStack) -
+        player.startingStack;
   }
 
   Map<String, dynamic> toJson() => {
-        'handNumber': handNumber,
-        'smallBlind': smallBlind,
-        'bigBlind': bigBlind,
-        'players': players.map((p) => p.toJson()).toList(),
-        'actions': actions.map((a) => a.toJson()).toList(),
-        'board': board,
-        'results': results.map((r) => r.toJson()).toList(),
-        'finalStacks': finalStacks,
-      };
+    'handNumber': handNumber,
+    'smallBlind': smallBlind,
+    'bigBlind': bigBlind,
+    'players': players.map((p) => p.toJson()).toList(),
+    'actions': actions.map((a) => a.toJson()).toList(),
+    'board': board,
+    'results': results.map((r) => r.toJson()).toList(),
+    'finalStacks': finalStacks,
+  };
 }
 
 extension _FirstOrNull<E> on Iterable<E> {

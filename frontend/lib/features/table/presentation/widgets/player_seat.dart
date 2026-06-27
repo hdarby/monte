@@ -31,7 +31,9 @@ class PlayerSeat extends StatelessWidget {
       duration: const Duration(milliseconds: 200),
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: highlight ? AppTheme.gold.withValues(alpha: 0.18) : Colors.black26,
+        color: highlight
+            ? AppTheme.gold.withValues(alpha: 0.18)
+            : Colors.black26,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: highlight ? AppTheme.gold : Colors.white10,
@@ -92,8 +94,11 @@ class PlayerSeat extends StatelessWidget {
 
   Widget _statusLine(MoneyFormat money) {
     if (seat.wonAmount > 0) {
-      return _tag('WON +${money.format(seat.wonAmount)}', AppTheme.gold,
-          Colors.black);
+      return _tag(
+        'WON +${money.format(seat.wonAmount)}',
+        AppTheme.gold,
+        Colors.black,
+      );
     }
     if (seat.folded) return _tag('FOLDED', Colors.white24, Colors.white);
     if (seat.allIn) return _tag('ALL-IN', AppTheme.chip, Colors.white);
@@ -101,29 +106,36 @@ class PlayerSeat extends StatelessWidget {
       return _tag(seat.handLabel!.toUpperCase(), Colors.white12, Colors.white);
     }
     if (seat.currentBet > 0) {
-      return _tag('BET ${money.format(seat.currentBet)}', AppTheme.feltEdge,
-          Colors.white);
+      return _tag(
+        'BET ${money.format(seat.currentBet)}',
+        AppTheme.feltEdge,
+        Colors.white,
+      );
     }
     return const SizedBox(height: 22);
   }
 
   Widget _tag(String text, Color bg, Color fg) => Container(
-        margin: const EdgeInsets.only(top: 4),
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        decoration:
-            BoxDecoration(color: bg, borderRadius: BorderRadius.circular(8)),
-        child: Text(text,
-            style: TextStyle(
-                color: fg, fontSize: 11, fontWeight: FontWeight.bold)),
-      );
+    margin: const EdgeInsets.only(top: 4),
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+    decoration: BoxDecoration(
+      color: bg,
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: Text(
+      text,
+      style: TextStyle(color: fg, fontSize: 11, fontWeight: FontWeight.bold),
+    ),
+  );
 
   Widget _badge(String text, Color bg, Color fg) => Container(
-        width: 20,
-        height: 20,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(color: bg, shape: BoxShape.circle),
-        child: Text(text,
-            style: TextStyle(
-                color: fg, fontSize: 12, fontWeight: FontWeight.bold)),
-      );
+    width: 20,
+    height: 20,
+    alignment: Alignment.center,
+    decoration: BoxDecoration(color: bg, shape: BoxShape.circle),
+    child: Text(
+      text,
+      style: TextStyle(color: fg, fontSize: 12, fontWeight: FontWeight.bold),
+    ),
+  );
 }

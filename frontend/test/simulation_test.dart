@@ -25,7 +25,10 @@ void main() {
       expect(s.hands, 50);
       expect(s.vpip, inInclusiveRange(0, 100));
       expect(s.pfr, inInclusiveRange(0, 100));
-      expect(s.pfr, lessThanOrEqualTo(s.vpip + 0.0001)); // PFR is a subset of VPIP
+      expect(
+        s.pfr,
+        lessThanOrEqualTo(s.vpip + 0.0001),
+      ); // PFR is a subset of VPIP
     }
 
     repo.dispose();

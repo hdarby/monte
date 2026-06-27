@@ -61,14 +61,19 @@ class _ActionBarState extends State<ActionBar> {
                           '${isBet ? 'Bet' : 'Raise to'}: '
                           '${money.format(raiseTo.round())}',
                           style: const TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 16,
-                              color: AppTheme.gold),
+                            fontWeight: FontWeight.w700,
+                            fontSize: 16,
+                            color: AppTheme.gold,
+                          ),
                         ),
                         const SizedBox(width: 12),
-                        Text('Pot ${money.format(widget.snapshot.pot)}',
-                            style: const TextStyle(
-                                fontSize: 13, color: Colors.white54)),
+                        Text(
+                          'Pot ${money.format(widget.snapshot.pot)}',
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: Colors.white54,
+                          ),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 6),
@@ -77,20 +82,26 @@ class _ActionBarState extends State<ActionBar> {
                       runSpacing: 6,
                       children: [
                         _PresetChip(
-                            label: '¼ Pot',
-                            onTap: () => _setFraction(ctx, 0.25)),
+                          label: '¼ Pot',
+                          onTap: () => _setFraction(ctx, 0.25),
+                        ),
                         _PresetChip(
-                            label: '½ Pot',
-                            onTap: () => _setFraction(ctx, 0.5)),
+                          label: '½ Pot',
+                          onTap: () => _setFraction(ctx, 0.5),
+                        ),
                         _PresetChip(
-                            label: '¾ Pot',
-                            onTap: () => _setFraction(ctx, 0.75)),
+                          label: '¾ Pot',
+                          onTap: () => _setFraction(ctx, 0.75),
+                        ),
                         _PresetChip(
-                            label: 'Pot', onTap: () => _setFraction(ctx, 1.0)),
+                          label: 'Pot',
+                          onTap: () => _setFraction(ctx, 1.0),
+                        ),
                         _PresetChip(
-                            label: 'All-In',
-                            accent: true,
-                            onTap: () => _setRaiseTo(ctx, max)),
+                          label: 'All-In',
+                          accent: true,
+                          onTap: () => _setRaiseTo(ctx, max),
+                        ),
                       ],
                     ),
                     SliderTheme(
@@ -113,9 +124,10 @@ class _ActionBarState extends State<ActionBar> {
               : const Text(
                   'Your move',
                   style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 15,
-                      color: Colors.white70),
+                    fontWeight: FontWeight.w600,
+                    fontSize: 15,
+                    color: Colors.white70,
+                  ),
                 ),
         ),
         const SizedBox(width: 16),
@@ -127,7 +139,9 @@ class _ActionBarState extends State<ActionBar> {
         ),
         const SizedBox(width: 12),
         _ActionButton(
-          label: ctx.canCheck ? 'Check' : 'Call ${money.format(ctx.callAmount)}',
+          label: ctx.canCheck
+              ? 'Check'
+              : 'Call ${money.format(ctx.callAmount)}',
           color: const Color(0xFF27AE60),
           enabled: true,
           onPressed: () => _send(
@@ -143,7 +157,9 @@ class _ActionBarState extends State<ActionBar> {
           onPressed: canRaise
               ? () {
                   final amount = raiseTo.round();
-                  _send(isBet ? GameAction.bet(amount) : GameAction.raise(amount));
+                  _send(
+                    isBet ? GameAction.bet(amount) : GameAction.raise(amount),
+                  );
                 }
               : null,
         ),
@@ -179,25 +195,25 @@ class _ActionBarState extends State<ActionBar> {
   }
 
   Widget _waiting() => _bar(
-        children: const [
-          SizedBox(
-            width: 16,
-            height: 16,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          ),
-          SizedBox(width: 12),
-          Text('Waiting for opponents…', style: TextStyle(fontSize: 15)),
-        ],
-      );
+    children: const [
+      SizedBox(
+        width: 16,
+        height: 16,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      ),
+      SizedBox(width: 12),
+      Text('Waiting for opponents…', style: TextStyle(fontSize: 15)),
+    ],
+  );
 
   Widget _bar({required List<Widget> children}) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-        decoration: const BoxDecoration(
-          color: AppTheme.surface,
-          border: Border(top: BorderSide(color: Colors.white12)),
-        ),
-        child: Row(children: children),
-      );
+    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+    decoration: const BoxDecoration(
+      color: AppTheme.surface,
+      border: Border(top: BorderSide(color: Colors.white12)),
+    ),
+    child: Row(children: children),
+  );
 
   /// Sets the raise target to a fraction of the pot above the current bet,
   /// clamped to the legal range.
@@ -207,8 +223,10 @@ class _ActionBarState extends State<ActionBar> {
   }
 
   void _setRaiseTo(ActionContext ctx, double target) {
-    final clamped =
-        target.clamp(ctx.minRaiseTo.toDouble(), ctx.maxRaiseTo.toDouble());
+    final clamped = target.clamp(
+      ctx.minRaiseTo.toDouble(),
+      ctx.maxRaiseTo.toDouble(),
+    );
     setState(() => _raiseTo = clamped);
   }
 
@@ -286,8 +304,9 @@ class _ActionButton extends StatelessWidget {
           disabledForegroundColor: Colors.white24,
           elevation: enabled ? 3 : 0,
           padding: const EdgeInsets.symmetric(horizontal: 26),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
           textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
         ),
         child: Text(label),

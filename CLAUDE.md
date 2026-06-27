@@ -47,12 +47,13 @@ clean path to the client/server + MTT future.
   ```
   lib/
     core/         shared domain (poker engine), shared presentation utils, DI
-      di/         composition root (get_it registrations)
+      di/         composition root: gameRepositoryProvider binds GameRepository
+                  (swap LocalGameRepository -> RemoteGameRepository here)
     features/
       <feature>/
         domain/        entities, repository interfaces, use cases (pure Dart)
         data/          repository impls, data sources
-        presentation/  ViewModels + Views (screens/widgets)
+        presentation/  ViewModels (Riverpod Notifiers) + Views (screens/widgets)
   ```
 - **DI + state — frontend: Riverpod.** Providers (in `presentation`/`core/di`)
   supply repositories/use cases (DI) and hold ViewModel state. ViewModels are
@@ -76,21 +77,22 @@ poker/
 ├── frontend/   Flutter app (active)
 │   └── lib/
 │       ├── core/                    shared across features
+│       │   ├── di/                  gameRepositoryProvider (composition root / swap seam)
 │       │   ├── domain/engine/       pure-Dart Hold'em rules (deck, evaluator, betting, side pots)
 │       │   ├── domain/hand_history.dart   shared hand-history entity
 │       │   ├── presentation/        MoneyScope ($ vs BB) + shared widgets
 │       │   └── theme/
 │       └── features/
-│           ├── table/{domain,data,presentation}      game + table UI (GameRepository, TableSnapshot)
-│           ├── settings/{domain,data,presentation}   persisted GameSettings
-│           └── analytics/{domain,presentation}       VPIP/PFR/AF over hand histories
+│           ├── table/{domain,data,presentation}      game + table UI (GameRepository, TableViewModel)
+│           ├── settings/{domain,data,presentation}   persisted GameSettings (SettingsController)
+│           └── analytics/{domain,presentation}       VPIP/PFR/AF (AnalyticsViewModel)
 └── backend/    Ktor scaffold (Postgres/Exposed, WebSocket — TODO)
 ```
 
-> MVVM migration: **settings** and **table** done (Riverpod Notifiers; the table
-> repository is framework-free and exposes a `Stream<TableSnapshot>`). **Analytics**
-> still drives its repository directly (full AnalyticsViewModel + composition-root
-> cleanup remain — Steps 4–5).
+> MVVM migration **complete**: settings, table, and analytics all run on Riverpod
+> Notifiers; Views are `Consumer`s that talk only to ViewModels. Domain and data
+> are framework-free; the table repository exposes a `Stream<TableSnapshot>`. The
+> remote/WebSocket swap is a one-line change in `core/di/game_providers.dart`.
 
 ## Dev commands (run from `frontend/`)
 

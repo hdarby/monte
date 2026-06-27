@@ -60,12 +60,12 @@ class CommunityBoard extends StatelessWidget {
   }
 
   Widget _placeholder() => Container(
-        width: 64,
-        height: 64 * 1.4,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.white12),
-          color: Colors.black12,
-        ),
-      );
+    width: 64,
+    height: 64 * 1.4,
+    decoration: BoxDecoration(
+      borderRadius: BorderRadius.circular(8),
+      border: Border.all(color: Colors.white12),
+      color: Colors.black12,
+    ),
+  );
 }

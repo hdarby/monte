@@ -24,5 +24,5 @@ class SettingsController extends AsyncNotifier<GameSettings> {
 
 final settingsControllerProvider =
     AsyncNotifierProvider<SettingsController, GameSettings>(
-  SettingsController.new,
-);
+      SettingsController.new,
+    );

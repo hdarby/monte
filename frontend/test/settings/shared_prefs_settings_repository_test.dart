@@ -18,11 +18,9 @@ void main() {
       SharedPreferences.setMockInitialValues({});
       final repo = SharedPrefsSettingsRepository();
 
-      await repo.save(const GameSettings(
-        playerCount: 6,
-        showBigBlinds: true,
-        allBots: true,
-      ));
+      await repo.save(
+        const GameSettings(playerCount: 6, showBigBlinds: true, allBots: true),
+      );
       final loaded = await repo.load();
 
       expect(loaded.playerCount, 6);

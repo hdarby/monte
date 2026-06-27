@@ -31,15 +31,15 @@ class GamePage extends ConsumerWidget {
   const GamePage({super.key});
 
   void _openSettings(BuildContext context) {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const SettingsScreen()),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const SettingsScreen()));
   }
 
   void _openAnalytics(BuildContext context) {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const AnalyticsScreen()),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const AnalyticsScreen()));
   }
 
   @override
@@ -48,9 +48,8 @@ class GamePage extends ConsumerWidget {
     return settingsAsync.when(
       loading: () =>
           const Scaffold(body: Center(child: CircularProgressIndicator())),
-      error: (e, _) => Scaffold(
-        body: Center(child: Text('Failed to load settings: $e')),
-      ),
+      error: (e, _) =>
+          Scaffold(body: Center(child: Text('Failed to load settings: $e'))),
       data: (settings) {
         final snapshot = ref.watch(tableViewModelProvider);
         final vm = ref.read(tableViewModelProvider.notifier);

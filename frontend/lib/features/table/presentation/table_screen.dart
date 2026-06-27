@@ -69,41 +69,44 @@ class TableScreen extends StatelessWidget {
   }
 
   Widget _header() => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-        color: AppTheme.surface,
-        child: Row(
-          children: [
-            const Icon(Icons.style, color: AppTheme.gold),
-            const SizedBox(width: 10),
-            const Text("Texas Hold'em",
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const Spacer(),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: Colors.black26,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                  isAllBots
-                      ? '$playerCount bots · evaluation'
-                      : '$playerCount players · client-only',
-                  style: const TextStyle(fontSize: 12, color: Colors.white60)),
-            ),
-            const SizedBox(width: 8),
-            IconButton(
-              tooltip: 'Analytics',
-              icon: const Icon(Icons.bar_chart, color: Colors.white70),
-              onPressed: onOpenAnalytics,
-            ),
-            IconButton(
-              tooltip: 'Table settings',
-              icon: const Icon(Icons.settings, color: Colors.white70),
-              onPressed: onOpenSettings,
-            ),
-          ],
+    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+    color: AppTheme.surface,
+    child: Row(
+      children: [
+        const Icon(Icons.style, color: AppTheme.gold),
+        const SizedBox(width: 10),
+        const Text(
+          "Texas Hold'em",
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
         ),
-      );
+        const Spacer(),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: Colors.black26,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Text(
+            isAllBots
+                ? '$playerCount bots · evaluation'
+                : '$playerCount players · client-only',
+            style: const TextStyle(fontSize: 12, color: Colors.white60),
+          ),
+        ),
+        const SizedBox(width: 8),
+        IconButton(
+          tooltip: 'Analytics',
+          icon: const Icon(Icons.bar_chart, color: Colors.white70),
+          onPressed: onOpenAnalytics,
+        ),
+        IconButton(
+          tooltip: 'Table settings',
+          icon: const Icon(Icons.settings, color: Colors.white70),
+          onPressed: onOpenSettings,
+        ),
+      ],
+    ),
+  );
 
   /// The felt with the community board centred and seats arranged around an
   /// ellipse — the human at the bottom, opponents filling the rest of the ring.
@@ -118,7 +121,11 @@ class TableScreen extends StatelessWidget {
         borderRadius: BorderRadius.circular(180),
         border: Border.all(color: AppTheme.feltEdge, width: 10),
         boxShadow: const [
-          BoxShadow(color: Colors.black54, blurRadius: 24, offset: Offset(0, 8)),
+          BoxShadow(
+            color: Colors.black54,
+            blurRadius: 24,
+            offset: Offset(0, 8),
+          ),
         ],
       ),
       child: Padding(
@@ -166,12 +173,15 @@ class _LogPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('HAND LOG',
-              style: TextStyle(
-                  color: Colors.white54,
-                  fontSize: 12,
-                  letterSpacing: 2,
-                  fontWeight: FontWeight.bold)),
+          const Text(
+            'HAND LOG',
+            style: TextStyle(
+              color: Colors.white54,
+              fontSize: 12,
+              letterSpacing: 2,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
           const Divider(color: Colors.white12),
           Expanded(
             child: ListView(
@@ -179,9 +189,13 @@ class _LogPanel extends StatelessWidget {
                 for (final line in recent)
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 3),
-                    child: Text(line,
-                        style: const TextStyle(
-                            fontSize: 13, color: Colors.white70)),
+                    child: Text(
+                      line,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: Colors.white70,
+                      ),
+                    ),
                   ),
               ],
             ),

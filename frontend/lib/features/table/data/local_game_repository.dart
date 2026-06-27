@@ -39,7 +39,16 @@ class TableConfig {
 
   /// Names assigned to bots, in seat order (enough for a full table).
   static const List<String> botNamePool = [
-    'Ada', 'Boris', 'Chen', 'Dora', 'Eli', 'Farah', 'Gus', 'Hana', 'Ivan', 'Jo',
+    'Ada',
+    'Boris',
+    'Chen',
+    'Dora',
+    'Eli',
+    'Farah',
+    'Gus',
+    'Hana',
+    'Ivan',
+    'Jo',
   ];
 
   int get botCount => allBots ? playerCount : playerCount - 1;
@@ -235,13 +244,15 @@ class LocalGameRepository extends GameRepository {
         amount = 0;
     }
 
-    _recActions.add(ActionRecord(
-      playerId: player.id,
-      street: street,
-      type: action.type,
-      amount: amount,
-      potAfter: game.pot,
-    ));
+    _recActions.add(
+      ActionRecord(
+        playerId: player.id,
+        street: street,
+        type: action.type,
+        amount: amount,
+        potAfter: game.pot,
+      ),
+    );
 
     if (game.isHandOver) _finalizeHand();
   }
@@ -250,31 +261,30 @@ class LocalGameRepository extends GameRepository {
     final game = _game!;
     if (_recPlayers.isEmpty) return;
 
-    _history.add(HandHistory(
-      handNumber: _handCounter,
-      smallBlind: game.smallBlind,
-      bigBlind: game.bigBlind,
-      players: _recPlayers,
-      actions: _recActions,
-      board: game.board.map((c) => c.code).toList(),
-      results: [
-        for (final r in game.results)
-          HandResultRecord(
-            playerId: r.player.id,
-            amountWon: r.amountWon,
-            handRank: r.handValue?.rank.label,
-          ),
-      ],
-      finalStacks: {
-        for (final p in _recPlayers) p.id: _stackOf(p.id),
-      },
-    ));
+    _history.add(
+      HandHistory(
+        handNumber: _handCounter,
+        smallBlind: game.smallBlind,
+        bigBlind: game.bigBlind,
+        players: _recPlayers,
+        actions: _recActions,
+        board: game.board.map((c) => c.code).toList(),
+        results: [
+          for (final r in game.results)
+            HandResultRecord(
+              playerId: r.player.id,
+              amountWon: r.amountWon,
+              handRank: r.handValue?.rank.label,
+            ),
+        ],
+        finalStacks: {for (final p in _recPlayers) p.id: _stackOf(p.id)},
+      ),
+    );
     _recPlayers = [];
     _recActions = [];
   }
 
-  int _stackOf(String id) =>
-      _game!.players.firstWhere((p) => p.id == id).stack;
+  int _stackOf(String id) => _game!.players.firstWhere((p) => p.id == id).stack;
 
   // ---- Snapshot -------------------------------------------------------------
 
@@ -299,20 +309,22 @@ class LocalGameRepository extends GameRepository {
       if (reveal && p.inHand && game.board.length == 5 && p.hole.length == 2) {
         label = HandEvaluator.evaluate([...p.hole, ...game.board]).rank.label;
       }
-      seats.add(SeatView(
-        id: p.id,
-        name: p.name,
-        isHuman: p.isHuman,
-        stack: p.stack,
-        currentBet: p.currentBet,
-        folded: p.hasFolded,
-        allIn: p.isAllIn,
-        isButton: i == game.buttonIndex,
-        isCurrent: current != null && current.id == p.id,
-        holeCards: reveal ? List.of(p.hole) : null,
-        handLabel: label,
-        wonAmount: wonByPlayer[p] ?? 0,
-      ));
+      seats.add(
+        SeatView(
+          id: p.id,
+          name: p.name,
+          isHuman: p.isHuman,
+          stack: p.stack,
+          currentBet: p.currentBet,
+          folded: p.hasFolded,
+          allIn: p.isAllIn,
+          isButton: i == game.buttonIndex,
+          isCurrent: current != null && current.id == p.id,
+          holeCards: reveal ? List.of(p.hole) : null,
+          handLabel: label,
+          wonAmount: wonByPlayer[p] ?? 0,
+        ),
+      );
     }
 
     ActionContext? ctx;

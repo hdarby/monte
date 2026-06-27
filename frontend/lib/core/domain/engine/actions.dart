@@ -20,6 +20,5 @@ class GameAction {
   final int amount;
 
   @override
-  String toString() =>
-      amount > 0 ? '${type.name} to $amount' : type.name;
+  String toString() => amount > 0 ? '${type.name} to $amount' : type.name;
 }

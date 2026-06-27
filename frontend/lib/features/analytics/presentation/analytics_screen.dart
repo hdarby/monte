@@ -85,19 +85,25 @@ class AnalyticsScreen extends ConsumerWidget {
       runSpacing: 12,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        Text('$handCount hands recorded',
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+        Text(
+          '$handCount hands recorded',
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+        ),
         const SizedBox(width: 8),
         FilledButton.icon(
           style: FilledButton.styleFrom(
-              backgroundColor: AppTheme.gold, foregroundColor: Colors.black),
+            backgroundColor: AppTheme.gold,
+            foregroundColor: Colors.black,
+          ),
           icon: const Icon(Icons.fast_forward),
           onPressed: () => vm.simulate(100),
           label: const Text('Simulate 100'),
         ),
         FilledButton.icon(
           style: FilledButton.styleFrom(
-              backgroundColor: AppTheme.gold, foregroundColor: Colors.black),
+            backgroundColor: AppTheme.gold,
+            foregroundColor: Colors.black,
+          ),
           icon: const Icon(Icons.fast_forward),
           onPressed: () => vm.simulate(1000),
           label: const Text('Simulate 1000'),
@@ -122,8 +128,7 @@ class AnalyticsScreen extends ConsumerWidget {
     await Clipboard.setData(ClipboardData(text: json));
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: Text('Copied $handCount hands as JSON to clipboard')),
+        SnackBar(content: Text('Copied $handCount hands as JSON to clipboard')),
       );
     }
   }
@@ -149,19 +154,26 @@ class AnalyticsScreen extends ConsumerWidget {
           ],
           rows: [
             for (final s in stats)
-              DataRow(cells: [
-                DataCell(Text(s.name)),
-                DataCell(Text('${s.hands}')),
-                DataCell(Text(s.vpip.toStringAsFixed(0))),
-                DataCell(Text(s.pfr.toStringAsFixed(0))),
-                DataCell(Text(s.aggressionLabel)),
-                DataCell(Text(s.bbPer100.toStringAsFixed(1),
-                    style: TextStyle(
+              DataRow(
+                cells: [
+                  DataCell(Text(s.name)),
+                  DataCell(Text('${s.hands}')),
+                  DataCell(Text(s.vpip.toStringAsFixed(0))),
+                  DataCell(Text(s.pfr.toStringAsFixed(0))),
+                  DataCell(Text(s.aggressionLabel)),
+                  DataCell(
+                    Text(
+                      s.bbPer100.toStringAsFixed(1),
+                      style: TextStyle(
                         color: s.bbPer100 >= 0
                             ? const Color(0xFF66BB6A)
-                            : const Color(0xFFEF5350)))),
-                DataCell(Text('${s.netChips}')),
-              ]),
+                            : const Color(0xFFEF5350),
+                      ),
+                    ),
+                  ),
+                  DataCell(Text('${s.netChips}')),
+                ],
+              ),
           ],
         ),
       ),
@@ -200,9 +212,10 @@ class _MetricBars extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title,
-              style:
-                  const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          Text(
+            title,
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
           const SizedBox(height: 10),
           for (final s in stats)
             Padding(
@@ -210,10 +223,13 @@ class _MetricBars extends StatelessWidget {
               child: Row(
                 children: [
                   SizedBox(
-                      width: 70,
-                      child: Text(s.name,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 13))),
+                    width: 70,
+                    child: Text(
+                      s.name,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  ),
                   Expanded(
                     child: Stack(
                       children: [
@@ -239,11 +255,16 @@ class _MetricBars extends StatelessWidget {
                   ),
                   const SizedBox(width: 10),
                   SizedBox(
-                      width: 52,
-                      child: Text(format(value(s)),
-                          textAlign: TextAlign.right,
-                          style: const TextStyle(
-                              fontSize: 13, fontWeight: FontWeight.w600))),
+                    width: 52,
+                    child: Text(
+                      format(value(s)),
+                      textAlign: TextAlign.right,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),

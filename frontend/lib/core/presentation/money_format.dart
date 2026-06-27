@@ -10,8 +10,7 @@ class MoneyFormat {
   String format(int chips) {
     if (!showBigBlinds) return '\$$chips';
     final bb = chips / bigBlind;
-    final text =
-        bb % 1 == 0 ? bb.toStringAsFixed(0) : bb.toStringAsFixed(1);
+    final text = bb % 1 == 0 ? bb.toStringAsFixed(0) : bb.toStringAsFixed(1);
     return '$text BB';
   }
 }

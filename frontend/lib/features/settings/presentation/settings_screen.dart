@@ -51,26 +51,35 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Number of players',
-                    style:
-                        TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                const Text(
+                  'Number of players',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
                 const SizedBox(height: 6),
-                const Text('You plus the rest of the seats filled by bots.',
-                    style: TextStyle(color: Colors.white60)),
+                const Text(
+                  'You plus the rest of the seats filled by bots.',
+                  style: TextStyle(color: Colors.white60),
+                ),
                 const SizedBox(height: 24),
                 Center(
                   child: Column(
                     children: [
-                      Text('$_count',
-                          style: const TextStyle(
-                            fontSize: 64,
-                            fontWeight: FontWeight.bold,
-                            color: AppTheme.gold,
-                            height: 1,
-                          )),
-                      Text(_countLabel,
-                          style: const TextStyle(
-                              fontSize: 16, color: Colors.white70)),
+                      Text(
+                        '$_count',
+                        style: const TextStyle(
+                          fontSize: 64,
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.gold,
+                          height: 1,
+                        ),
+                      ),
+                      Text(
+                        _countLabel,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          color: Colors.white70,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -85,7 +94,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     value: _count.toDouble(),
                     min: GameSettings.minPlayers.toDouble(),
                     max: GameSettings.maxPlayers.toDouble(),
-                    divisions: GameSettings.maxPlayers - GameSettings.minPlayers,
+                    divisions:
+                        GameSettings.maxPlayers - GameSettings.minPlayers,
                     label: '$_count',
                     onChanged: (v) => setState(() => _count = v.round()),
                   ),
@@ -95,26 +105,33 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('Heads-up (2)',
-                          style: TextStyle(color: Colors.white54, fontSize: 13)),
-                      Text('Full table (10)',
-                          style: TextStyle(color: Colors.white54, fontSize: 13)),
+                      Text(
+                        'Heads-up (2)',
+                        style: TextStyle(color: Colors.white54, fontSize: 13),
+                      ),
+                      Text(
+                        'Full table (10)',
+                        style: TextStyle(color: Colors.white54, fontSize: 13),
+                      ),
                     ],
                   ),
                 ),
                 const SizedBox(height: 28),
                 const Divider(color: Colors.white12),
                 const SizedBox(height: 12),
-                const Text('Display amounts',
-                    style:
-                        TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                const Text(
+                  'Display amounts',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
                 const SizedBox(height: 6),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   activeThumbColor: AppTheme.gold,
                   value: _showBigBlinds,
                   onChanged: (v) => setState(() => _showBigBlinds = v),
-                  title: Text(_showBigBlinds ? 'Big blinds (BB)' : 'Dollars (\$)'),
+                  title: Text(
+                    _showBigBlinds ? 'Big blinds (BB)' : 'Dollars (\$)',
+                  ),
                   subtitle: Text(
                     _showBigBlinds
                         ? 'Stacks and bets shown as multiples of the big blind.'
@@ -125,9 +142,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 const SizedBox(height: 20),
                 const Divider(color: Colors.white12),
                 const SizedBox(height: 12),
-                const Text('Evaluation',
-                    style:
-                        TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                const Text(
+                  'Evaluation',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
                 const SizedBox(height: 6),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
@@ -148,7 +166,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       child: OutlinedButton(
                         onPressed: () => Navigator.pop(context),
                         style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 16)),
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                        ),
                         child: const Text('Cancel'),
                       ),
                     ),
@@ -161,7 +180,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           padding: const EdgeInsets.symmetric(vertical: 16),
                         ),
                         onPressed: () {
-                          ref.read(settingsControllerProvider.notifier).save(
+                          ref
+                              .read(settingsControllerProvider.notifier)
+                              .save(
                                 GameSettings(
                                   playerCount: _count,
                                   showBigBlinds: _showBigBlinds,

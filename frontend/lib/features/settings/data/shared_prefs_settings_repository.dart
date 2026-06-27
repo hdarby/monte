@@ -12,8 +12,10 @@ class SharedPrefsSettingsRepository implements SettingsRepository {
   @override
   Future<GameSettings> load() async {
     final prefs = await SharedPreferences.getInstance();
-    final count = (prefs.getInt(_kPlayerCount) ?? 4)
-        .clamp(GameSettings.minPlayers, GameSettings.maxPlayers);
+    final count = (prefs.getInt(_kPlayerCount) ?? 4).clamp(
+      GameSettings.minPlayers,
+      GameSettings.maxPlayers,
+    );
     return GameSettings(
       playerCount: count,
       showBigBlinds: prefs.getBool(_kShowBigBlinds) ?? false,

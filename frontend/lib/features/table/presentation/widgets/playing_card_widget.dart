@@ -15,15 +15,11 @@ class PlayingCardWidget extends StatelessWidget {
     this.card,
     this.faceDown = false,
     this.width = 56,
-    this.dimmed = false,
   });
 
   final poker.Card? card;
   final bool faceDown;
   final double width;
-
-  /// Greyed out, e.g. for a folded player.
-  final bool dimmed;
 
   @override
   Widget build(BuildContext context) {
@@ -57,44 +53,34 @@ class PlayingCardWidget extends StatelessWidget {
     }
 
     final c = card!;
-    return Opacity(
-      opacity: dimmed ? 0.45 : 1,
-      child: Container(
-        width: width,
-        height: height,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: radius,
-          boxShadow: const [
-            BoxShadow(color: Colors.black38, blurRadius: 4, offset: Offset(0, 2)),
-          ],
-        ),
-        child: Stack(
-          children: [
-            // Large pip in the absolute centre of the card.
-            Center(
-              child: Text(
-                c.suit.symbol,
-                style: TextStyle(color: c.suit.color, fontSize: width * 0.52),
-              ),
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: radius,
+        boxShadow: const [
+          BoxShadow(color: Colors.black38, blurRadius: 4, offset: Offset(0, 2)),
+        ],
+      ),
+      child: Stack(
+        children: [
+          // Large pip in the absolute centre of the card.
+          Center(
+            child: Text(
+              c.suit.symbol,
+              style: TextStyle(color: c.suit.color, fontSize: width * 0.52),
             ),
-            // Top-left index.
-            Positioned(
-              top: width * 0.08,
-              left: width * 0.1,
-              child: _index(c),
-            ),
-            // Bottom-right index, inverted like a real card.
-            Positioned(
-              bottom: width * 0.08,
-              right: width * 0.1,
-              child: Transform.rotate(
-                angle: math.pi,
-                child: _index(c),
-              ),
-            ),
-          ],
-        ),
+          ),
+          // Top-left index.
+          Positioned(top: width * 0.08, left: width * 0.1, child: _index(c)),
+          // Bottom-right index, inverted like a real card.
+          Positioned(
+            bottom: width * 0.08,
+            right: width * 0.1,
+            child: Transform.rotate(angle: math.pi, child: _index(c)),
+          ),
+        ],
       ),
     );
   }

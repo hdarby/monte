@@ -297,8 +297,10 @@ class PokerGame {
     };
 
     for (final p in contenders) {
-      log.add('${p.name} shows ${p.hole.map((c) => c.code).join(' ')} '
-          '— ${values[p]!.rank.label}');
+      log.add(
+        '${p.name} shows ${p.hole.map((c) => c.code).join(' ')} '
+        '— ${values[p]!.rank.label}',
+      );
     }
 
     final winnings = _distributeSidePots(contenders, values);
@@ -314,8 +316,10 @@ class PokerGame {
 
     for (final r in results) {
       r.player.stack += r.amountWon;
-      log.add('${r.player.name} wins ${r.amountWon} '
-          'with ${r.handValue!.rank.label}.');
+      log.add(
+        '${r.player.name} wins ${r.amountWon} '
+        'with ${r.handValue!.rank.label}.',
+      );
     }
     _finishHand();
   }
@@ -330,12 +334,13 @@ class PokerGame {
 
     // Distinct contribution levels across *all* players (folded chips count
     // toward pot size but folded players can't win).
-    final levels = players
-        .map((p) => p.totalContributed)
-        .where((c) => c > 0)
-        .toSet()
-        .toList()
-      ..sort();
+    final levels =
+        players
+            .map((p) => p.totalContributed)
+            .where((c) => c > 0)
+            .toSet()
+            .toList()
+          ..sort();
 
     var previous = 0;
     for (final level in levels) {
@@ -345,12 +350,16 @@ class PokerGame {
       var potChunk = layer * contributors.length;
 
       // Eligible winners: still in the hand and reached this level.
-      final eligible = contenders.where((p) => p.totalContributed >= level).toList();
+      final eligible = contenders
+          .where((p) => p.totalContributed >= level)
+          .toList();
       if (eligible.isNotEmpty) {
         HandValue best = eligible
             .map((p) => values[p]!)
             .reduce((a, b) => a > b ? a : b);
-        final winners = eligible.where((p) => values[p]!.compareTo(best) == 0).toList();
+        final winners = eligible
+            .where((p) => values[p]!.compareTo(best) == 0)
+            .toList();
 
         final share = potChunk ~/ winners.length;
         var remainder = potChunk - share * winners.length;

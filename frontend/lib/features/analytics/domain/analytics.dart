@@ -59,8 +59,10 @@ class PokerAnalytics {
 
     for (final hand in histories) {
       for (final player in hand.players) {
-        final stats =
-            byId.putIfAbsent(player.id, () => PlayerStats(player.id, player.name));
+        final stats = byId.putIfAbsent(
+          player.id,
+          () => PlayerStats(player.id, player.name),
+        );
         stats.hands++;
 
         final mine = hand.actions.where((a) => a.playerId == player.id);

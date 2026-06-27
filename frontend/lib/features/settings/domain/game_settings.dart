@@ -25,10 +25,9 @@ class GameSettings {
     int? playerCount,
     bool? showBigBlinds,
     bool? allBots,
-  }) =>
-      GameSettings(
-        playerCount: playerCount ?? this.playerCount,
-        showBigBlinds: showBigBlinds ?? this.showBigBlinds,
-        allBots: allBots ?? this.allBots,
-      );
+  }) => GameSettings(
+    playerCount: playerCount ?? this.playerCount,
+    showBigBlinds: showBigBlinds ?? this.showBigBlinds,
+    allBots: allBots ?? this.allBots,
+  );
 }

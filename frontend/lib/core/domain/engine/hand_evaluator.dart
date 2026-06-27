@@ -58,7 +58,9 @@ class HandEvaluator {
   /// than 5 are supplied.
   static HandValue evaluate(List<Card> cards) {
     if (cards.length < 5) {
-      throw ArgumentError('Need at least 5 cards to evaluate, got ${cards.length}');
+      throw ArgumentError(
+        'Need at least 5 cards to evaluate, got ${cards.length}',
+      );
     }
     if (cards.length == 5) return _score5(cards);
 
@@ -99,7 +101,9 @@ class HandEvaluator {
       // Quads + kicker.
       return HandValue(HandRank.fourOfAKind, byCount, sorted);
     }
-    if (countPattern.length >= 2 && countPattern[0] == 3 && countPattern[1] >= 2) {
+    if (countPattern.length >= 2 &&
+        countPattern[0] == 3 &&
+        countPattern[1] >= 2) {
       return HandValue(HandRank.fullHouse, byCount, sorted);
     }
     if (isFlush) {
@@ -111,7 +115,9 @@ class HandEvaluator {
     if (countPattern.first == 3) {
       return HandValue(HandRank.threeOfAKind, byCount, sorted);
     }
-    if (countPattern.length >= 2 && countPattern[0] == 2 && countPattern[1] == 2) {
+    if (countPattern.length >= 2 &&
+        countPattern[0] == 2 &&
+        countPattern[1] == 2) {
       return HandValue(HandRank.twoPair, byCount, sorted);
     }
     if (countPattern.first == 2) {

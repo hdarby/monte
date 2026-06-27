@@ -41,7 +41,11 @@ void main() {
 
         // No negative stacks, and the bank is exactly conserved.
         for (final p in players) {
-          expect(p.stack, greaterThanOrEqualTo(0), reason: '${p.name} went negative');
+          expect(
+            p.stack,
+            greaterThanOrEqualTo(0),
+            reason: '${p.name} went negative',
+          );
         }
         final now = players.fold<int>(0, (s, p) => s + p.stack);
         expect(now, total, reason: 'chip leak after hand $h');
@@ -56,7 +60,10 @@ void main() {
         Player(id: 'p1', name: 'P1', stack: 1000),
         Player(id: 'p2', name: 'P2', stack: 1000),
       ];
-      final game = PokerGame(players: players, deck: Deck(random: Random(1)));
+      final game = PokerGame(
+        players: players,
+        deck: Deck(random: Random(1)),
+      );
       final bot = BotStrategy(random: Random(1));
 
       final buttons = <int>[];

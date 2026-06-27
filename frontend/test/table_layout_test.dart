@@ -44,18 +44,20 @@ Future<void> _pumpTable(WidgetTester tester, int playerCount) async {
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
 
-  await tester.pumpWidget(MaterialApp(
-    home: TableScreen(
-      snapshot: _snapshotWith(playerCount),
-      isAllBots: false,
-      playerCount: playerCount,
-      onAction: (_) {},
-      onNewGame: () {},
-      onNextHand: () {},
-      onOpenSettings: () {},
-      onOpenAnalytics: () {},
+  await tester.pumpWidget(
+    MaterialApp(
+      home: TableScreen(
+        snapshot: _snapshotWith(playerCount),
+        isAllBots: false,
+        playerCount: playerCount,
+        onAction: (_) {},
+        onNewGame: () {},
+        onNextHand: () {},
+        onOpenSettings: () {},
+        onOpenAnalytics: () {},
+      ),
     ),
-  ));
+  );
   await tester.pump();
 }
 
@@ -65,7 +67,9 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('full table (10 players) lays out without overflow', (tester) async {
+  testWidgets('full table (10 players) lays out without overflow', (
+    tester,
+  ) async {
     await _pumpTable(tester, 10);
     expect(tester.takeException(), isNull);
     // Every seat is rendered.
