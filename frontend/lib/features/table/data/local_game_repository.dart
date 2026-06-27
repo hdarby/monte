@@ -1,7 +1,9 @@
 import 'dart:async';
 
+import 'package:monte/core/domain/ai/decider_factory.dart';
+import 'package:monte/core/domain/ai/personality.dart';
 import 'package:monte/core/domain/engine/actions.dart';
-import 'package:monte/core/domain/engine/bot.dart';
+import 'package:monte/core/domain/engine/decision_policy.dart';
 import 'package:monte/core/domain/engine/game.dart';
 import 'package:monte/core/domain/engine/hand_evaluator.dart';
 import 'package:monte/core/domain/engine/player.dart';
@@ -19,6 +21,9 @@ class TableConfig {
     this.bigBlind = 10,
     this.allBots = false,
     this.botThinkTime = const Duration(milliseconds: 700),
+    this.botType = BotType.heuristic,
+    this.personality = const PersonalityProfile.balanced(),
+    this.mctsIterations = 250,
   });
 
   /// Total seats including the human. 2 = heads-up, up to 10 for a full table.
@@ -32,6 +37,13 @@ class TableConfig {
   final int smallBlind;
   final int bigBlind;
   final Duration botThinkTime;
+
+  /// Which brain the bots use, and the personality shaping it.
+  final BotType botType;
+  final PersonalityProfile personality;
+
+  /// Search budget per decision for [BotType.mcts].
+  final int mctsIterations;
 
   /// Smallest and largest supported table sizes.
   static const int minPlayers = 2;
@@ -61,7 +73,11 @@ class LocalGameRepository extends GameRepository {
   LocalGameRepository({this.config = const TableConfig()});
 
   final TableConfig config;
-  final BotStrategy _bot = BotStrategy();
+  late final DecisionPolicy _decider = buildDecider(
+    config.botType,
+    profile: config.personality,
+    mctsIterations: config.mctsIterations,
+  );
 
   PokerGame? _game;
   bool _botsRunning = false;
@@ -164,7 +180,7 @@ class LocalGameRepository extends GameRepository {
       while (!game.isHandOver) {
         final current = game.currentPlayer;
         if (current == null) break;
-        _applyAndRecord(current, _bot.decide(game, current));
+        _applyAndRecord(current, _decider.decide(game, current));
       }
     }
     _publish();
@@ -185,7 +201,7 @@ class LocalGameRepository extends GameRepository {
 
         await Future<void>.delayed(config.botThinkTime);
         if (_disposed) return;
-        _applyAndRecord(current, _bot.decide(game, current));
+        _applyAndRecord(current, _decider.decide(game, current));
         _publish();
       }
     } finally {

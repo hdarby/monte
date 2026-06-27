@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:monte/core/domain/ai/decider_factory.dart';
+import 'package:monte/core/domain/ai/personality.dart';
 import 'package:monte/core/theme/app_theme.dart';
 import 'package:monte/features/settings/domain/game_settings.dart';
 import 'package:monte/features/settings/presentation/settings_controller.dart';
@@ -18,6 +20,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   late int _count;
   late bool _showBigBlinds;
   late bool _allBots;
+  late BotType _botType;
+  late PersonalityArchetype _botPersonality;
 
   @override
   void initState() {
@@ -27,6 +31,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     _count = settings.playerCount;
     _showBigBlinds = settings.showBigBlinds;
     _allBots = settings.allBots;
+    _botType = settings.botType;
+    _botPersonality = settings.botPersonality;
   }
 
   String get _countLabel {
@@ -143,6 +149,49 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 const Divider(color: Colors.white12),
                 const SizedBox(height: 12),
                 const Text(
+                  'Bot behavior',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'How your opponents think. MCTS is the strongest '
+                  '(Monte Carlo search); personality shapes personality and '
+                  'MCTS bots.',
+                  style: TextStyle(color: Colors.white60),
+                ),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<BotType>(
+                  initialValue: _botType,
+                  decoration: const InputDecoration(
+                    labelText: 'Brain',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: [
+                    for (final t in BotType.values)
+                      DropdownMenuItem(value: t, child: Text(t.label)),
+                  ],
+                  onChanged: (v) => setState(() => _botType = v!),
+                ),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<PersonalityArchetype>(
+                  initialValue: _botPersonality,
+                  decoration: const InputDecoration(
+                    labelText: 'Personality',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: [
+                    for (final a in PersonalityArchetype.values)
+                      DropdownMenuItem(value: a, child: Text(a.label)),
+                  ],
+                  // Personality has no effect on the fixed heuristic.
+                  onChanged: _botType == BotType.heuristic
+                      ? null
+                      : (v) => setState(() => _botPersonality = v!),
+                ),
+                const SizedBox(height: 20),
+                const Divider(color: Colors.white12),
+                const SizedBox(height: 12),
+                const Text(
                   'Evaluation',
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                 ),
@@ -187,6 +236,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                   playerCount: _count,
                                   showBigBlinds: _showBigBlinds,
                                   allBots: _allBots,
+                                  botType: _botType,
+                                  botPersonality: _botPersonality,
                                 ),
                               );
                           Navigator.pop(context);

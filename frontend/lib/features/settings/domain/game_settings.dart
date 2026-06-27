@@ -1,9 +1,14 @@
+import 'package:monte/core/domain/ai/decider_factory.dart';
+import 'package:monte/core/domain/ai/personality.dart';
+
 /// User-configurable, persisted game settings.
 class GameSettings {
   const GameSettings({
     this.playerCount = 4,
     this.showBigBlinds = false,
     this.allBots = false,
+    this.botType = BotType.heuristic,
+    this.botPersonality = PersonalityArchetype.balanced,
   });
 
   /// Supported table-size bounds (2 = heads-up … 10 = full ring).
@@ -21,13 +26,24 @@ class GameSettings {
   /// for quickly generating hand histories to validate engine/bot changes.
   final bool allBots;
 
+  /// Which brain the bots use (heuristic, personality, or MCTS search).
+  final BotType botType;
+
+  /// The personality archetype shaping the bots' play (applies to personality
+  /// and MCTS bots).
+  final PersonalityArchetype botPersonality;
+
   GameSettings copyWith({
     int? playerCount,
     bool? showBigBlinds,
     bool? allBots,
+    BotType? botType,
+    PersonalityArchetype? botPersonality,
   }) => GameSettings(
     playerCount: playerCount ?? this.playerCount,
     showBigBlinds: showBigBlinds ?? this.showBigBlinds,
     allBots: allBots ?? this.allBots,
+    botType: botType ?? this.botType,
+    botPersonality: botPersonality ?? this.botPersonality,
   );
 }

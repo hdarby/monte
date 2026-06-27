@@ -81,9 +81,12 @@ monte/
 │   └── lib/
 │       ├── core/                    shared across features
 │       │   ├── di/                  gameRepositoryProvider (composition root / swap seam)
-│       │   ├── domain/engine/       pure-Dart Hold'em rules (deck, evaluator, betting, side pots)
+│       │   ├── domain/engine/       pure-Dart Hold'em rules (deck, evaluator, betting, side pots,
+│       │   │                        DecisionPolicy seam, HandStrength, heuristic bot)
+│       │   ├── domain/ai/           bot intelligence: ISMCTS engine, determinizer, action
+│       │   │                        abstraction, PersonalityProfile/policy, buildDecider factory
 │       │   ├── domain/hand_history.dart   shared hand-history entity
-│       │   ├── presentation/        MoneyScope ($ vs BB) + shared widgets
+│       │   ├── presentation/        MoneyScope ($ vs BB), suit colour + shared widgets
 │       │   └── theme/
 │       └── features/
 │           ├── table/{domain,data,presentation}      game + table UI (GameRepository, TableViewModel)
@@ -96,6 +99,38 @@ monte/
 > Notifiers; Views are `Consumer`s that talk only to ViewModels. Domain and data
 > are framework-free; the table repository exposes a `Stream<TableSnapshot>`. The
 > remote/WebSocket swap is a one-line change in `core/di/game_providers.dart`.
+
+## Bot intelligence (Monte Carlo)
+
+The headline feature: bots driven by an **ISMCTS** (Information Set Monte Carlo
+Tree Search) engine, the reason the app is named Monte. All in `core/domain/ai/`,
+pure Dart (Kotlin-portable).
+
+- **Imperfect info via determinization.** Each search iteration samples a
+  plausible world (opponent holes + future board) the hero can't see
+  (`determinizer.dart`) and plays it forward through the *real* `PokerGame`
+  engine — single source of truth, no second rulebook. Needs `PokerGame.clone()`
+  + `Deck` seeding (`Deck.stacked` decks are preset and survive reset/shuffle).
+- **Search** (`ismcts.dart`): hero-decision UCB1 tree, opponents auto-played by a
+  default policy; rewards = hero net chips normalized by total chips in play
+  (~[-1,1]); returns the most-visited root action. Seed-reproducible. Move set is
+  discretized by `action_abstraction.dart` (fold / check-call / pot-fraction
+  bets / all-in).
+- **Personality = tunable axes** (`personality.dart`): `aggression`,
+  `bluffFrequency`, `tightness`, `riskTolerance` in [0,1], with archetype presets
+  (tag/lag/nit/station/maniac). Expresses via `PersonalityPolicy` (fast, shapes
+  thresholds; also the search's rollout self-model) and a CARA risk-utility
+  transform on the MCTS payoff (strictly increasing → never inverts EV).
+- **Seam:** `DecisionPolicy` (`decide(game, player) → GameAction`) unifies
+  `BotStrategy` (heuristic), `PersonalityPolicy`, and `IsmctsEngine`.
+  `buildDecider(BotType, profile, mctsIterations)` is the one factory; settings
+  pick bot type + personality, threaded through `TableConfig`.
+- **Verified strong:** a seeded duplicate-match gate has the MCTS bot beating the
+  heuristic by ~43 bb/100. Default bot is `heuristic` (keeps eval mode + tests
+  fast); MCTS/personality are opt-in via settings.
+- **Known cost:** MCTS runs synchronously per decision, so `simulate()` with the
+  MCTS brain is much slower than heuristic — fine for the live table, heavy for
+  large batch runs.
 
 ## Dev commands (run from `frontend/`)
 

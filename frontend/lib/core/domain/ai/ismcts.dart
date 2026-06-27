@@ -40,7 +40,7 @@ class IsmctsConfig {
 /// branches only on the *hero's* decisions, selected by UCB1; opponents act via
 /// a fast default policy during both descent and rollout. The action returned
 /// is the hero's most-visited move at the root.
-class IsmctsEngine {
+class IsmctsEngine implements DecisionPolicy {
   IsmctsEngine({
     IsmctsConfig? config,
     Random? random,
@@ -63,6 +63,11 @@ class IsmctsEngine {
   late List<int> _rootStacks;
   late double _chipScale;
   late int _heroIndex;
+
+  /// [DecisionPolicy] entry point — equivalent to [chooseAction].
+  @override
+  GameAction decide(PokerGame game, Player player) =>
+      chooseAction(game, player);
 
   /// Chooses an action for [hero], who must be the player currently to act.
   GameAction chooseAction(PokerGame game, Player hero) {

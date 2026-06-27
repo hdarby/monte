@@ -88,6 +88,9 @@ class PersonalityProfile {
     riskTolerance: riskTolerance ?? this.riskTolerance,
   );
 
+  /// Named presets over the axes, for selection in the UI and persistence.
+  static const archetypes = PersonalityArchetype.values;
+
   /// Maps a normalized payoff in ~[-1, 1] through a constant-absolute-risk
   /// (CARA) utility curve. Risk-neutral (0.5) is the identity; risk-averse
   /// values are concave (penalize variance), risk-seeking ones convex. The
@@ -98,4 +101,29 @@ class PersonalityProfile {
     if (a.abs() < 1e-9) return payoff;
     return (1 - exp(-a * payoff)) / a;
   }
+}
+
+/// Named personality presets — the selectable archetypes.
+enum PersonalityArchetype {
+  balanced('Balanced'),
+  tag('Tight-Aggressive'),
+  lag('Loose-Aggressive'),
+  nit('Nit'),
+  station('Calling Station'),
+  maniac('Maniac');
+
+  const PersonalityArchetype(this.label);
+
+  /// Human-readable name for the UI.
+  final String label;
+
+  /// The profile this archetype maps to.
+  PersonalityProfile get profile => switch (this) {
+    PersonalityArchetype.balanced => const PersonalityProfile.balanced(),
+    PersonalityArchetype.tag => const PersonalityProfile.tag(),
+    PersonalityArchetype.lag => const PersonalityProfile.lag(),
+    PersonalityArchetype.nit => const PersonalityProfile.nit(),
+    PersonalityArchetype.station => const PersonalityProfile.station(),
+    PersonalityArchetype.maniac => const PersonalityProfile.maniac(),
+  };
 }
