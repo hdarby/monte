@@ -36,10 +36,9 @@ class GamePage extends ConsumerWidget {
     );
   }
 
-  void _openAnalytics(BuildContext context, WidgetRef ref) {
-    final repo = ref.read(gameRepositoryProvider);
+  void _openAnalytics(BuildContext context) {
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => AnalyticsScreen(repository: repo)),
+      MaterialPageRoute(builder: (_) => const AnalyticsScreen()),
     );
   }
 
@@ -65,7 +64,7 @@ class GamePage extends ConsumerWidget {
             onNewGame: vm.newGame,
             onNextHand: vm.startNextHand,
             onOpenSettings: () => _openSettings(context),
-            onOpenAnalytics: () => _openAnalytics(context, ref),
+            onOpenAnalytics: () => _openAnalytics(context),
           ),
         );
       },

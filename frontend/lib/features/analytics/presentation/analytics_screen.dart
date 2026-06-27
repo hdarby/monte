@@ -1,39 +1,22 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:poker_client/features/table/domain/game_repository.dart';
-import 'package:poker_client/features/analytics/domain/analytics.dart';
 import 'package:poker_client/core/theme/app_theme.dart';
+import 'package:poker_client/features/analytics/domain/analytics.dart';
+import 'package:poker_client/features/analytics/presentation/analytics_view_model.dart';
 
 /// Shows poker analytics (VPIP, PFR, Aggression, win rate) computed from the
-/// recorded hand histories, with controls to simulate more hands and export
-/// the raw history as JSON.
-class AnalyticsScreen extends StatefulWidget {
-  const AnalyticsScreen({super.key, required this.repository});
-
-  final GameRepository repository;
+/// recorded hand histories, with controls to simulate more hands and export the
+/// raw history as JSON. A pure consumer of [analyticsViewModelProvider].
+class AnalyticsScreen extends ConsumerWidget {
+  const AnalyticsScreen({super.key});
 
   @override
-  State<AnalyticsScreen> createState() => _AnalyticsScreenState();
-}
-
-class _AnalyticsScreenState extends State<AnalyticsScreen> {
-  Future<void> _simulate(int hands) async {
-    await widget.repository.simulate(hands);
-    if (mounted) setState(() {});
-  }
-
-  void _clear() {
-    widget.repository.clearHistory();
-    setState(() {});
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final stats = PokerAnalytics.compute(widget.repository.history);
-    final handCount = widget.repository.history.length;
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(analyticsViewModelProvider);
+    final stats = state.stats;
+    final handCount = state.handCount;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Analytics'),
@@ -47,7 +30,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _controls(context, handCount),
+                _controls(context, ref, handCount),
                 const SizedBox(height: 20),
                 if (stats.isEmpty)
                   const Padding(
@@ -95,7 +78,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     );
   }
 
-  Widget _controls(BuildContext context, int handCount) {
+  Widget _controls(BuildContext context, WidgetRef ref, int handCount) {
+    final vm = ref.read(analyticsViewModelProvider.notifier);
     return Wrap(
       spacing: 12,
       runSpacing: 12,
@@ -108,39 +92,38 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           style: FilledButton.styleFrom(
               backgroundColor: AppTheme.gold, foregroundColor: Colors.black),
           icon: const Icon(Icons.fast_forward),
-          onPressed: () => _simulate(100),
+          onPressed: () => vm.simulate(100),
           label: const Text('Simulate 100'),
         ),
         FilledButton.icon(
           style: FilledButton.styleFrom(
               backgroundColor: AppTheme.gold, foregroundColor: Colors.black),
           icon: const Icon(Icons.fast_forward),
-          onPressed: () => _simulate(1000),
+          onPressed: () => vm.simulate(1000),
           label: const Text('Simulate 1000'),
         ),
         OutlinedButton.icon(
           icon: const Icon(Icons.copy),
-          onPressed: handCount == 0 ? null : () => _exportJson(context),
+          onPressed: handCount == 0 ? null : () => _exportJson(context, ref),
           label: const Text('Copy JSON'),
         ),
         OutlinedButton.icon(
           icon: const Icon(Icons.delete_outline),
-          onPressed: handCount == 0 ? null : _clear,
+          onPressed: handCount == 0 ? null : vm.clear,
           label: const Text('Clear'),
         ),
       ],
     );
   }
 
-  Future<void> _exportJson(BuildContext context) async {
-    final json = const JsonEncoder.withIndent('  ')
-        .convert(widget.repository.history.map((h) => h.toJson()).toList());
+  Future<void> _exportJson(BuildContext context, WidgetRef ref) async {
+    final handCount = ref.read(analyticsViewModelProvider).handCount;
+    final json = ref.read(analyticsViewModelProvider.notifier).exportJson();
     await Clipboard.setData(ClipboardData(text: json));
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-            content: Text(
-                'Copied ${widget.repository.history.length} hands as JSON to clipboard')),
+            content: Text('Copied $handCount hands as JSON to clipboard')),
       );
     }
   }
