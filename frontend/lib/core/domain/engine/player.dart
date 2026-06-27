@@ -11,7 +11,10 @@ class Player {
   });
 
   final String id;
-  final String name;
+
+  /// Display name. Mutable so a busted bot can be replaced by a new persona
+  /// without disturbing seat [id]s.
+  String name;
 
   /// True for the local human; false for bots (later: remote players).
   final bool isHuman;

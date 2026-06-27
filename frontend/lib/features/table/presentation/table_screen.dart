@@ -25,6 +25,8 @@ class TableScreen extends StatelessWidget {
     required this.onNextHand,
     required this.onOpenSettings,
     required this.onOpenAnalytics,
+    this.autoDeal = false,
+    this.onToggleAutoDeal,
   });
 
   final TableSnapshot snapshot;
@@ -35,6 +37,10 @@ class TableScreen extends StatelessWidget {
   final VoidCallback onNextHand;
   final VoidCallback onOpenSettings;
   final VoidCallback onOpenAnalytics;
+
+  /// All-bots only: whether hands deal continuously until toggled off.
+  final bool autoDeal;
+  final ValueChanged<bool>? onToggleAutoDeal;
 
   @override
   Widget build(BuildContext context) {
@@ -93,6 +99,18 @@ class TableScreen extends StatelessWidget {
             style: const TextStyle(fontSize: 12, color: Colors.white60),
           ),
         ),
+        if (isAllBots && onToggleAutoDeal != null) ...[
+          const SizedBox(width: 12),
+          const Text(
+            'Auto-deal',
+            style: TextStyle(fontSize: 13, color: Colors.white70),
+          ),
+          Switch(
+            value: autoDeal,
+            activeThumbColor: AppTheme.gold,
+            onChanged: onToggleAutoDeal,
+          ),
+        ],
         const SizedBox(width: 8),
         IconButton(
           tooltip: 'Analytics',

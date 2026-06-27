@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:monte/core/di/game_providers.dart';
+import 'package:monte/core/domain/ai/personality.dart';
 import 'package:monte/core/domain/engine/actions.dart';
 import 'package:monte/features/table/domain/game_repository.dart';
 import 'package:monte/features/table/domain/table_snapshot.dart';
@@ -44,6 +45,13 @@ class TableViewModel extends Notifier<TableSnapshot> {
   Future<void> submitAction(GameAction action) => _repo.submitAction(action);
   Future<void> newGame() => _repo.newGame();
   Future<void> startNextHand() => _repo.startNextHand();
+
+  /// Refills a busted seat's bankroll, keeping the same player.
+  void reloadPlayer(String id) => _repo.reloadPlayer(id);
+
+  /// Replaces a busted bot with a fresh opponent of [archetype].
+  void replacePlayer(String id, PersonalityArchetype archetype) =>
+      _repo.replacePlayer(id, archetype);
 }
 
 final tableViewModelProvider = NotifierProvider<TableViewModel, TableSnapshot>(

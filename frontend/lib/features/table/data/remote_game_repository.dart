@@ -1,3 +1,4 @@
+import 'package:monte/core/domain/ai/personality.dart';
 import 'package:monte/core/domain/engine/actions.dart';
 import 'package:monte/core/domain/hand_history.dart';
 import 'package:monte/features/table/domain/game_repository.dart';
@@ -45,6 +46,13 @@ class RemoteGameRepository extends GameRepository {
 
   @override
   Future<void> simulate(int hands) => throw UnimplementedError();
+
+  @override
+  void reloadPlayer(String id) => throw UnimplementedError();
+
+  @override
+  void replacePlayer(String id, PersonalityArchetype archetype) =>
+      throw UnimplementedError();
 
   @override
   void dispose() {}

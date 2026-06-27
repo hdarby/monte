@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:monte/core/domain/ai/decider_factory.dart';
 import 'package:monte/core/domain/ai/personality.dart';
 import 'package:monte/core/domain/engine/actions.dart';
+import 'package:monte/core/domain/engine/deck.dart';
 import 'package:monte/core/domain/engine/decision_policy.dart';
 import 'package:monte/core/domain/engine/game.dart';
 import 'package:monte/core/domain/engine/hand_evaluator.dart';
@@ -24,6 +25,7 @@ class TableConfig {
     this.botType = BotType.heuristic,
     this.personality = const PersonalityProfile.balanced(),
     this.mctsIterations = 250,
+    this.deckBuilder,
   });
 
   /// Total seats including the human. 2 = heads-up, up to 10 for a full table.
@@ -44,6 +46,10 @@ class TableConfig {
 
   /// Search budget per decision for [BotType.mcts].
   final int mctsIterations;
+
+  /// Optional deck source — supply a seeded or [Deck.stacked] deck for
+  /// reproducible games and tests. Defaults to a fresh shuffled deck.
+  final Deck Function()? deckBuilder;
 
   /// Smallest and largest supported table sizes.
   static const int minPlayers = 2;
@@ -73,11 +79,10 @@ class LocalGameRepository extends GameRepository {
   LocalGameRepository({this.config = const TableConfig()});
 
   final TableConfig config;
-  late final DecisionPolicy _decider = buildDecider(
-    config.botType,
-    profile: config.personality,
-    mctsIterations: config.mctsIterations,
-  );
+
+  /// One decider per bot seat (keyed by player id), so seats can hold distinct
+  /// personalities and a busted seat can be replaced independently.
+  final Map<String, DecisionPolicy> _deciders = {};
 
   PokerGame? _game;
   bool _botsRunning = false;
@@ -137,7 +142,20 @@ class LocalGameRepository extends GameRepository {
       players: players,
       smallBlind: config.smallBlind,
       bigBlind: config.bigBlind,
+      deck: config.deckBuilder?.call(),
     );
+
+    // A decider per bot seat, all starting from the configured personality.
+    _deciders.clear();
+    for (final p in players) {
+      if (!p.isHuman) {
+        _deciders[p.id] = buildDecider(
+          config.botType,
+          profile: config.personality,
+          mctsIterations: config.mctsIterations,
+        );
+      }
+    }
   }
 
   @override
@@ -180,10 +198,58 @@ class LocalGameRepository extends GameRepository {
       while (!game.isHandOver) {
         final current = game.currentPlayer;
         if (current == null) break;
-        _applyAndRecord(current, _decider.decide(game, current));
+        _applyAndRecord(current, _deciderFor(current).decide(game, current));
       }
     }
     _publish();
+  }
+
+  // ---- Player management ----------------------------------------------------
+
+  DecisionPolicy _deciderFor(Player p) => _deciders[p.id] ??= buildDecider(
+    config.botType,
+    profile: config.personality,
+    mctsIterations: config.mctsIterations,
+  );
+
+  Player? _playerById(String id) {
+    for (final p in _game?.players ?? const <Player>[]) {
+      if (p.id == id) return p;
+    }
+    return null;
+  }
+
+  @override
+  void reloadPlayer(String id) {
+    final p = _playerById(id);
+    if (p == null) return;
+    p.stack = config.startingStack;
+    _publish();
+  }
+
+  @override
+  void replacePlayer(String id, PersonalityArchetype archetype) {
+    final p = _playerById(id);
+    if (p == null) return;
+    p.stack = config.startingStack;
+    if (!p.isHuman) {
+      p.name = _freshBotName();
+      _deciders[id] = buildDecider(
+        config.botType,
+        profile: archetype.profile,
+        mctsIterations: config.mctsIterations,
+      );
+    }
+    _publish();
+  }
+
+  /// Picks a bot name not currently seated, falling back to a numbered guest.
+  String _freshBotName() {
+    final taken = {for (final p in _game?.players ?? const <Player>[]) p.name};
+    for (final name in TableConfig.botNamePool) {
+      if (!taken.contains(name)) return name;
+    }
+    return 'Guest $_handCounter';
   }
 
   /// Lets bots act with a short delay until it's the human's turn or the hand
@@ -201,7 +267,7 @@ class LocalGameRepository extends GameRepository {
 
         await Future<void>.delayed(config.botThinkTime);
         if (_disposed) return;
-        _applyAndRecord(current, _decider.decide(game, current));
+        _applyAndRecord(current, _deciderFor(current).decide(game, current));
         _publish();
       }
     } finally {
@@ -355,6 +421,16 @@ class LocalGameRepository extends GameRepository {
       );
     }
 
+    // Between hands in human-vs-bots play, flag anyone left with no chips so
+    // the player can reload them or seat a fresh opponent. (All-bots mode tops
+    // stacks up each hand, so no one busts there.)
+    final busted = <String>[];
+    if (!config.allBots && game.isHandOver) {
+      for (final p in game.players) {
+        if (p.stack == 0) busted.add(p.id);
+      }
+    }
+
     return TableSnapshot(
       seats: seats,
       board: List.of(game.board),
@@ -365,6 +441,7 @@ class LocalGameRepository extends GameRepository {
       handInProgress: !game.isHandOver,
       log: List.of(game.log),
       actionContext: ctx,
+      bustedPlayerIds: busted,
     );
   }
 }

@@ -76,6 +76,7 @@ class TableSnapshot {
     required this.handInProgress,
     required this.log,
     this.actionContext,
+    this.bustedPlayerIds = const [],
   });
 
   final List<SeatView> seats;
@@ -89,6 +90,11 @@ class TableSnapshot {
 
   /// Present only when the local human is on action.
   final ActionContext? actionContext;
+
+  /// Seat ids that have busted (zero chips at the end of a hand) and need the
+  /// player's attention — reload their bankroll or seat a new opponent. Only
+  /// populated between hands in human-vs-bots play.
+  final List<String> bustedPlayerIds;
 
   bool get isHumanTurn => actionContext != null;
 

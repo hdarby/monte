@@ -1,3 +1,4 @@
+import 'package:monte/core/domain/ai/personality.dart';
 import 'package:monte/core/domain/engine/actions.dart';
 import 'package:monte/core/domain/hand_history.dart';
 import 'package:monte/features/table/domain/table_snapshot.dart';
@@ -35,6 +36,14 @@ abstract class GameRepository {
   /// Plays [hands] hands to completion as fast as possible (no animation),
   /// recording each into [history]. Intended for all-bots evaluation runs.
   Future<void> simulate(int hands);
+
+  /// Refills a busted seat's stack to the starting amount, keeping the same
+  /// player. Used to rebuy between hands.
+  void reloadPlayer(String id);
+
+  /// Replaces a busted bot seat with a fresh opponent of the given
+  /// [archetype], full bankroll and a new name.
+  void replacePlayer(String id, PersonalityArchetype archetype);
 
   /// Clears the recorded hand history.
   void clearHistory();
