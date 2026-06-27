@@ -97,6 +97,12 @@ class PokerGame {
   /// Largest total "to" amount the player can put out (their entire stack).
   int maxRaiseTo(Player p) => p.currentBet + p.stack;
 
+  /// Replaces the undealt cards (the future board) with [dealOrder], dealt
+  /// front-to-back. Used by the search determinizer to inject a sampled future
+  /// onto a cloned game.
+  void loadRemainingDeck(List<Card> dealOrder) =>
+      _deck.loadRemaining(dealOrder);
+
   /// A deep copy of the entire game state, including a position-preserving copy
   /// of the deck, so the clone can be played forward without affecting this
   /// game. This is the forward model the search relies on.
