@@ -1,8 +1,14 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../engine/card.dart' as poker;
 
 /// Renders a single playing card, face-up or face-down.
+///
+/// Face-up cards mimic a real card: a rank+suit index in the top-left, the same
+/// index inverted (rotated 180°) in the bottom-right, and a large suit pip in
+/// the absolute centre.
 class PlayingCardWidget extends StatelessWidget {
   const PlayingCardWidget({
     super.key,
@@ -56,7 +62,6 @@ class PlayingCardWidget extends StatelessWidget {
       child: Container(
         width: width,
         height: height,
-        padding: EdgeInsets.all(width * 0.08),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: radius,
@@ -64,29 +69,60 @@ class PlayingCardWidget extends StatelessWidget {
             BoxShadow(color: Colors.black38, blurRadius: 4, offset: Offset(0, 2)),
           ],
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Stack(
           children: [
-            Text(
-              c.rank.label,
-              style: TextStyle(
-                color: c.suit.color,
-                fontSize: width * 0.34,
-                fontWeight: FontWeight.bold,
-                height: 1,
+            // Large pip in the absolute centre of the card.
+            Center(
+              child: Text(
+                c.suit.symbol,
+                style: TextStyle(color: c.suit.color, fontSize: width * 0.52),
               ),
             ),
-            Expanded(
-              child: Center(
-                child: Text(
-                  c.suit.symbol,
-                  style: TextStyle(color: c.suit.color, fontSize: width * 0.5),
-                ),
+            // Top-left index.
+            Positioned(
+              top: width * 0.08,
+              left: width * 0.1,
+              child: _index(c),
+            ),
+            // Bottom-right index, inverted like a real card.
+            Positioned(
+              bottom: width * 0.08,
+              right: width * 0.1,
+              child: Transform.rotate(
+                angle: math.pi,
+                child: _index(c),
               ),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  /// A stacked rank-over-suit corner index.
+  Widget _index(poker.Card c) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Text(
+          c.rank.label,
+          style: TextStyle(
+            color: c.suit.color,
+            fontSize: width * 0.28,
+            fontWeight: FontWeight.bold,
+            height: 1,
+          ),
+        ),
+        Text(
+          c.suit.symbol,
+          style: TextStyle(
+            color: c.suit.color,
+            fontSize: width * 0.22,
+            height: 1,
+          ),
+        ),
+      ],
     );
   }
 }

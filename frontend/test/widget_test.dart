@@ -14,7 +14,8 @@ void main() {
     await tester.pump(); // first frame (newGame kicks off async)
 
     expect(find.text("Texas Hold'em"), findsOneWidget);
-    expect(find.text('Client-only mode'), findsOneWidget);
+    expect(find.textContaining('client-only'), findsOneWidget);
+    expect(find.byIcon(Icons.settings), findsOneWidget);
 
     // Let the bots' delayed turns drain so no timers are pending at teardown.
     await tester.pumpAndSettle(const Duration(seconds: 1));

@@ -12,19 +12,32 @@ import 'table_snapshot.dart';
 class TableConfig {
   const TableConfig({
     this.humanName = 'You',
-    this.botNames = const ['Ada', 'Boris', 'Chen'],
+    this.playerCount = 4,
     this.startingStack = 1000,
     this.smallBlind = 5,
     this.bigBlind = 10,
-    this.botThinkTime = const Duration(milliseconds: 750),
+    this.botThinkTime = const Duration(milliseconds: 700),
   });
 
+  /// Total seats including the human. 2 = heads-up, up to 10 for a full table.
+  final int playerCount;
+
   final String humanName;
-  final List<String> botNames;
   final int startingStack;
   final int smallBlind;
   final int bigBlind;
   final Duration botThinkTime;
+
+  /// Smallest and largest supported table sizes.
+  static const int minPlayers = 2;
+  static const int maxPlayers = 10;
+
+  /// Names assigned to bots, in seat order (enough for a full table).
+  static const List<String> botNamePool = [
+    'Ada', 'Boris', 'Chen', 'Dora', 'Eli', 'Farah', 'Gus', 'Hana', 'Ivan',
+  ];
+
+  int get botCount => playerCount - 1;
 }
 
 /// Client-only implementation: the entire game runs on-device. Bots act
@@ -51,10 +64,10 @@ class LocalGameRepository extends GameRepository {
         stack: config.startingStack,
         isHuman: true,
       ),
-      for (var i = 0; i < config.botNames.length; i++)
+      for (var i = 0; i < config.botCount; i++)
         Player(
           id: 'bot_$i',
-          name: config.botNames[i],
+          name: TableConfig.botNamePool[i % TableConfig.botNamePool.length],
           stack: config.startingStack,
         ),
     ];

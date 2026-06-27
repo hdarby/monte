@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'data/game_repository.dart';
 import 'data/local_game_repository.dart';
 import 'theme/app_theme.dart';
+import 'ui/screens/settings_screen.dart';
 import 'ui/screens/table_screen.dart';
 
 void main() => runApp(const PokerApp());
@@ -21,7 +22,7 @@ class PokerApp extends StatelessWidget {
   }
 }
 
-/// Owns the [GameRepository] for the session.
+/// Owns the [GameRepository] and table configuration for the session.
 ///
 /// Swap [LocalGameRepository] for a future `RemoteGameRepository` here and the
 /// rest of the app is unchanged.
@@ -33,13 +34,35 @@ class GamePage extends StatefulWidget {
 }
 
 class _GamePageState extends State<GamePage> {
-  late final GameRepository _repository;
+  int _playerCount = 4;
+  late GameRepository _repository;
 
   @override
   void initState() {
     super.initState();
-    _repository = LocalGameRepository();
+    _repository = _buildRepository();
     _repository.newGame();
+  }
+
+  GameRepository _buildRepository() =>
+      LocalGameRepository(config: TableConfig(playerCount: _playerCount));
+
+  Future<void> _openSettings() async {
+    final result = await Navigator.of(context).push<int>(
+      MaterialPageRoute(
+        builder: (_) => SettingsScreen(playerCount: _playerCount),
+      ),
+    );
+    if (result == null || !mounted) return;
+
+    // Apply the new table size by starting a fresh game.
+    final old = _repository;
+    setState(() {
+      _playerCount = result;
+      _repository = _buildRepository();
+    });
+    old.dispose();
+    await _repository.newGame();
   }
 
   @override
@@ -55,6 +78,8 @@ class _GamePageState extends State<GamePage> {
       builder: (context, _) => TableScreen(
         snapshot: _repository.snapshot,
         repository: _repository,
+        playerCount: _playerCount,
+        onOpenSettings: _openSettings,
       ),
     );
   }

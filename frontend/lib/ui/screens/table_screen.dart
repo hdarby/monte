@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../data/game_repository.dart';
@@ -13,21 +15,20 @@ class TableScreen extends StatelessWidget {
     super.key,
     required this.snapshot,
     required this.repository,
+    required this.playerCount,
+    required this.onOpenSettings,
   });
 
   final TableSnapshot snapshot;
   final GameRepository repository;
+  final int playerCount;
+  final VoidCallback onOpenSettings;
 
   @override
   Widget build(BuildContext context) {
     if (snapshot.seats.isEmpty) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
-
-    final opponents = snapshot.seats.where((s) => !s.isHuman).toList();
-    final human = snapshot.seats.firstWhere((s) => s.isHuman);
 
     return Scaffold(
       body: SafeArea(
@@ -38,7 +39,7 @@ class TableScreen extends StatelessWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Expanded(child: _table(opponents, human)),
+                  Expanded(child: _felt(snapshot.seats)),
                   _LogPanel(log: snapshot.log),
                 ],
               ),
@@ -57,10 +58,8 @@ class TableScreen extends StatelessWidget {
           children: [
             const Icon(Icons.style, color: AppTheme.gold),
             const SizedBox(width: 10),
-            const Text(
-              'Texas Hold\'em',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
+            const Text("Texas Hold'em",
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const Spacer(),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -68,14 +67,22 @@ class TableScreen extends StatelessWidget {
                 color: Colors.black26,
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: const Text('Client-only mode',
-                  style: TextStyle(fontSize: 12, color: Colors.white60)),
+              child: Text('$playerCount players · client-only',
+                  style: const TextStyle(fontSize: 12, color: Colors.white60)),
+            ),
+            const SizedBox(width: 8),
+            IconButton(
+              tooltip: 'Table settings',
+              icon: const Icon(Icons.settings, color: Colors.white70),
+              onPressed: onOpenSettings,
             ),
           ],
         ),
       );
 
-  Widget _table(List<SeatView> opponents, SeatView human) {
+  /// The felt with the community board centred and seats arranged around an
+  /// ellipse — the human at the bottom, opponents filling the rest of the ring.
+  Widget _felt(List<SeatView> seats) {
     return Container(
       margin: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -89,22 +96,28 @@ class TableScreen extends StatelessWidget {
           BoxShadow(color: Colors.black54, blurRadius: 24, offset: Offset(0, 8)),
         ],
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-      child: Column(
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              for (final s in opponents)
-                Flexible(child: PlayerSeat(seat: s, compact: true)),
-            ],
-          ),
-          Expanded(child: Center(child: CommunityBoard(snapshot: snapshot))),
-          PlayerSeat(seat: human),
-        ],
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            CommunityBoard(snapshot: snapshot),
+            for (var i = 0; i < seats.length; i++)
+              Align(
+                alignment: _seatAlignment(i, seats.length),
+                child: PlayerSeat(seat: seats[i], compact: !seats[i].isHuman),
+              ),
+          ],
+        ),
       ),
     );
+  }
+
+  /// Distributes seats evenly around an ellipse, seat 0 (the human) at the
+  /// bottom centre and the rest going clockwise around the table.
+  Alignment _seatAlignment(int index, int total) {
+    final theta = math.pi / 2 + index * (2 * math.pi / total);
+    return Alignment(0.95 * math.cos(theta), 0.96 * math.sin(theta));
   }
 }
 
@@ -115,7 +128,7 @@ class _LogPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final recent = log.length > 14 ? log.sublist(log.length - 14) : log;
+    final recent = log.length > 16 ? log.sublist(log.length - 16) : log;
     return Container(
       width: 240,
       margin: const EdgeInsets.only(right: 16, top: 16, bottom: 16),
