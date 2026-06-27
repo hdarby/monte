@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:monte/core/di/game_providers.dart';
@@ -13,12 +15,28 @@ class TableViewModel extends Notifier<TableSnapshot> {
 
   @override
   TableSnapshot build() {
-    final repo = ref.watch(gameRepositoryProvider);
-    final sub = repo.watch().listen((snapshot) => state = snapshot);
-    ref.onDispose(sub.cancel);
-    // Kick off the first hand once the subscription is in place.
-    Future.microtask(repo.newGame);
-    return repo.snapshot;
+    StreamSubscription<TableSnapshot>? sub;
+
+    void bind(GameRepository repo) {
+      sub?.cancel();
+      sub = repo.watch().listen((snapshot) => state = snapshot);
+      Future.microtask(repo.newGame);
+    }
+
+    // React to a repository swap (player count / bot settings change) WITHOUT
+    // rebuilding this notifier synchronously: ref.listen + a deferred state
+    // write keeps the change out of the widget build/flush window, which avoids
+    // a "setState during build" on the startup settings-load race.
+    ref.listen(gameRepositoryProvider, (_, next) {
+      Future.microtask(() {
+        state = next.snapshot;
+        bind(next);
+      });
+    });
+    ref.onDispose(() => sub?.cancel());
+
+    bind(_repo);
+    return _repo.snapshot;
   }
 
   bool get isAllBots => _repo.isAllBots;
