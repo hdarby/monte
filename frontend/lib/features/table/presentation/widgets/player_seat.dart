@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:monte/features/table/domain/table_snapshot.dart';
 import 'package:monte/core/theme/app_theme.dart';
 import 'package:monte/core/presentation/money_format.dart';
+import 'package:monte/features/table/presentation/widgets/dealer_button.dart';
 import 'package:monte/features/table/presentation/widgets/playing_card_widget.dart';
 
 /// One player's seat: name, stack, hole cards and live status.
@@ -48,8 +49,8 @@ class PlayerSeat extends StatelessWidget {
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (seat.isButton) _badge('D', AppTheme.gold, Colors.black),
-              if (seat.isButton) const SizedBox(width: 4),
+              if (seat.isButton) DealerButton(size: compact ? 22 : 26),
+              if (seat.isButton) const SizedBox(width: 5),
               Text(
                 seat.name,
                 style: TextStyle(
@@ -125,17 +126,6 @@ class PlayerSeat extends StatelessWidget {
     child: Text(
       text,
       style: TextStyle(color: fg, fontSize: 11, fontWeight: FontWeight.bold),
-    ),
-  );
-
-  Widget _badge(String text, Color bg, Color fg) => Container(
-    width: 20,
-    height: 20,
-    alignment: Alignment.center,
-    decoration: BoxDecoration(color: bg, shape: BoxShape.circle),
-    child: Text(
-      text,
-      style: TextStyle(color: fg, fontSize: 12, fontWeight: FontWeight.bold),
     ),
   );
 }

@@ -150,7 +150,10 @@ class _ActionBarState extends State<ActionBar> {
         ),
         const SizedBox(width: 12),
         _ActionButton(
-          label: isBet ? 'Bet' : 'Raise',
+          // Reflect the selected amount on the button itself.
+          label: canRaise
+              ? '${isBet ? 'Bet' : 'Raise to'} ${money.format(raiseTo.round())}'
+              : (isBet ? 'Bet' : 'Raise'),
           color: AppTheme.gold,
           foreground: Colors.black,
           enabled: canRaise,
