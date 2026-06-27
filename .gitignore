@@ -1,0 +1,12 @@
+# macOS
+.DS_Store
+
+# IDEs
+.idea/
+.vscode/
+*.iml
+
+# Build artifacts (each sub-project also has its own .gitignore)
+build/
+.dart_tool/
+.gradle/

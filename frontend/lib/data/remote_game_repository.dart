@@ -1,0 +1,32 @@
+import '../engine/actions.dart';
+import 'game_repository.dart';
+import 'table_snapshot.dart';
+
+/// PLACEHOLDER for the future client/server mode.
+///
+/// When the Ktor backend is ready, implement this against its WebSocket
+/// protocol (see `backend/` — `/ws/game`): connect, send the local player's
+/// [GameAction]s as `ClientMessage`s, and rebuild [TableSnapshot] from the
+/// server's `ServerMessage` table-state broadcasts. Because it satisfies the
+/// same [GameRepository] interface as [LocalGameRepository], swapping it in is
+/// a one-line change in `main.dart` — no UI changes required.
+class RemoteGameRepository extends GameRepository {
+  RemoteGameRepository({required this.serverUrl});
+
+  /// e.g. `ws://localhost:8080/ws/game`.
+  final String serverUrl;
+
+  @override
+  TableSnapshot get snapshot => TableSnapshot.empty;
+
+  @override
+  Future<void> newGame() => throw UnimplementedError(
+        'RemoteGameRepository is a stub for the upcoming Ktor backend.',
+      );
+
+  @override
+  Future<void> startNextHand() => throw UnimplementedError();
+
+  @override
+  Future<void> submitAction(GameAction action) => throw UnimplementedError();
+}
