@@ -1,10 +1,10 @@
 import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:poker_client/engine/bot.dart';
-import 'package:poker_client/engine/deck.dart';
-import 'package:poker_client/engine/game.dart';
-import 'package:poker_client/engine/player.dart';
+import 'package:poker_client/core/domain/engine/bot.dart';
+import 'package:poker_client/core/domain/engine/deck.dart';
+import 'package:poker_client/core/domain/engine/game.dart';
+import 'package:poker_client/core/domain/engine/player.dart';
 
 void main() {
   group('PokerGame invariants', () {

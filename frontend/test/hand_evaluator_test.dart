@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:poker_client/engine/hand_evaluator.dart';
+import 'package:poker_client/core/domain/engine/hand_evaluator.dart';
 
 import '_helpers.dart';
 

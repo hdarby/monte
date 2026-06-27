@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:poker_client/engine/actions.dart';
-import 'package:poker_client/engine/game.dart';
-import 'package:poker_client/history/analytics.dart';
-import 'package:poker_client/history/hand_history.dart';
+import 'package:poker_client/core/domain/engine/actions.dart';
+import 'package:poker_client/core/domain/engine/game.dart';
+import 'package:poker_client/features/analytics/domain/analytics.dart';
+import 'package:poker_client/core/domain/hand_history.dart';
 
 ActionRecord _action(String id, BettingRound street, ActionType type) =>
     ActionRecord(playerId: id, street: street, type: type, amount: 0, potAfter: 0);

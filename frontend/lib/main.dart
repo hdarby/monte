@@ -1,16 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'data/game_repository.dart';
-import 'data/local_game_repository.dart';
-import 'settings/game_settings.dart';
-import 'settings/settings_store.dart';
-import 'theme/app_theme.dart';
-import 'ui/money_format.dart';
-import 'ui/screens/analytics_screen.dart';
-import 'ui/screens/settings_screen.dart';
-import 'ui/screens/table_screen.dart';
+import 'package:poker_client/features/table/domain/game_repository.dart';
+import 'package:poker_client/features/table/data/local_game_repository.dart';
+import 'package:poker_client/features/settings/domain/game_settings.dart';
+import 'package:poker_client/features/settings/data/settings_store.dart';
+import 'package:poker_client/core/theme/app_theme.dart';
+import 'package:poker_client/core/presentation/money_format.dart';
+import 'package:poker_client/features/analytics/presentation/analytics_screen.dart';
+import 'package:poker_client/features/settings/presentation/settings_screen.dart';
+import 'package:poker_client/features/table/presentation/table_screen.dart';
 
-void main() => runApp(const PokerApp());
+void main() => runApp(const ProviderScope(child: PokerApp()));
 
 class PokerApp extends StatelessWidget {
   const PokerApp({super.key});
