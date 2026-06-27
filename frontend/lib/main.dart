@@ -1,23 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:poker_client/core/presentation/money_format.dart';
-import 'package:poker_client/core/theme/app_theme.dart';
-import 'package:poker_client/features/analytics/presentation/analytics_screen.dart';
-import 'package:poker_client/features/settings/presentation/settings_controller.dart';
-import 'package:poker_client/features/settings/presentation/settings_screen.dart';
-import 'package:poker_client/features/table/presentation/table_screen.dart';
-import 'package:poker_client/features/table/presentation/table_view_model.dart';
+import 'package:monte/core/presentation/money_format.dart';
+import 'package:monte/core/theme/app_theme.dart';
+import 'package:monte/features/analytics/presentation/analytics_screen.dart';
+import 'package:monte/features/settings/presentation/settings_controller.dart';
+import 'package:monte/features/settings/presentation/settings_screen.dart';
+import 'package:monte/features/table/presentation/table_screen.dart';
+import 'package:monte/features/table/presentation/table_view_model.dart';
 
-void main() => runApp(const ProviderScope(child: PokerApp()));
+void main() => runApp(const ProviderScope(child: MonteApp()));
 
-class PokerApp extends StatelessWidget {
-  const PokerApp({super.key});
+class MonteApp extends StatelessWidget {
+  const MonteApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Poker',
+      title: 'Monte',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.dark(),
       home: const GamePage(),

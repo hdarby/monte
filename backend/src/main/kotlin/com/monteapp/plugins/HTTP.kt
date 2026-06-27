@@ -1,4 +1,4 @@
-package com.pokerapp.plugins
+package com.monteapp.plugins
 
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod

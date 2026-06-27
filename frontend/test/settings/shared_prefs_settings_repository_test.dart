@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:poker_client/features/settings/data/shared_prefs_settings_repository.dart';
-import 'package:poker_client/features/settings/domain/game_settings.dart';
+import 'package:monte/features/settings/data/shared_prefs_settings_repository.dart';
+import 'package:monte/features/settings/domain/game_settings.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {

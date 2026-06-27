@@ -1,8 +1,8 @@
-package com.pokerapp.routes
+package com.monteapp.routes
 
-import com.pokerapp.model.ClientMessage
-import com.pokerapp.model.ServerMessage
-import com.pokerapp.plugins.appJson
+import com.monteapp.model.ClientMessage
+import com.monteapp.model.ServerMessage
+import com.monteapp.plugins.appJson
 import io.ktor.server.routing.Route
 import io.ktor.server.websocket.webSocket
 import io.ktor.websocket.Frame

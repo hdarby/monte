@@ -1,4 +1,4 @@
-rootProject.name = "poker-backend"
+rootProject.name = "monte-backend"
 
 dependencyResolutionManagement {
     repositories {

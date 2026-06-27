@@ -1,13 +1,13 @@
 import 'dart:async';
 
-import 'package:poker_client/core/domain/engine/actions.dart';
-import 'package:poker_client/core/domain/engine/bot.dart';
-import 'package:poker_client/core/domain/engine/game.dart';
-import 'package:poker_client/core/domain/engine/hand_evaluator.dart';
-import 'package:poker_client/core/domain/engine/player.dart';
-import 'package:poker_client/core/domain/hand_history.dart';
-import 'package:poker_client/features/table/domain/game_repository.dart';
-import 'package:poker_client/features/table/domain/table_snapshot.dart';
+import 'package:monte/core/domain/engine/actions.dart';
+import 'package:monte/core/domain/engine/bot.dart';
+import 'package:monte/core/domain/engine/game.dart';
+import 'package:monte/core/domain/engine/hand_evaluator.dart';
+import 'package:monte/core/domain/engine/player.dart';
+import 'package:monte/core/domain/hand_history.dart';
+import 'package:monte/features/table/domain/game_repository.dart';
+import 'package:monte/features/table/domain/table_snapshot.dart';
 
 /// Static table configuration for a client-only game.
 class TableConfig {

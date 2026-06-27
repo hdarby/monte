@@ -1,6 +1,9 @@
-# Poker
+# Monte
 
-No-Limit Texas Hold'em application. Monorepo: Flutter/Dart client + Kotlin/Ktor backend.
+**Monte** — a No-Limit Texas Hold'em training application. Monorepo: Flutter/Dart
+client + Kotlin/Ktor backend. The name is **Monte Carlo**: the bots' intelligence
+is built on an optimized **MCTS** (Monte Carlo Tree Search) engine, with tunable
+personality and configurability layered on top.
 
 > This file is built **iteratively**. Keep it lean and correct. When something here
 > turns out to be wrong or stale, fix it in the same change. Don't speculatively
@@ -73,7 +76,7 @@ clean path to the client/server + MTT future.
 ## Repo layout
 
 ```
-poker/
+monte/
 ├── frontend/   Flutter app (active)
 │   └── lib/
 │       ├── core/                    shared across features

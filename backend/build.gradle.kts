@@ -4,11 +4,11 @@ plugins {
     alias(libs.plugins.ktor)
 }
 
-group = "com.pokerapp"
+group = "com.monteapp"
 version = "0.0.1"
 
 application {
-    mainClass.set("com.pokerapp.ApplicationKt")
+    mainClass.set("com.monteapp.ApplicationKt")
 
     // Allow JVM options / dev mode flags to be passed at runtime.
     val isDevelopment: Boolean = project.ext.has("development")

@@ -1,8 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:poker_client/features/settings/presentation/settings_controller.dart';
-import 'package:poker_client/features/table/data/local_game_repository.dart';
-import 'package:poker_client/features/table/domain/game_repository.dart';
+import 'package:monte/features/settings/presentation/settings_controller.dart';
+import 'package:monte/features/table/data/local_game_repository.dart';
+import 'package:monte/features/table/domain/game_repository.dart';
 
 /// Composition root for the game.
 ///

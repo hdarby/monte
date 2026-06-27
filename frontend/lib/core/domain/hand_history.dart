@@ -1,5 +1,5 @@
-import 'package:poker_client/core/domain/engine/actions.dart';
-import 'package:poker_client/core/domain/engine/game.dart';
+import 'package:monte/core/domain/engine/actions.dart';
+import 'package:monte/core/domain/engine/game.dart';
 
 /// A single recorded action within a hand.
 class ActionRecord {

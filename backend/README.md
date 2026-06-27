@@ -1,4 +1,4 @@
-# Poker Backend (Ktor)
+# Monte Backend (Ktor)
 
 Greenfield **scaffold** for the Texas Hold'em server. It boots, serves a health
 check, exposes placeholder REST table endpoints, and accepts WebSocket
@@ -81,10 +81,10 @@ To enable it, start Postgres and set `DB_ENABLED=true`.
 Start a local Postgres in Docker:
 
 ```bash
-docker run --name poker-postgres \
-  -e POSTGRES_DB=poker \
-  -e POSTGRES_USER=poker \
-  -e POSTGRES_PASSWORD=poker \
+docker run --name monte-postgres \
+  -e POSTGRES_DB=monte \
+  -e POSTGRES_USER=monte \
+  -e POSTGRES_PASSWORD=monte \
   -p 5432:5432 \
   -d postgres:16
 ```
@@ -105,9 +105,9 @@ On startup the app creates the `users`, `tables`, and `hands` tables via Exposed
 | --- | --- | --- |
 | `PORT` | `8080` | HTTP listen port |
 | `DB_ENABLED` | `false` | Turn persistence on/off |
-| `DB_JDBC_URL` | `jdbc:postgresql://localhost:5432/poker` | JDBC URL |
-| `DB_USER` | `poker` | Postgres user |
-| `DB_PASSWORD` | `poker` | Postgres password |
+| `DB_JDBC_URL` | `jdbc:postgresql://localhost:5432/monte` | JDBC URL |
+| `DB_USER` | `monte` | Postgres user |
+| `DB_PASSWORD` | `monte` | Postgres password |
 | `DB_MAX_POOL_SIZE` | `10` | HikariCP max pool size |
 
 ## Project layout
@@ -119,7 +119,7 @@ backend/
 ├── gradle/libs.versions.toml     # Version catalog
 ├── gradle/wrapper/               # Wrapper props + scripts (jar must be generated)
 └── src/main/
-    ├── kotlin/com/pokerapp/
+    ├── kotlin/com/monteapp/
     │   ├── Application.kt         # main() + module wiring
     │   ├── plugins/              # Serialization, Sockets, HTTP(CORS), Monitoring,
     │   │                         #   Routing, Databases

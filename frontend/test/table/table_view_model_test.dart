@@ -1,8 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:poker_client/core/di/game_providers.dart';
-import 'package:poker_client/features/table/data/local_game_repository.dart';
-import 'package:poker_client/features/table/presentation/table_view_model.dart';
+import 'package:monte/core/di/game_providers.dart';
+import 'package:monte/features/table/data/local_game_repository.dart';
+import 'package:monte/features/table/presentation/table_view_model.dart';
 
 void main() {
   test('drives an all-bots hand and mirrors the repository snapshot', () async {

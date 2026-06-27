@@ -5,10 +5,10 @@
 // 'flutter create' template.
 
 // The application's name. By default this is also the title of the Flutter window.
-PRODUCT_NAME = poker_client
+PRODUCT_NAME = monte
 
 // The application's bundle identifier
-PRODUCT_BUNDLE_IDENTIFIER = com.pokerapp.pokerClient
+PRODUCT_BUNDLE_IDENTIFIER = com.monteapp.monte
 
 // The copyright displayed in application information
-PRODUCT_COPYRIGHT = Copyright © 2026 com.pokerapp. All rights reserved.
+PRODUCT_COPYRIGHT = Copyright © 2026 com.monteapp. All rights reserved.

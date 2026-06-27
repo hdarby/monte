@@ -1,6 +1,6 @@
-import 'package:poker_client/core/domain/engine/actions.dart';
-import 'package:poker_client/core/domain/engine/game.dart';
-import 'package:poker_client/core/domain/hand_history.dart';
+import 'package:monte/core/domain/engine/actions.dart';
+import 'package:monte/core/domain/engine/game.dart';
+import 'package:monte/core/domain/hand_history.dart';
 
 /// Accumulated per-player statistics over a set of hands.
 class PlayerStats {

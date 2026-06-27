@@ -1,9 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:poker_client/core/di/game_providers.dart';
-import 'package:poker_client/core/domain/engine/actions.dart';
-import 'package:poker_client/features/table/domain/game_repository.dart';
-import 'package:poker_client/features/table/domain/table_snapshot.dart';
+import 'package:monte/core/di/game_providers.dart';
+import 'package:monte/core/domain/engine/actions.dart';
+import 'package:monte/features/table/domain/game_repository.dart';
+import 'package:monte/features/table/domain/table_snapshot.dart';
 
 /// Presentation ViewModel for the table: mirrors the repository's snapshot
 /// stream into [state] and exposes the player's intents. The View talks only

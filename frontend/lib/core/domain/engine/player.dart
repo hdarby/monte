@@ -1,4 +1,4 @@
-import 'package:poker_client/core/domain/engine/card.dart';
+import 'package:monte/core/domain/engine/card.dart';
 
 /// A player seated at the table. Mutable: the engine updates these fields as a
 /// hand progresses.

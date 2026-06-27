@@ -1,4 +1,4 @@
-import 'package:poker_client/core/domain/engine/card.dart';
+import 'package:monte/core/domain/engine/card.dart';
 
 /// Poker hand categories, ordered from weakest to strongest.
 enum HandRank {

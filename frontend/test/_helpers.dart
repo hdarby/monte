@@ -1,4 +1,4 @@
-import 'package:poker_client/core/domain/engine/card.dart';
+import 'package:monte/core/domain/engine/card.dart';
 
 /// Parses a compact code like `As`, `Td`, `2c` into a [Card] for tests.
 Card card(String code) {

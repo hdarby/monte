@@ -2,9 +2,9 @@ import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:poker_client/core/di/game_providers.dart';
-import 'package:poker_client/features/analytics/domain/analytics.dart';
-import 'package:poker_client/features/table/domain/game_repository.dart';
+import 'package:monte/core/di/game_providers.dart';
+import 'package:monte/features/analytics/domain/analytics.dart';
+import 'package:monte/features/table/domain/game_repository.dart';
 
 /// Immutable analytics view state.
 class AnalyticsState {

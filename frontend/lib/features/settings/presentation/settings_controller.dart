@@ -1,8 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:poker_client/features/settings/data/shared_prefs_settings_repository.dart';
-import 'package:poker_client/features/settings/domain/game_settings.dart';
-import 'package:poker_client/features/settings/domain/settings_repository.dart';
+import 'package:monte/features/settings/data/shared_prefs_settings_repository.dart';
+import 'package:monte/features/settings/domain/game_settings.dart';
+import 'package:monte/features/settings/domain/settings_repository.dart';
 
 /// DI seam for the settings repository — override in tests with a fake.
 final settingsRepositoryProvider = Provider<SettingsRepository>(

@@ -1,4 +1,4 @@
-package com.pokerapp.routes
+package com.monteapp.routes
 
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.response.respond

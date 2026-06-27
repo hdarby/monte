@@ -2,12 +2,12 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import 'package:poker_client/core/domain/engine/actions.dart';
-import 'package:poker_client/core/theme/app_theme.dart';
-import 'package:poker_client/features/table/domain/table_snapshot.dart';
-import 'package:poker_client/features/table/presentation/widgets/action_bar.dart';
-import 'package:poker_client/features/table/presentation/widgets/community_board.dart';
-import 'package:poker_client/features/table/presentation/widgets/player_seat.dart';
+import 'package:monte/core/domain/engine/actions.dart';
+import 'package:monte/core/theme/app_theme.dart';
+import 'package:monte/features/table/domain/table_snapshot.dart';
+import 'package:monte/features/table/presentation/widgets/action_bar.dart';
+import 'package:monte/features/table/presentation/widgets/community_board.dart';
+import 'package:monte/features/table/presentation/widgets/player_seat.dart';
 
 /// The main game screen: felt table, seats, board, event log and controls.
 ///

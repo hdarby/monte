@@ -1,6 +1,6 @@
-package com.pokerapp.plugins
+package com.monteapp.plugins
 
-import com.pokerapp.db.DatabaseFactory
+import com.monteapp.db.DatabaseFactory
 import io.ktor.server.application.Application
 
 /**

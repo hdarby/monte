@@ -1,4 +1,4 @@
-package com.pokerapp.plugins
+package com.monteapp.plugins
 
 import io.ktor.server.application.Application
 import io.ktor.server.application.install
@@ -10,7 +10,7 @@ import kotlin.time.Duration.Companion.seconds
 /**
  * Installs the WebSockets plugin used by the real-time game transport.
  *
- * Routes are registered separately (see [com.pokerapp.plugins.configureRouting]
+ * Routes are registered separately (see [com.monteapp.plugins.configureRouting]
  * and the `routes/` package).
  */
 fun Application.configureSockets() {

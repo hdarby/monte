@@ -1,4 +1,4 @@
-package com.pokerapp.db
+package com.monteapp.db
 
 import org.jetbrains.exposed.dao.id.UUIDTable
 import org.jetbrains.exposed.sql.javatime.timestamp

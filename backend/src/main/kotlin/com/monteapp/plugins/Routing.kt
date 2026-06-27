@@ -1,8 +1,8 @@
-package com.pokerapp.plugins
+package com.monteapp.plugins
 
-import com.pokerapp.routes.gameSocket
-import com.pokerapp.routes.healthRoutes
-import com.pokerapp.routes.tableRoutes
+import com.monteapp.routes.gameSocket
+import com.monteapp.routes.healthRoutes
+import com.monteapp.routes.tableRoutes
 import io.ktor.server.application.Application
 import io.ktor.server.routing.routing
 

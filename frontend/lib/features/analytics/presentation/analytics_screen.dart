@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:poker_client/core/theme/app_theme.dart';
-import 'package:poker_client/features/analytics/domain/analytics.dart';
-import 'package:poker_client/features/analytics/presentation/analytics_view_model.dart';
+import 'package:monte/core/theme/app_theme.dart';
+import 'package:monte/features/analytics/domain/analytics.dart';
+import 'package:monte/features/analytics/presentation/analytics_view_model.dart';
 
 /// Shows poker analytics (VPIP, PFR, Aggression, win rate) computed from the
 /// recorded hand histories, with controls to simulate more hands and export the

@@ -1,8 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:poker_client/core/di/game_providers.dart';
-import 'package:poker_client/features/analytics/presentation/analytics_view_model.dart';
-import 'package:poker_client/features/table/data/local_game_repository.dart';
+import 'package:monte/core/di/game_providers.dart';
+import 'package:monte/features/analytics/presentation/analytics_view_model.dart';
+import 'package:monte/features/table/data/local_game_repository.dart';
 
 void main() {
   test('computes stats after simulate, exports JSON, and clears', () async {

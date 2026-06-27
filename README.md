@@ -1,28 +1,30 @@
-# Poker
+# Monte
 
-A No-Limit Texas Hold'em application.
+A **play-money** No-Limit Texas Hold'em **training app** — no real money, ever.
+North star: the best poker training app ever produced. Solo / on-device today,
+heading toward multiplayer client/server with scheduled multi-table tournaments.
 
 - **`frontend/`** — Flutter / Dart client. **Active.** A complete, playable game runs
-  entirely on-device (you vs. heuristic bots) in **client-only mode**.
+  entirely on-device (you vs. heuristic bots) in **client-only mode**. Built with
+  MVVM + Clean Architecture (feature-first, Riverpod). See `frontend/README.md`.
 - **`backend/`** — Kotlin / Ktor server. **Scaffold for later.** Compiles into a
   structured Ktor 3 app (WebSocket + Postgres/Exposed stubs) ready to host the
   real-time multiplayer game.
 
 ## Why this shape
 
-The plan is to start client-only and move to client/server later without rewriting
-the UI. The frontend is built around a single seam — the `GameRepository`
-interface:
+Start client-only and move to client/server later without rewriting the UI. The
+frontend is built around a single seam — the `GameRepository` interface:
 
 ```
-UI  ──►  GameRepository  ──►  LocalGameRepository   (today: on-device engine + bots)
-                          └─►  RemoteGameRepository  (later: Ktor WebSocket client)
+ViewModels ──► GameRepository ──► LocalGameRepository   (today: on-device engine + bots)
+                              └─►  RemoteGameRepository  (later: Ktor WebSocket client)
 ```
 
 The same pure-Dart poker engine that runs the client today can be ported/validated
 on the server, and the `TableSnapshot` the UI consumes is shaped like the messages
 the server will broadcast. Swapping to the network is a one-line change in
-`frontend/lib/main.dart`.
+`frontend/lib/core/di/game_providers.dart`.
 
 ## Quick start (client-only)
 
@@ -53,20 +55,27 @@ it can't be committed as a binary here.
 | Hand engine (deck, betting, side pots, 5-of-7 evaluation) | ✅ done, unit-tested |
 | Heuristic bots | ✅ done |
 | Table UI (felt, seats, board, action bar, hand log) | ✅ done |
+| Settings (2–10 players, $/BB toggle, all-bots), persisted | ✅ done |
+| Hand-history recording + analytics (VPIP/PFR/AF) | ✅ done |
 | Client-only single-player game | ✅ playable |
+| MVVM + Clean Architecture (feature-first, Riverpod) | ✅ done |
 | Ktor backend | 🟡 scaffold (routes/sockets/DB stubbed with TODOs) |
-| Real-time multiplayer + persistence | ⬜ TODO |
+| Real-time multiplayer + persistence + MTTs | ⬜ TODO |
 
 ## Layout
 
 ```
-poker/
-├── frontend/                 Flutter app
-│   ├── lib/
-│   │   ├── engine/           pure-Dart Hold'em engine (no Flutter imports)
-│   │   ├── data/             GameRepository seam + snapshots
-│   │   ├── ui/               screens & widgets
-│   │   └── theme/
-│   └── test/                 evaluator + game-invariant + widget tests
+monte/
+├── frontend/                 Flutter app (active)
+│   └── lib/
+│       ├── core/             shared across features
+│       │   ├── di/           gameRepositoryProvider (composition root / swap seam)
+│       │   ├── domain/       pure-Dart Hold'em engine + hand-history entity
+│       │   ├── presentation/ MoneyScope ($ vs BB) + shared widgets
+│       │   └── theme/
+│       └── features/
+│           ├── table/{domain,data,presentation}      game + table UI
+│           ├── settings/{domain,data,presentation}   persisted GameSettings
+│           └── analytics/{domain,presentation}       VPIP/PFR/AF
 └── backend/                  Ktor scaffold (see backend/README.md)
 ```

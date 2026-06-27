@@ -1,4 +1,4 @@
-package com.pokerapp.model
+package com.monteapp.model
 
 import kotlinx.serialization.Serializable
 

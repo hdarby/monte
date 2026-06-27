@@ -1,8 +1,8 @@
-import 'package:poker_client/core/domain/engine/actions.dart';
-import 'package:poker_client/core/domain/engine/card.dart';
-import 'package:poker_client/core/domain/engine/deck.dart';
-import 'package:poker_client/core/domain/engine/hand_evaluator.dart';
-import 'package:poker_client/core/domain/engine/player.dart';
+import 'package:monte/core/domain/engine/actions.dart';
+import 'package:monte/core/domain/engine/card.dart';
+import 'package:monte/core/domain/engine/deck.dart';
+import 'package:monte/core/domain/engine/hand_evaluator.dart';
+import 'package:monte/core/domain/engine/player.dart';
 
 /// The streets of a Texas Hold'em hand.
 enum BettingRound {

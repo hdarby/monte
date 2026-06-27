@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
-import 'package:poker_client/features/table/domain/table_snapshot.dart';
-import 'package:poker_client/core/theme/app_theme.dart';
-import 'package:poker_client/core/presentation/money_format.dart';
-import 'package:poker_client/features/table/presentation/widgets/playing_card_widget.dart';
+import 'package:monte/features/table/domain/table_snapshot.dart';
+import 'package:monte/core/theme/app_theme.dart';
+import 'package:monte/core/presentation/money_format.dart';
+import 'package:monte/features/table/presentation/widgets/playing_card_widget.dart';
 
 /// The centre of the table: pot, round label and the five community slots.
 class CommunityBoard extends StatelessWidget {

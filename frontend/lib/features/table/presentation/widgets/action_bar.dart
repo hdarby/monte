@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
-import 'package:poker_client/core/domain/engine/actions.dart';
-import 'package:poker_client/core/presentation/money_format.dart';
-import 'package:poker_client/core/theme/app_theme.dart';
-import 'package:poker_client/features/table/domain/table_snapshot.dart';
+import 'package:monte/core/domain/engine/actions.dart';
+import 'package:monte/core/presentation/money_format.dart';
+import 'package:monte/core/theme/app_theme.dart';
+import 'package:monte/features/table/domain/table_snapshot.dart';
 
 /// The bottom control strip: betting actions on the human's turn, otherwise a
 /// status line or the "next hand" controls. Reports intents via callbacks.

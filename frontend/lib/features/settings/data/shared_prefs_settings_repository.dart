@@ -1,7 +1,7 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:poker_client/features/settings/domain/game_settings.dart';
-import 'package:poker_client/features/settings/domain/settings_repository.dart';
+import 'package:monte/features/settings/domain/game_settings.dart';
+import 'package:monte/features/settings/domain/settings_repository.dart';
 
 /// Persists [GameSettings] across runs via [SharedPreferences].
 class SharedPrefsSettingsRepository implements SettingsRepository {

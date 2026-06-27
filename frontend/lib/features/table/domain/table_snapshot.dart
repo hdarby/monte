@@ -1,5 +1,5 @@
-import 'package:poker_client/core/domain/engine/card.dart';
-import 'package:poker_client/core/domain/engine/game.dart';
+import 'package:monte/core/domain/engine/card.dart';
+import 'package:monte/core/domain/engine/game.dart';
 
 /// Public + private view of one seat, as the UI needs it.
 ///

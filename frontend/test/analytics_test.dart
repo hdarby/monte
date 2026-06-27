@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:poker_client/core/domain/engine/actions.dart';
-import 'package:poker_client/core/domain/engine/game.dart';
-import 'package:poker_client/features/analytics/domain/analytics.dart';
-import 'package:poker_client/core/domain/hand_history.dart';
+import 'package:monte/core/domain/engine/actions.dart';
+import 'package:monte/core/domain/engine/game.dart';
+import 'package:monte/features/analytics/domain/analytics.dart';
+import 'package:monte/core/domain/hand_history.dart';
 
 ActionRecord _action(String id, BettingRound street, ActionType type) =>
     ActionRecord(

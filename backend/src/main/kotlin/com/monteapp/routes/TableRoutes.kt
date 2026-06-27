@@ -1,7 +1,7 @@
-package com.pokerapp.routes
+package com.monteapp.routes
 
-import com.pokerapp.model.CreateTableRequest
-import com.pokerapp.model.TableSummary
+import com.monteapp.model.CreateTableRequest
+import com.monteapp.model.TableSummary
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
@@ -18,7 +18,7 @@ import java.util.UUID
  * database or the live game engine.
  *
  * TODO: back these with a TableService that reads/writes via Exposed and
- * coordinates with the in-memory game runtime (see [com.pokerapp.routes.gameSocket]).
+ * coordinates with the in-memory game runtime (see [com.monteapp.routes.gameSocket]).
  */
 fun Route.tableRoutes() {
     route("/api/tables") {

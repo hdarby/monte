@@ -1,11 +1,11 @@
-package com.pokerapp
+package com.monteapp
 
-import com.pokerapp.plugins.configureDatabases
-import com.pokerapp.plugins.configureHTTP
-import com.pokerapp.plugins.configureMonitoring
-import com.pokerapp.plugins.configureRouting
-import com.pokerapp.plugins.configureSerialization
-import com.pokerapp.plugins.configureSockets
+import com.monteapp.plugins.configureDatabases
+import com.monteapp.plugins.configureHTTP
+import com.monteapp.plugins.configureMonitoring
+import com.monteapp.plugins.configureRouting
+import com.monteapp.plugins.configureSerialization
+import com.monteapp.plugins.configureSockets
 import io.ktor.server.application.Application
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty

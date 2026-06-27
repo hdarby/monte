@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:poker_client/features/table/data/local_game_repository.dart';
-import 'package:poker_client/features/analytics/domain/analytics.dart';
+import 'package:monte/features/table/data/local_game_repository.dart';
+import 'package:monte/features/analytics/domain/analytics.dart';
 
 void main() {
   test('all-bots simulate records the requested number of hands', () async {

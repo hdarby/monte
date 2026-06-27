@@ -1,8 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:poker_client/features/settings/domain/game_settings.dart';
-import 'package:poker_client/features/settings/domain/settings_repository.dart';
-import 'package:poker_client/features/settings/presentation/settings_controller.dart';
+import 'package:monte/features/settings/domain/game_settings.dart';
+import 'package:monte/features/settings/domain/settings_repository.dart';
+import 'package:monte/features/settings/presentation/settings_controller.dart';
 
 /// In-memory fake to assert the controller talks to the repository correctly.
 class _FakeSettingsRepository implements SettingsRepository {

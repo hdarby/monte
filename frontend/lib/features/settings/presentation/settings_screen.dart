@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:poker_client/core/theme/app_theme.dart';
-import 'package:poker_client/features/settings/domain/game_settings.dart';
-import 'package:poker_client/features/settings/presentation/settings_controller.dart';
+import 'package:monte/core/theme/app_theme.dart';
+import 'package:monte/features/settings/domain/game_settings.dart';
+import 'package:monte/features/settings/presentation/settings_controller.dart';
 
 /// Lets the player choose the table size and display units, writing changes
 /// through the [settingsControllerProvider] (which persists them).

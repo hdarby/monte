@@ -1,6 +1,6 @@
 import 'dart:math';
 
-import 'package:poker_client/core/domain/engine/card.dart';
+import 'package:monte/core/domain/engine/card.dart';
 
 /// A shuffleable 52-card deck that deals from the top.
 class Deck {

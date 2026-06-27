@@ -1,6 +1,6 @@
-import 'package:poker_client/core/domain/engine/actions.dart';
-import 'package:poker_client/core/domain/hand_history.dart';
-import 'package:poker_client/features/table/domain/table_snapshot.dart';
+import 'package:monte/core/domain/engine/actions.dart';
+import 'package:monte/core/domain/hand_history.dart';
+import 'package:monte/features/table/domain/table_snapshot.dart';
 
 /// The boundary between the app and "where the game lives".
 ///

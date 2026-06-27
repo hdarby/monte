@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:poker_client/core/domain/engine/card.dart' as poker;
-import 'package:poker_client/core/domain/engine/game.dart';
-import 'package:poker_client/features/table/domain/table_snapshot.dart';
-import 'package:poker_client/features/table/presentation/table_screen.dart';
+import 'package:monte/core/domain/engine/card.dart' as poker;
+import 'package:monte/core/domain/engine/game.dart';
+import 'package:monte/features/table/domain/table_snapshot.dart';
+import 'package:monte/features/table/presentation/table_screen.dart';
 
 TableSnapshot _snapshotWith(int playerCount) {
   final seats = [
