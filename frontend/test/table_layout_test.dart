@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:poker_client/features/table/data/local_game_repository.dart';
-import 'package:poker_client/features/table/domain/table_snapshot.dart';
 import 'package:poker_client/core/domain/engine/card.dart' as poker;
 import 'package:poker_client/core/domain/engine/game.dart';
+import 'package:poker_client/features/table/domain/table_snapshot.dart';
 import 'package:poker_client/features/table/presentation/table_screen.dart';
 
 TableSnapshot _snapshotWith(int playerCount) {
@@ -48,8 +47,11 @@ Future<void> _pumpTable(WidgetTester tester, int playerCount) async {
   await tester.pumpWidget(MaterialApp(
     home: TableScreen(
       snapshot: _snapshotWith(playerCount),
-      repository: LocalGameRepository(),
+      isAllBots: false,
       playerCount: playerCount,
+      onAction: (_) {},
+      onNewGame: () {},
+      onNextHand: () {},
       onOpenSettings: () {},
       onOpenAnalytics: () {},
     ),

@@ -87,9 +87,10 @@ poker/
 └── backend/    Ktor scaffold (Postgres/Exposed, WebSocket — TODO)
 ```
 
-> MVVM migration in progress: ViewModels/use cases land feature-by-feature
-> (settings → table → analytics). Until then some Views still read repositories
-> directly.
+> MVVM migration: **settings** and **table** done (Riverpod Notifiers; the table
+> repository is framework-free and exposes a `Stream<TableSnapshot>`). **Analytics**
+> still drives its repository directly (full AnalyticsViewModel + composition-root
+> cleanup remain — Steps 4–5).
 
 ## Dev commands (run from `frontend/`)
 

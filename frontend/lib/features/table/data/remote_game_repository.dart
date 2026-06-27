@@ -21,6 +21,9 @@ class RemoteGameRepository extends GameRepository {
   TableSnapshot get snapshot => TableSnapshot.empty;
 
   @override
+  Stream<TableSnapshot> watch() => const Stream.empty();
+
+  @override
   bool get isAllBots => false;
 
   @override
@@ -42,4 +45,7 @@ class RemoteGameRepository extends GameRepository {
 
   @override
   Future<void> simulate(int hands) => throw UnimplementedError();
+
+  @override
+  void dispose() {}
 }

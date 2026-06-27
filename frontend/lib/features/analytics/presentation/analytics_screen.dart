@@ -10,77 +10,87 @@ import 'package:poker_client/core/theme/app_theme.dart';
 /// Shows poker analytics (VPIP, PFR, Aggression, win rate) computed from the
 /// recorded hand histories, with controls to simulate more hands and export
 /// the raw history as JSON.
-class AnalyticsScreen extends StatelessWidget {
+class AnalyticsScreen extends StatefulWidget {
   const AnalyticsScreen({super.key, required this.repository});
 
   final GameRepository repository;
 
   @override
+  State<AnalyticsScreen> createState() => _AnalyticsScreenState();
+}
+
+class _AnalyticsScreenState extends State<AnalyticsScreen> {
+  Future<void> _simulate(int hands) async {
+    await widget.repository.simulate(hands);
+    if (mounted) setState(() {});
+  }
+
+  void _clear() {
+    widget.repository.clearHistory();
+    setState(() {});
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final stats = PokerAnalytics.compute(widget.repository.history);
+    final handCount = widget.repository.history.length;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Analytics'),
         backgroundColor: AppTheme.surface,
       ),
-      body: ListenableBuilder(
-        listenable: repository,
-        builder: (context, _) {
-          final stats = PokerAnalytics.compute(repository.history);
-          final handCount = repository.history.length;
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 900),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _controls(context, handCount),
-                    const SizedBox(height: 20),
-                    if (stats.isEmpty)
-                      const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 60),
-                        child: Text(
-                          'No hands recorded yet.\nSimulate some hands to see analytics.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.white54, fontSize: 16),
-                        ),
-                      )
-                    else ...[
-                      _statsTable(stats),
-                      const SizedBox(height: 28),
-                      _MetricBars(
-                        title: 'VPIP %',
-                        stats: stats,
-                        value: (s) => s.vpip,
-                        max: 100,
-                        color: const Color(0xFF4FC3F7),
-                        format: (v) => '${v.toStringAsFixed(0)}%',
-                      ),
-                      _MetricBars(
-                        title: 'PFR %',
-                        stats: stats,
-                        value: (s) => s.pfr,
-                        max: 100,
-                        color: const Color(0xFFBA68C8),
-                        format: (v) => '${v.toStringAsFixed(0)}%',
-                      ),
-                      _MetricBars(
-                        title: 'Aggression Factor (postflop)',
-                        stats: stats,
-                        value: (s) => s.aggressionFactor,
-                        max: _niceMax(stats.map((s) => s.aggressionFactor)),
-                        color: AppTheme.chip,
-                        format: (v) =>
-                            v == double.infinity ? '∞' : v.toStringAsFixed(2),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 900),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _controls(context, handCount),
+                const SizedBox(height: 20),
+                if (stats.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 60),
+                    child: Text(
+                      'No hands recorded yet.\nSimulate some hands to see analytics.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.white54, fontSize: 16),
+                    ),
+                  )
+                else ...[
+                  _statsTable(stats),
+                  const SizedBox(height: 28),
+                  _MetricBars(
+                    title: 'VPIP %',
+                    stats: stats,
+                    value: (s) => s.vpip,
+                    max: 100,
+                    color: const Color(0xFF4FC3F7),
+                    format: (v) => '${v.toStringAsFixed(0)}%',
+                  ),
+                  _MetricBars(
+                    title: 'PFR %',
+                    stats: stats,
+                    value: (s) => s.pfr,
+                    max: 100,
+                    color: const Color(0xFFBA68C8),
+                    format: (v) => '${v.toStringAsFixed(0)}%',
+                  ),
+                  _MetricBars(
+                    title: 'Aggression Factor (postflop)',
+                    stats: stats,
+                    value: (s) => s.aggressionFactor,
+                    max: _niceMax(stats.map((s) => s.aggressionFactor)),
+                    color: AppTheme.chip,
+                    format: (v) =>
+                        v == double.infinity ? '∞' : v.toStringAsFixed(2),
+                  ),
+                ],
+              ],
             ),
-          );
-        },
+          ),
+        ),
       ),
     );
   }
@@ -98,14 +108,14 @@ class AnalyticsScreen extends StatelessWidget {
           style: FilledButton.styleFrom(
               backgroundColor: AppTheme.gold, foregroundColor: Colors.black),
           icon: const Icon(Icons.fast_forward),
-          onPressed: () => repository.simulate(100),
+          onPressed: () => _simulate(100),
           label: const Text('Simulate 100'),
         ),
         FilledButton.icon(
           style: FilledButton.styleFrom(
               backgroundColor: AppTheme.gold, foregroundColor: Colors.black),
           icon: const Icon(Icons.fast_forward),
-          onPressed: () => repository.simulate(1000),
+          onPressed: () => _simulate(1000),
           label: const Text('Simulate 1000'),
         ),
         OutlinedButton.icon(
@@ -115,7 +125,7 @@ class AnalyticsScreen extends StatelessWidget {
         ),
         OutlinedButton.icon(
           icon: const Icon(Icons.delete_outline),
-          onPressed: handCount == 0 ? null : repository.clearHistory,
+          onPressed: handCount == 0 ? null : _clear,
           label: const Text('Clear'),
         ),
       ],
@@ -124,13 +134,13 @@ class AnalyticsScreen extends StatelessWidget {
 
   Future<void> _exportJson(BuildContext context) async {
     final json = const JsonEncoder.withIndent('  ')
-        .convert(repository.history.map((h) => h.toJson()).toList());
+        .convert(widget.repository.history.map((h) => h.toJson()).toList());
     await Clipboard.setData(ClipboardData(text: json));
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
             content: Text(
-                'Copied ${repository.history.length} hands as JSON to clipboard')),
+                'Copied ${widget.repository.history.length} hands as JSON to clipboard')),
       );
     }
   }

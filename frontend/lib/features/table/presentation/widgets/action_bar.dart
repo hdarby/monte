@@ -1,22 +1,25 @@
 import 'package:flutter/material.dart';
 
-import 'package:poker_client/features/table/domain/game_repository.dart';
-import 'package:poker_client/features/table/domain/table_snapshot.dart';
 import 'package:poker_client/core/domain/engine/actions.dart';
-import 'package:poker_client/core/theme/app_theme.dart';
 import 'package:poker_client/core/presentation/money_format.dart';
+import 'package:poker_client/core/theme/app_theme.dart';
+import 'package:poker_client/features/table/domain/table_snapshot.dart';
 
 /// The bottom control strip: betting actions on the human's turn, otherwise a
-/// status line or the "next hand" controls.
+/// status line or the "next hand" controls. Reports intents via callbacks.
 class ActionBar extends StatefulWidget {
   const ActionBar({
     super.key,
     required this.snapshot,
-    required this.repository,
+    required this.onAction,
+    required this.onNewGame,
+    required this.onNextHand,
   });
 
   final TableSnapshot snapshot;
-  final GameRepository repository;
+  final ValueChanged<GameAction> onAction;
+  final VoidCallback onNewGame;
+  final VoidCallback onNextHand;
 
   @override
   State<ActionBar> createState() => _ActionBarState();
@@ -161,7 +164,7 @@ class _ActionBarState extends State<ActionBar> {
           label: 'New Game',
           color: const Color(0xFF4A6572),
           enabled: true,
-          onPressed: () => widget.repository.newGame(),
+          onPressed: widget.onNewGame,
         ),
         const SizedBox(width: 12),
         _ActionButton(
@@ -169,7 +172,7 @@ class _ActionBarState extends State<ActionBar> {
           color: AppTheme.gold,
           foreground: Colors.black,
           enabled: true,
-          onPressed: () => widget.repository.startNextHand(),
+          onPressed: widget.onNextHand,
         ),
       ],
     );
@@ -211,7 +214,7 @@ class _ActionBarState extends State<ActionBar> {
 
   void _send(GameAction action) {
     setState(() => _raiseTo = null);
-    widget.repository.submitAction(action);
+    widget.onAction(action);
   }
 }
 

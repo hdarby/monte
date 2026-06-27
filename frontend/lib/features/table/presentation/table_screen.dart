@@ -2,27 +2,37 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import 'package:poker_client/features/table/domain/game_repository.dart';
-import 'package:poker_client/features/table/domain/table_snapshot.dart';
+import 'package:poker_client/core/domain/engine/actions.dart';
 import 'package:poker_client/core/theme/app_theme.dart';
+import 'package:poker_client/features/table/domain/table_snapshot.dart';
 import 'package:poker_client/features/table/presentation/widgets/action_bar.dart';
 import 'package:poker_client/features/table/presentation/widgets/community_board.dart';
 import 'package:poker_client/features/table/presentation/widgets/player_seat.dart';
 
 /// The main game screen: felt table, seats, board, event log and controls.
+///
+/// A presentational View — it renders a [TableSnapshot] and reports intents via
+/// callbacks. The [TableViewModel] supplies the snapshot and handles the
+/// callbacks; this widget never touches a repository or provider.
 class TableScreen extends StatelessWidget {
   const TableScreen({
     super.key,
     required this.snapshot,
-    required this.repository,
+    required this.isAllBots,
     required this.playerCount,
+    required this.onAction,
+    required this.onNewGame,
+    required this.onNextHand,
     required this.onOpenSettings,
     required this.onOpenAnalytics,
   });
 
   final TableSnapshot snapshot;
-  final GameRepository repository;
+  final bool isAllBots;
   final int playerCount;
+  final ValueChanged<GameAction> onAction;
+  final VoidCallback onNewGame;
+  final VoidCallback onNextHand;
   final VoidCallback onOpenSettings;
   final VoidCallback onOpenAnalytics;
 
@@ -46,7 +56,12 @@ class TableScreen extends StatelessWidget {
                 ],
               ),
             ),
-            ActionBar(snapshot: snapshot, repository: repository),
+            ActionBar(
+              snapshot: snapshot,
+              onAction: onAction,
+              onNewGame: onNewGame,
+              onNextHand: onNextHand,
+            ),
           ],
         ),
       ),
@@ -70,7 +85,7 @@ class TableScreen extends StatelessWidget {
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
-                  repository.isAllBots
+                  isAllBots
                       ? '$playerCount bots · evaluation'
                       : '$playerCount players · client-only',
                   style: const TextStyle(fontSize: 12, color: Colors.white60)),

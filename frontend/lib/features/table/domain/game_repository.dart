@@ -1,18 +1,21 @@
-import 'package:flutter/foundation.dart';
-
 import 'package:poker_client/core/domain/engine/actions.dart';
 import 'package:poker_client/core/domain/hand_history.dart';
 import 'package:poker_client/features/table/domain/table_snapshot.dart';
 
-/// The boundary between the UI and "where the game lives".
+/// The boundary between the app and "where the game lives".
 ///
-/// Today the only implementation is [LocalGameRepository], which runs the whole
-/// game on-device. When the Ktor backend comes online, a `RemoteGameRepository`
-/// will implement this same interface by talking to the server over WebSockets
-/// — and the UI won't need to change. That's the entire point of this seam.
-abstract class GameRepository extends ChangeNotifier {
-  /// The current immutable view of the table.
+/// Framework-free (plain Dart, no Flutter/Riverpod): exposes the current
+/// [snapshot], a [watch] stream of snapshots, and command methods. Today the
+/// only implementation is `LocalGameRepository` (on-device engine + bots); a
+/// future `RemoteGameRepository` will satisfy the same contract by streaming
+/// table state from the Ktor `/ws/game` socket — so the swap is a stream-source
+/// change, not a UI change.
+abstract class GameRepository {
+  /// The latest table view.
   TableSnapshot get snapshot;
+
+  /// Emits a new [TableSnapshot] whenever table state changes.
+  Stream<TableSnapshot> watch();
 
   /// Whether this is an all-bots evaluation game (no human seat).
   bool get isAllBots;
@@ -35,4 +38,7 @@ abstract class GameRepository extends ChangeNotifier {
 
   /// Clears the recorded hand history.
   void clearHistory();
+
+  /// Releases resources (closes the snapshot stream).
+  void dispose();
 }

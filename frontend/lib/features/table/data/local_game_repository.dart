@@ -63,10 +63,16 @@ class LocalGameRepository extends GameRepository {
   List<HandPlayer> _recPlayers = [];
   List<ActionRecord> _recActions = [];
 
+  final StreamController<TableSnapshot> _controller =
+      StreamController<TableSnapshot>.broadcast();
+
   TableSnapshot _snapshot = TableSnapshot.empty;
 
   @override
   TableSnapshot get snapshot => _snapshot;
+
+  @override
+  Stream<TableSnapshot> watch() => _controller.stream;
 
   @override
   bool get isAllBots => config.allBots;
@@ -77,13 +83,12 @@ class LocalGameRepository extends GameRepository {
   @override
   void clearHistory() {
     _history.clear();
-    notifyListeners();
   }
 
   @override
   void dispose() {
     _disposed = true;
-    super.dispose();
+    if (!_controller.isClosed) _controller.close();
   }
 
   /// Builds a fresh table (players + engine) without dealing a hand.
@@ -275,7 +280,7 @@ class LocalGameRepository extends GameRepository {
 
   void _publish() {
     _snapshot = _buildSnapshot();
-    notifyListeners();
+    if (!_controller.isClosed) _controller.add(_snapshot);
   }
 
   TableSnapshot _buildSnapshot() {
