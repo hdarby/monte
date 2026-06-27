@@ -1,22 +1,22 @@
-import 'package:flutter/material.dart';
+import 'package:meta/meta.dart';
 
 /// The four suits of a standard 52-card deck.
+///
+/// Pure engine type — no Flutter/UI imports. Display colour lives in the
+/// presentation layer (see `core/presentation/suit_color.dart`).
 enum Suit {
-  spades('♠', '♠', Color(0xFF1A1A1A)),
-  hearts('♥', '♥', Color(0xFFD32F2F)),
-  diamonds('♦', '♦', Color(0xFFD32F2F)),
-  clubs('♣', '♣', Color(0xFF1A1A1A));
+  spades('♠', '♠'),
+  hearts('♥', '♥'),
+  diamonds('♦', '♦'),
+  clubs('♣', '♣');
 
-  const Suit(this.symbol, this.code, this.color);
+  const Suit(this.symbol, this.code);
 
   /// Unicode glyph used in the UI, e.g. '♠'.
   final String symbol;
 
   /// Single-character code used in card codes / serialization, e.g. 's'.
   final String code;
-
-  /// Display colour for the suit.
-  final Color color;
 
   /// Lowercase letter form used in compact card codes such as `As`.
   String get letter => name[0];

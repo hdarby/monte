@@ -36,6 +36,8 @@ dependencies:
   cupertino_icons: ^1.0.8
   shared_preferences: ^2.5.5
   flutter_riverpod: ^3.3.2
+  # Annotations only (e.g. @immutable) — keeps the engine framework-free.
+  meta: ^1.16.0
 
 dev_dependencies:
   flutter_test:
