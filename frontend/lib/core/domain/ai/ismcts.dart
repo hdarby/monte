@@ -2,8 +2,10 @@ import 'dart:math';
 
 import 'package:monte/core/domain/ai/action_abstraction.dart';
 import 'package:monte/core/domain/ai/determinizer.dart';
+import 'package:monte/core/domain/ai/personality.dart';
 import 'package:monte/core/domain/engine/actions.dart';
 import 'package:monte/core/domain/engine/bot.dart';
+import 'package:monte/core/domain/engine/decision_policy.dart';
 import 'package:monte/core/domain/engine/game.dart';
 import 'package:monte/core/domain/engine/player.dart';
 
@@ -42,17 +44,20 @@ class IsmctsEngine {
   IsmctsEngine({
     IsmctsConfig? config,
     Random? random,
-    BotStrategy? rolloutPolicy,
+    PersonalityProfile? profile,
+    DecisionPolicy? rolloutPolicy,
   }) : _config = config ?? const IsmctsConfig(),
-       _random = random ?? Random() {
+       _random = random ?? Random(),
+       _profile = profile ?? const PersonalityProfile.balanced() {
     _determinizer = Determinizer(random: _random);
     _rolloutPolicy = rolloutPolicy ?? BotStrategy(random: _random);
   }
 
   final IsmctsConfig _config;
   final Random _random;
+  final PersonalityProfile _profile;
   late final Determinizer _determinizer;
-  late final BotStrategy _rolloutPolicy;
+  late final DecisionPolicy _rolloutPolicy;
 
   // Root context, captured per [chooseAction] call.
   late List<int> _rootStacks;
@@ -165,9 +170,11 @@ class IsmctsEngine {
     return _heroPayoff(state);
   }
 
-  /// Hero's net chips for the rest of the hand, normalized to ~[-1, 1].
-  double _heroPayoff(PokerGame state) =>
-      (state.players[_heroIndex].stack - _rootStacks[_heroIndex]) / _chipScale;
+  /// Hero's net chips for the rest of the hand, normalized to ~[-1, 1] and run
+  /// through the personality's risk-utility curve (identity when risk-neutral).
+  double _heroPayoff(PokerGame state) => _profile.utility(
+    (state.players[_heroIndex].stack - _rootStacks[_heroIndex]) / _chipScale,
+  );
 }
 
 /// A hero decision point in the search tree.
