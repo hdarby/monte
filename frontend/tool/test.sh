@@ -24,6 +24,7 @@ NEW_TESTS=(
   test/analytics/personality_effect_test.dart
   test/ai/player_profile_test.dart
   test/ai/profile_calibration_test.dart
+  test/ai/opponent_model_test.dart
 )
 
 # Resolve the "old" set: every *_test.dart not in NEW_TESTS.
