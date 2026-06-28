@@ -52,7 +52,11 @@ int _playHand({
 void main() {
   test('MCTS bot beats the heuristic bot heads-up (duplicate match)', () {
     const deals = 40; // each played twice (seats swapped) = 80 hands
-    const iterations = 250;
+    // The heuristic now plays soundly (no all-in spew), so it's a real
+    // opponent. MCTS needs enough search to out-decide it — ~1500 iterations
+    // wins clearly, where 250 does not. (Strengthening MCTS at low iteration
+    // counts is Phase 2 — skill via search depth.)
+    const iterations = 1500;
 
     var net = 0;
     for (var d = 0; d < deals; d++) {

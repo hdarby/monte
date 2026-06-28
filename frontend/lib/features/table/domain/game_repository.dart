@@ -1,3 +1,4 @@
+import 'package:monte/core/domain/ai/bot_spec.dart';
 import 'package:monte/core/domain/ai/personality.dart';
 import 'package:monte/core/domain/engine/actions.dart';
 import 'package:monte/core/domain/hand_history.dart';
@@ -27,8 +28,20 @@ abstract class GameRepository {
   /// Starts a brand-new game (fresh stacks), then deals the first hand.
   Future<void> newGame();
 
+  /// Starts a brand-new game where each bot seat is given the behavior model
+  /// (brain + style) at the matching index in [bots] (seat order, excluding the
+  /// human). Seats past the end fall back to the table's defaults.
+  Future<void> newGameWithBots(List<BotSpec> bots);
+
   /// Deals the next hand at the existing table.
   Future<void> startNextHand();
+
+  /// Whether the dealer button currently rotates each hand.
+  bool get buttonRotates;
+
+  /// Sets whether the dealer button rotates (normal) or stays pinned to one
+  /// seat. Used by evaluation to isolate positional effects.
+  void setButtonRotation(bool rotate);
 
   /// Submits the local human's action for the current hand.
   Future<void> submitAction(GameAction action);

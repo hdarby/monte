@@ -14,14 +14,32 @@ class ActionAbstraction {
   const ActionAbstraction({
     this.potFractions = const [0.5, 0.75, 1.0],
     this.includeAllIn = true,
+    this.allInMaxPotMultiple = 1.0,
+    this.allInMaxBB = 25,
+    this.maxRaisesPerRound = 3,
   });
 
   /// Bet/raise sizes as fractions of the current pot (added on top of the
   /// amount needed to call). Personality can widen or narrow this later.
   final List<double> potFractions;
 
-  /// Whether to always offer a shove (bet/raise to the entire stack).
+  /// Whether to offer a shove (bet/raise to the entire stack) at all.
   final bool includeAllIn;
+
+  /// Deep-stack guard: a shove is only offered when it's *not* a big overbet —
+  /// the amount it adds is at most this multiple of the pot — OR the player is
+  /// short ([allInMaxBB]). Without this, a shallow search happily open-shoves
+  /// 100bb preflop, because all-in is just another button on the menu.
+  final double allInMaxPotMultiple;
+
+  /// Effective stack (in big blinds) at or below which a shove is always
+  /// offered, regardless of size — short stacks should be able to jam.
+  final int allInMaxBB;
+
+  /// Once the pot has been bet/raised this many times this street, the search is
+  /// only offered fold/call — no further raise. Bounds the escalation a shallow
+  /// search would otherwise pile into a raise-war.
+  final int maxRaisesPerRound;
 
   /// The discrete set of candidate actions for [p] at [game]'s current position.
   List<GameAction> actionsFor(PokerGame game, Player p) {
@@ -37,10 +55,12 @@ class ActionAbstraction {
       toCall == 0 ? const GameAction.check() : const GameAction.call(),
     );
 
-    // Aggressive actions, only if the player can actually put in more than the
-    // current bet (i.e. has chips beyond a call).
+    // Aggressive actions, only if the player can put in more than the current
+    // bet AND the street hasn't already been raised to the cap (beyond which we
+    // force fold/call).
     final maxTo = game.maxRaiseTo(p);
-    if (maxTo > game.currentBet) {
+    final cappedOut = game.raiseCountThisRound >= maxRaisesPerRound;
+    if (maxTo > game.currentBet && !cappedOut) {
       final minTo = game.minRaiseTo(p);
       final isBet = game.currentBet == 0;
       final seen = <int>{};
@@ -60,7 +80,14 @@ class ActionAbstraction {
       }
 
       if (includeAllIn) {
-        actions.add(isBet ? GameAction.bet(maxTo) : GameAction.raise(maxTo));
+        final shoveAdds = maxTo - game.currentBet; // size over the current bet
+        final stackBehind = maxTo - p.currentBet; // chips this shove commits
+        final short = stackBehind <= allInMaxBB * game.bigBlind;
+        final overbet = shoveAdds > game.pot * allInMaxPotMultiple;
+        // Skip the shove only when deep AND it would be a big overbet.
+        if (short || !overbet) {
+          actions.add(isBet ? GameAction.bet(maxTo) : GameAction.raise(maxTo));
+        }
       }
     }
 

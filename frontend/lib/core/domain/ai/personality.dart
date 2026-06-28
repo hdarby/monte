@@ -117,6 +117,16 @@ enum PersonalityArchetype {
   /// Human-readable name for the UI.
   final String label;
 
+  /// A compact name for tight spots like a seat badge.
+  String get shortLabel => switch (this) {
+    PersonalityArchetype.balanced => 'Balanced',
+    PersonalityArchetype.tag => 'TAG',
+    PersonalityArchetype.lag => 'LAG',
+    PersonalityArchetype.nit => 'Nit',
+    PersonalityArchetype.station => 'Station',
+    PersonalityArchetype.maniac => 'Maniac',
+  };
+
   /// The profile this archetype maps to.
   PersonalityProfile get profile => switch (this) {
     PersonalityArchetype.balanced => const PersonalityProfile.balanced(),

@@ -29,9 +29,18 @@ final gameRepositoryProvider = Provider<GameRepository>((ref) {
       allBots: allBots,
       botType: botType,
       personality: botPersonality.profile,
+      defaultStyle: botPersonality,
       botThinkTime: allBots
           ? const Duration(milliseconds: 250)
           : const Duration(milliseconds: 700),
+      // Log each interactive hand to the run console (prefixed for grepping) so
+      // played hands can be read back for diagnosis.
+      onHandRecorded: (hand) {
+        for (final line in hand.toReadable().trimRight().split('\n')) {
+          // ignore: avoid_print
+          print('HHLOG $line');
+        }
+      },
     ),
   );
   ref.onDispose(repo.dispose);

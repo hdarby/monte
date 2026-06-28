@@ -39,6 +39,7 @@ class PokerGame {
     required this.players,
     this.smallBlind = 5,
     this.bigBlind = 10,
+    this.rotateButton = true,
     Deck? deck,
   }) : _deck = deck ?? Deck();
 
@@ -46,6 +47,10 @@ class PokerGame {
   final int smallBlind;
   final int bigBlind;
   final Deck _deck;
+
+  /// Whether the dealer button advances each hand. Normally true; an evaluation
+  /// run can pin it to one seat to isolate positional effects.
+  final bool rotateButton;
 
   /// Community cards (0, 3, 4, or 5).
   final List<Card> board = [];
@@ -63,6 +68,11 @@ class PokerGame {
 
   /// Minimum legal raise *increment* for the current street.
   int minRaise = 0;
+
+  /// Voluntary bets/raises so far this betting round (blinds excluded). Preflop:
+  /// 0 = unraised, 1 = facing an open, 2 = facing a 3-bet, 3+ = 4-bet+. Lets a
+  /// policy tighten as the betting escalates instead of re-raising forever.
+  int raiseCountThisRound = 0;
 
   int _actorIndex = 0;
   bool _handOver = false;
@@ -113,6 +123,7 @@ class PokerGame {
             players: clonedPlayers,
             smallBlind: smallBlind,
             bigBlind: bigBlind,
+            rotateButton: rotateButton,
             deck: _deck.copy(),
           )
           ..board.addAll(board)
@@ -121,6 +132,7 @@ class PokerGame {
           ..round = round
           ..currentBet = currentBet
           ..minRaise = minRaise
+          ..raiseCountThisRound = raiseCountThisRound
           .._actorIndex = _actorIndex
           .._handOver = _handOver;
     g.results = [
@@ -145,6 +157,7 @@ class PokerGame {
     results = [];
     _handOver = false;
     round = BettingRound.preflop;
+    raiseCountThisRound = 0;
     log.clear();
 
     _deck
@@ -225,6 +238,7 @@ class PokerGame {
     p.commit(target - p.currentBet);
     if (increment >= minRaise) minRaise = increment;
     currentBet = target;
+    raiseCountThisRound++;
     p.hasActedThisRound = true;
     log.add('${p.name} ${isBet ? 'bets' : 'raises to'} $target.');
   }
@@ -237,6 +251,7 @@ class PokerGame {
       // An aggressive all-in; treat as a raise if it clears the bar.
       if (increment >= minRaise) minRaise = increment;
       currentBet = p.currentBet;
+      raiseCountThisRound++;
       log.add('${p.name} is all-in for ${p.currentBet}.');
     } else {
       log.add('${p.name} is all-in for ${p.currentBet - before} (call).');
@@ -300,6 +315,7 @@ class PokerGame {
     }
     currentBet = 0;
     minRaise = bigBlind;
+    raiseCountThisRound = 0;
     final first = _findNextActor(from: _advance(buttonIndex), inclusive: true);
     if (first != null) _actorIndex = first;
   }
@@ -414,7 +430,7 @@ class PokerGame {
   void _finishHand() {
     _handOver = true;
     round = BettingRound.handComplete;
-    buttonIndex = _advance(buttonIndex);
+    if (rotateButton) buttonIndex = _advance(buttonIndex);
   }
 
   // ---- Seat-order helpers ---------------------------------------------------

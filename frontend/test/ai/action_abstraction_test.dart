@@ -32,8 +32,8 @@ Set<int> _amountsOfType(List<GameAction> a, ActionType t) => {
 
 void main() {
   group('ActionAbstraction', () {
-    test('no bet to face: offers check, pot-fraction bets, and an all-in '
-        '(never a fold)', () {
+    test('no bet to face (deep): offers check and pot-fraction bets, but no '
+        'overbet shove (never a fold)', () {
       final game = _headsUp();
       _toFlop(game);
       final hero = game.currentPlayer!; // pot is 20, currentBet 0, stack 990
@@ -42,12 +42,13 @@ void main() {
 
       expect(actions.any((a) => a.type == ActionType.fold), isFalse);
       expect(actions.where((a) => a.type == ActionType.check), hasLength(1));
-      // ½·¾·1× of the 20 pot, plus the 990 shove.
-      expect(_amountsOfType(actions, ActionType.bet), {10, 15, 20, 990});
+      // ½·¾·1× of the 20 pot. The 990 shove is a ~49x-pot overbet and is
+      // dropped at this depth (the deep-stack guard).
+      expect(_amountsOfType(actions, ActionType.bet), {10, 15, 20});
     });
 
     test(
-      'facing a bet: offers fold, call, pot-fraction raises, and an all-in',
+      'facing a bet (deep): offers fold, call, pot-fraction raises, no shove',
       () {
         final game = _headsUp();
         _toFlop(game);
@@ -58,10 +59,30 @@ void main() {
 
         expect(actions.any((a) => a.type == ActionType.fold), isTrue);
         expect(actions.any((a) => a.type == ActionType.call), isTrue);
-        // currentBet 20 + ½·¾·1× of the 40 pot, plus the 990 shove.
-        expect(_amountsOfType(actions, ActionType.raise), {40, 50, 60, 990});
+        // currentBet 20 + ½·¾·1× of the 40 pot. The 990 shove is dropped.
+        expect(_amountsOfType(actions, ActionType.raise), {40, 50, 60});
       },
     );
+
+    test('a short stack is always offered a shove', () {
+      // p1 has 20bb — short enough that a jam is on the menu regardless of size.
+      final game = _headsUp(p0: 1000, p1: 200);
+      game.startHand();
+      expect(game.currentPlayer!.id, 'p0'); // SB/button acts first preflop
+      game.applyAction(const GameAction.raise(30));
+
+      final short = game.currentPlayer!; // p1, 20bb, facing a raise
+      final actions = const ActionAbstraction().actionsFor(game, short);
+      expect(
+        actions.any(
+          (a) =>
+              a.type == ActionType.raise &&
+              a.amount == game.maxRaiseTo(short),
+        ),
+        isTrue,
+        reason: 'short stack should be able to jam',
+      );
+    });
 
     test('a short stack facing an over-bet can only fold or call', () {
       final game = _headsUp(p0: 1000, p1: 100);

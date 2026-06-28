@@ -20,6 +20,17 @@ enum BotType {
   const BotType(this.label);
 
   final String label;
+
+  /// A compact label for tight spots like a seat badge.
+  String get shortLabel => switch (this) {
+    BotType.heuristic => 'Heuristic',
+    BotType.personality => 'Personality',
+    BotType.mcts => 'MCTS',
+  };
+
+  /// Whether this brain is shaped by the chosen personality (the fixed
+  /// heuristic ignores it).
+  bool get usesPersonality => this != BotType.heuristic;
 }
 
 /// Builds the [DecisionPolicy] for the given [type], shaped by [profile].

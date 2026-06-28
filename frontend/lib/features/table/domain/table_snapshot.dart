@@ -21,6 +21,7 @@ class SeatView {
     this.holeCards,
     this.handLabel,
     this.wonAmount = 0,
+    this.behavior,
   });
 
   final String id;
@@ -41,6 +42,10 @@ class SeatView {
 
   /// Chips won in the just-completed hand (for a highlight).
   final int wonAmount;
+
+  /// The bot's behavior model label (brain + style), e.g. "Maniac · MCTS".
+  /// Null for the human seat. Shown on the seat only when the player enables it.
+  final String? behavior;
 }
 
 /// What the human can legally do right now. Null unless it's their turn.

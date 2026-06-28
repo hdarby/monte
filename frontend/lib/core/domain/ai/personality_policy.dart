@@ -27,44 +27,55 @@ class PersonalityPolicy implements DecisionPolicy {
   GameAction decide(PokerGame game, Player p) {
     final s = HandStrength.estimate(game, p);
     final toCall = game.callAmount(p);
+    final bb = game.bigBlind;
+    final preflop = game.board.isEmpty;
+    final raises = game.raiseCountThisRound;
     final aggr = profile.aggression;
     final bluff = profile.bluffFrequency;
     final tight = profile.tightness;
     final risk = profile.riskTolerance;
+    final canRaise = p.stack > toCall;
+
+    GameAction raiseBy(double fraction) {
+      final to = (game.minRaiseTo(p) + (game.pot * fraction).round()).clamp(
+        game.minRaiseTo(p),
+        game.maxRaiseTo(p),
+      );
+      return GameAction.raise(to);
+    }
 
     // No bet to face: check, or bet for value (threshold falls with aggression)
     // or as a bluff (more likely with weaker hands and a higher bluff axis).
     if (toCall == 0) {
       final wantsValue = s > 0.72 - 0.30 * aggr;
       final wantsBluff = _random.nextDouble() < bluff * (1 - s) * 0.6;
-      if ((wantsValue || wantsBluff) && p.stack > game.bigBlind) {
-        final fraction = 0.4 + 0.6 * aggr;
-        final size = (game.pot * fraction).round().clamp(
-          game.bigBlind,
-          p.stack,
-        );
+      if ((wantsValue || wantsBluff) && p.stack > bb) {
+        final size = (game.pot * (0.4 + 0.6 * aggr)).round().clamp(bb, p.stack);
         return GameAction.bet(p.currentBet + size);
       }
       return const GameAction.check();
     }
 
-    // Facing a bet. Raise for value/bluff first (thresholds fall with aggression
-    // and bluff).
-    final canRaise = p.stack > toCall;
+    final potOdds = toCall / (game.pot + toCall);
+    final callThreshold = potOdds * (1 + 0.8 * tight) - 0.15 * risk;
+
+    // Facing a 3-bet or more: only genuinely strong hands re-raise — otherwise
+    // two "raise range" hands escalate to an all-in with junk. Continue with a
+    // strong hand, else fold.
+    if (raises >= 2) {
+      if (canRaise && s > 0.90 - 0.12 * aggr) return raiseBy(0.5 + 0.4 * aggr);
+      final floor = preflop ? 0.60 : 0.45;
+      if (s >= floor && s >= callThreshold) return const GameAction.call();
+      return const GameAction.fold();
+    }
+
+    // Unraised or facing a single raise: value/bluff raise, then call/fold by
+    // pot odds (scaled by tightness and risk tolerance).
     final wantsRaiseValue = s > 0.82 - 0.30 * aggr;
     final wantsRaiseBluff = _random.nextDouble() < bluff * (1 - s) * 0.4;
     if (canRaise && (wantsRaiseValue || wantsRaiseBluff)) {
-      final extra = (game.pot * (0.3 + 0.5 * aggr)).round();
-      final raiseTo = game.minRaiseTo(p) + extra;
-      return GameAction.raise(
-        raiseTo.clamp(game.minRaiseTo(p), game.maxRaiseTo(p)),
-      );
+      return raiseBy(0.3 + 0.5 * aggr);
     }
-
-    // Otherwise call or fold by pot odds, scaled by tightness (need more equity)
-    // and risk tolerance (call a little wider).
-    final potOdds = toCall / (game.pot + toCall);
-    final callThreshold = potOdds * (1 + 0.8 * tight) - 0.15 * risk;
     if (s >= callThreshold) return const GameAction.call();
     return const GameAction.fold();
   }

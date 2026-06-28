@@ -1,7 +1,10 @@
 import 'dart:async';
 
+import 'package:monte/core/domain/ai/bot_spec.dart';
 import 'package:monte/core/domain/ai/decider_factory.dart';
 import 'package:monte/core/domain/ai/personality.dart';
+import 'package:monte/core/domain/ai/profile_calibrator.dart';
+import 'package:monte/core/domain/ai/profile_policy.dart';
 import 'package:monte/core/domain/engine/actions.dart';
 import 'package:monte/core/domain/engine/deck.dart';
 import 'package:monte/core/domain/engine/decision_policy.dart';
@@ -24,8 +27,13 @@ class TableConfig {
     this.botThinkTime = const Duration(milliseconds: 700),
     this.botType = BotType.heuristic,
     this.personality = const PersonalityProfile.balanced(),
+    this.defaultStyle = PersonalityArchetype.balanced,
+    this.seatBots = const [],
+    this.rotateButton = true,
     this.mctsIterations = 250,
     this.deckBuilder,
+    this.deciderBuilder,
+    this.onHandRecorded,
   });
 
   /// Total seats including the human. 2 = heads-up, up to 10 for a full table.
@@ -40,9 +48,23 @@ class TableConfig {
   final int bigBlind;
   final Duration botThinkTime;
 
-  /// Which brain the bots use, and the personality shaping it.
+  /// The default brain the bots use, and the personality shaping it. Used for
+  /// any bot seat not covered by [seatBots].
   final BotType botType;
   final PersonalityProfile personality;
+
+  /// The archetype matching [personality], used to label fallback bot seats
+  /// (those not covered by [seatBots]) accurately on their behavior badge.
+  final PersonalityArchetype defaultStyle;
+
+  /// Optional per-bot-seat behavior models (brain + style), in seat order
+  /// (excluding the human). Bot seats past the end of this list fall back to
+  /// [botType] + [personality]. Empty means every bot uses the defaults.
+  final List<BotSpec> seatBots;
+
+  /// Whether the dealer button rotates each hand (normal play) or stays pinned
+  /// to one seat — handy in evaluation to isolate positional effects.
+  final bool rotateButton;
 
   /// Search budget per decision for [BotType.mcts].
   final int mctsIterations;
@@ -50,6 +72,15 @@ class TableConfig {
   /// Optional deck source — supply a seeded or [Deck.stacked] deck for
   /// reproducible games and tests. Defaults to a fresh shuffled deck.
   final Deck Function()? deckBuilder;
+
+  /// Optional per-seat decider override (seat index = bot index, human
+  /// excluded). Returns null to fall back to the configured brain. Used by
+  /// evaluation to drop in arbitrary policies (e.g. a calibrated profile).
+  final DecisionPolicy? Function(int seatIndex)? deciderBuilder;
+
+  /// Called for each finished hand of *interactive* play (not batch
+  /// [simulate]), e.g. to log a transcript for diagnosis.
+  final void Function(HandHistory hand)? onHandRecorded;
 
   /// Smallest and largest supported table sizes.
   static const int minPlayers = 2;
@@ -84,9 +115,25 @@ class LocalGameRepository extends GameRepository {
   /// personalities and a busted seat can be replaced independently.
   final Map<String, DecisionPolicy> _deciders = {};
 
+  /// Per-bot-seat behavior models for the next/current game, in bot-seat order.
+  /// Seeded from the config; [newGameWithBots] swaps it for a fresh lineup. Bots
+  /// past the end fall back to the table defaults.
+  late List<BotSpec> _seatBots = List.of(config.seatBots);
+
+  /// The resolved behavior model per bot seat (keyed by player id), for the
+  /// seat badge. Populated as deciders are built.
+  final Map<String, BotSpec> _specByPlayer = {};
+
   PokerGame? _game;
   bool _botsRunning = false;
   bool _disposed = false;
+
+  /// True while [simulate] is running a batch — makes every hand top stacks back
+  /// up so an evaluation run never busts out and halts early.
+  bool _evaluating = false;
+
+  /// Whether the dealer button rotates; toggled at runtime for evaluation.
+  late bool _rotateButton = config.rotateButton;
 
   final List<HandHistory> _history = [];
   int _handCounter = 0;
@@ -142,26 +189,82 @@ class LocalGameRepository extends GameRepository {
       players: players,
       smallBlind: config.smallBlind,
       bigBlind: config.bigBlind,
+      rotateButton: _rotateButton,
       deck: config.deckBuilder?.call(),
     );
 
-    // A decider per bot seat, all starting from the configured personality.
+    // A decider per bot seat. Each bot uses its per-seat behavior model if one
+    // was given, otherwise the table defaults.
     _deciders.clear();
+    _specByPlayer.clear();
+    var botIndex = 0;
     for (final p in players) {
-      if (!p.isHuman) {
-        _deciders[p.id] = buildDecider(
-          config.botType,
-          profile: config.personality,
-          mctsIterations: config.mctsIterations,
+      if (p.isHuman) continue;
+      _deciders[p.id] = _deciderForBot(botIndex, p.id);
+      botIndex++;
+    }
+  }
+
+  /// Builds the decider for the bot at [botIndex] (seat order, human excluded),
+  /// recording its resolved behavior model for the seat badge. Bots past the
+  /// configured lineup fall back to the table defaults.
+  DecisionPolicy _deciderForBot(int botIndex, String playerId) {
+    final override = config.deciderBuilder?.call(botIndex);
+    if (override != null) {
+      _specByPlayer[playerId] = BotSpec(brain: config.botType);
+      return override;
+    }
+    if (botIndex < _seatBots.length) {
+      final spec = _seatBots[botIndex];
+      _specByPlayer[playerId] = spec;
+      final pro = spec.profile;
+      if (pro != null) {
+        // Named profile: calibrated preflop play (ranges baked for the built-in
+        // pros, so this is instant).
+        return ProfilePolicy(
+          pro,
+          ranges: const ProfileCalibrator().rangesFor(pro),
         );
       }
+      return buildDecider(
+        spec.brain,
+        profile: spec.style.profile,
+        mctsIterations: config.mctsIterations,
+      );
     }
+    _specByPlayer[playerId] = BotSpec(
+      brain: config.botType,
+      style: config.defaultStyle,
+    );
+    return buildDecider(
+      config.botType,
+      profile: config.personality,
+      mctsIterations: config.mctsIterations,
+    );
   }
 
   @override
   Future<void> newGame() async {
     _createGame();
     await startNextHand();
+  }
+
+  @override
+  Future<void> newGameWithBots(List<BotSpec> bots) async {
+    _seatBots = List.of(bots);
+    await newGame();
+  }
+
+  @override
+  bool get buttonRotates => _rotateButton;
+
+  @override
+  void setButtonRotation(bool rotate) {
+    if (rotate == _rotateButton) return;
+    _rotateButton = rotate;
+    // Rebuild the table so the change takes effect; history is preserved.
+    _createGame();
+    _publish();
   }
 
   @override
@@ -191,15 +294,22 @@ class LocalGameRepository extends GameRepository {
   Future<void> simulate(int hands) async {
     if (_game == null) _createGame();
     final game = _game!;
-    for (var h = 0; h < hands; h++) {
-      if (_disposed) break;
-      _beginHand();
-      if (game.isHandOver) break; // not enough funded players
-      while (!game.isHandOver) {
-        final current = game.currentPlayer;
-        if (current == null) break;
-        _applyAndRecord(current, _deciderFor(current).decide(game, current));
+    // Batch evaluation always tops stacks up each hand (see [_beginHand]), so a
+    // long run measures win rate cleanly instead of stopping once someone busts.
+    _evaluating = true;
+    try {
+      for (var h = 0; h < hands; h++) {
+        if (_disposed) break;
+        _beginHand();
+        if (game.isHandOver) break; // not enough funded players
+        while (!game.isHandOver) {
+          final current = game.currentPlayer;
+          if (current == null) break;
+          _applyAndRecord(current, _deciderFor(current).decide(game, current));
+        }
       }
+    } finally {
+      _evaluating = false;
     }
     _publish();
   }
@@ -234,6 +344,7 @@ class LocalGameRepository extends GameRepository {
     p.stack = config.startingStack;
     if (!p.isHuman) {
       p.name = _freshBotName();
+      _specByPlayer[id] = BotSpec(brain: config.botType, style: archetype);
       _deciders[id] = buildDecider(
         config.botType,
         profile: archetype.profile,
@@ -281,7 +392,7 @@ class LocalGameRepository extends GameRepository {
   /// stacks are topped back up so every hand is full and independent.
   void _beginHand() {
     final game = _game!;
-    if (config.allBots) {
+    if (config.allBots || _evaluating) {
       for (final p in game.players) {
         p.stack = config.startingStack;
       }
@@ -343,25 +454,26 @@ class LocalGameRepository extends GameRepository {
     final game = _game!;
     if (_recPlayers.isEmpty) return;
 
-    _history.add(
-      HandHistory(
-        handNumber: _handCounter,
-        smallBlind: game.smallBlind,
-        bigBlind: game.bigBlind,
-        players: _recPlayers,
-        actions: _recActions,
-        board: game.board.map((c) => c.code).toList(),
-        results: [
-          for (final r in game.results)
-            HandResultRecord(
-              playerId: r.player.id,
-              amountWon: r.amountWon,
-              handRank: r.handValue?.rank.label,
-            ),
-        ],
-        finalStacks: {for (final p in _recPlayers) p.id: _stackOf(p.id)},
-      ),
+    final hand = HandHistory(
+      handNumber: _handCounter,
+      smallBlind: game.smallBlind,
+      bigBlind: game.bigBlind,
+      players: _recPlayers,
+      actions: _recActions,
+      board: game.board.map((c) => c.code).toList(),
+      results: [
+        for (final r in game.results)
+          HandResultRecord(
+            playerId: r.player.id,
+            amountWon: r.amountWon,
+            handRank: r.handValue?.rank.label,
+          ),
+      ],
+      finalStacks: {for (final p in _recPlayers) p.id: _stackOf(p.id)},
     );
+    _history.add(hand);
+    // Log interactive hands for diagnosis, but never the batch-sim flood.
+    if (!_evaluating) config.onHandRecorded?.call(hand);
     _recPlayers = [];
     _recActions = [];
   }
@@ -405,6 +517,7 @@ class LocalGameRepository extends GameRepository {
           holeCards: reveal ? List.of(p.hole) : null,
           handLabel: label,
           wonAmount: wonByPlayer[p] ?? 0,
+          behavior: _specByPlayer[p.id]?.label,
         ),
       );
     }

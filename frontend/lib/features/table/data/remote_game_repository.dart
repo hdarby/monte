@@ -1,3 +1,4 @@
+import 'package:monte/core/domain/ai/bot_spec.dart';
 import 'package:monte/core/domain/ai/personality.dart';
 import 'package:monte/core/domain/engine/actions.dart';
 import 'package:monte/core/domain/hand_history.dart';
@@ -39,7 +40,16 @@ class RemoteGameRepository extends GameRepository {
   );
 
   @override
+  Future<void> newGameWithBots(List<BotSpec> bots) => throw UnimplementedError();
+
+  @override
   Future<void> startNextHand() => throw UnimplementedError();
+
+  @override
+  bool get buttonRotates => true;
+
+  @override
+  void setButtonRotation(bool rotate) => throw UnimplementedError();
 
   @override
   Future<void> submitAction(GameAction action) => throw UnimplementedError();
