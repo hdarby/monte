@@ -284,15 +284,19 @@ migrate the UI to it once Phase 1 proves out, then retire the old `PersonalityPr
   Hai Le 25.3 / 21.1 / 9.6 (tgt 26 / 21 / 9.5), Addamo 31.3 / 26.5 / 13.0 (tgt 32 /
   28 / 14). Validated by `test/ai/profile_calibration_test.dart`.
 
-### Phase 2 — Skill via the search (`gto_adherence_weight`)
-- Map adherence to "follow the ISMCTS action vs a style shortcut"; tie skill to
-  search depth (`mctsIterations`).
-- **Validates:** head-to-head sims show the higher-adherence / deeper-search profile
-  (Haxton) out-winning a lower-adherence one — pros dominate by judgment.
-- **Note from the bet-level fix:** now that the heuristic plays soundly (no
-  all-in spew), MCTS needs ~1500 iterations to clearly beat it (+99 bb/100 HU);
-  at 250 it loses. The app's default `mctsIterations` (250, for speed) makes the
-  MCTS brain *weak* — Phase 2 must address the search-depth vs latency trade-off.
+### Phase 2 — Skill via the search (`gto_adherence_weight`) — **IN PROGRESS**
+- **Progressive bias (done):** `IsmctsConfig.biasWeight` pulls UCB selection
+  toward the default policy's action, decaying as `bias/(1+visits)`. A shallow
+  search now defaults to sound play instead of noisy over-exploration. Impact on
+  MCTS@250 (6-max): median pot **417bb → 4bb**, stack-offs/hand **3.7 → 0.0**, vs
+  heuristic **−18 → −0.4** (even). MCTS@1500 still +107. The MCTS brain is usable.
+- **Skill via adherence (done):** profile seats now play **calibrated frequencies
+  preflop (style) + MCTS postflop (skill)**, with search depth
+  `150 + 400·gto_adherence` iterations. Same-style head-to-head: high-adherence
+  beats low-adherence **+11.2 bb/100** — pros out-*decide*.
+- **Still open:** tie adherence to *exploitation* (not just depth) once opponent
+  modelling exists (Phase 3); tune the depth/latency curve; consider per-street
+  iteration budgets.
 
 ### Diagnosis aids & the MCTS-is-weak reality
 - **Hand transcripts**: every interactive hand prints a readable transcript

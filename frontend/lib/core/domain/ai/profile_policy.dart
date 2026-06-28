@@ -17,22 +17,31 @@ class ProfilePolicy implements DecisionPolicy {
   /// [ranges] lets a caller inject calibrated thresholds (see
   /// `ProfileCalibrator`); when omitted they're derived analytically from the
   /// profile's targets (good for VPIP, looser for PFR/3-bet).
-  ProfilePolicy(this.profile, {Random? random, PreflopRanges? ranges})
-    : _random = random ?? Random(),
-      _ranges =
-          ranges ??
-          PreflopRanges.forTargets(
-            vpipTarget: profile.strategicBaseline.vpipTarget,
-            pfrTarget: profile.strategicBaseline.pfrTarget,
-            threeBetTarget: profile.strategicBaseline.threeBetFrequency,
-          ) {
-    _postflop = BotStrategy(random: _random);
+  ///
+  /// [postflop] is the brain used once there's a board — inject an
+  /// `IsmctsEngine` (depth scaled by `gtoAdherenceWeight`) for skilled play, or
+  /// leave it as the fast heuristic baseline (used during calibration, which
+  /// only measures preflop frequencies).
+  ProfilePolicy(
+    this.profile, {
+    Random? random,
+    PreflopRanges? ranges,
+    DecisionPolicy? postflop,
+  }) : _random = random ?? Random(),
+       _ranges =
+           ranges ??
+           PreflopRanges.forTargets(
+             vpipTarget: profile.strategicBaseline.vpipTarget,
+             pfrTarget: profile.strategicBaseline.pfrTarget,
+             threeBetTarget: profile.strategicBaseline.threeBetFrequency,
+           ) {
+    _postflop = postflop ?? BotStrategy(random: _random);
   }
 
   final PlayerProfile profile;
   final Random _random;
   final PreflopRanges _ranges;
-  late final BotStrategy _postflop;
+  late final DecisionPolicy _postflop;
 
   /// Strength cutoffs for escalated preflop pots. Facing a 3-bet you continue
   /// only with a strong range, and only premiums 4-bet/stack off — otherwise two

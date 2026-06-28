@@ -2,9 +2,11 @@ import 'dart:async';
 
 import 'package:monte/core/domain/ai/bot_spec.dart';
 import 'package:monte/core/domain/ai/decider_factory.dart';
+import 'package:monte/core/domain/ai/ismcts.dart';
 import 'package:monte/core/domain/ai/personality.dart';
 import 'package:monte/core/domain/ai/profile_calibrator.dart';
 import 'package:monte/core/domain/ai/profile_policy.dart';
+import 'package:monte/core/domain/engine/bot.dart';
 import 'package:monte/core/domain/engine/actions.dart';
 import 'package:monte/core/domain/engine/deck.dart';
 import 'package:monte/core/domain/engine/decision_policy.dart';
@@ -219,11 +221,18 @@ class LocalGameRepository extends GameRepository {
       _specByPlayer[playerId] = spec;
       final pro = spec.profile;
       if (pro != null) {
-        // Named profile: calibrated preflop play (ranges baked for the built-in
-        // pros, so this is instant).
+        // Named profile: calibrated preflop frequencies (style), MCTS postflop
+        // (skill). Search depth scales with gto_adherence — disciplined pros
+        // out-decide. Ranges are baked for the built-in pros, so this is instant.
+        final adherence = pro.strategicBaseline.gtoAdherenceWeight;
+        final iterations = (150 + 400 * adherence).round();
         return ProfilePolicy(
           pro,
           ranges: const ProfileCalibrator().rangesFor(pro),
+          postflop: IsmctsEngine(
+            config: IsmctsConfig(iterations: iterations),
+            rolloutPolicy: BotStrategy(),
+          ),
         );
       }
       return buildDecider(

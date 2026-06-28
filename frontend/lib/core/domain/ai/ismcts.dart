@@ -14,6 +14,7 @@ class IsmctsConfig {
   const IsmctsConfig({
     this.iterations = 1500,
     this.explorationConstant = 1.4,
+    this.biasWeight = 2.0,
     this.abstraction = const ActionAbstraction(),
     this.rolloutGuard = 400,
   });
@@ -24,6 +25,12 @@ class IsmctsConfig {
   /// UCB1 exploration weight `C`. Rewards are normalized to ~[-1, 1], so the
   /// classic √2 ≈ 1.4 is a sensible default.
   final double explorationConstant;
+
+  /// Progressive-bias weight pulling selection toward the default policy's
+  /// recommended action, decaying as `biasWeight / (1 + visits)`. Makes a
+  /// shallow search default to sound play instead of noisy over-exploration;
+  /// 0 disables it (pure UCB1).
+  final double biasWeight;
 
   /// How continuous bets are discretized into the search's move set.
   final ActionAbstraction abstraction;
@@ -111,7 +118,10 @@ class IsmctsEngine implements DecisionPolicy {
 
     final hero = state.players[_heroIndex];
     final actions = _config.abstraction.actionsFor(state, hero);
-    final key = _select(node, actions);
+    // The default policy's pick for this (determinized) spot, used to bias
+    // selection toward sound play while visit counts are low.
+    final recommended = _recommendedKey(state, hero, actions);
+    final key = _select(node, actions, recommended);
     state.applyAction(actions[key]);
 
     final edge = node.edges[key]!;
@@ -129,25 +139,54 @@ class IsmctsEngine implements DecisionPolicy {
     return reward;
   }
 
-  /// UCB1 action selection: try every untried action once, then exploit/explore.
-  int _select(_Node node, List<GameAction> actions) {
+  /// UCB1 selection with progressive bias toward [recommended] (the default
+  /// policy's pick): try every untried action once — the recommended one first —
+  /// then exploit/explore with a decaying bias term.
+  int _select(_Node node, List<GameAction> actions, int recommended) {
     final untried = <int>[];
     for (var k = 0; k < actions.length; k++) {
       final e = node.edges.putIfAbsent(k, () => _Edge());
       if (e.visits == 0) untried.add(k);
     }
-    if (untried.isNotEmpty) return untried[_random.nextInt(untried.length)];
+    if (untried.isNotEmpty) {
+      return untried.contains(recommended)
+          ? recommended
+          : untried[_random.nextInt(untried.length)];
+    }
 
     final logN = log(node.visits.toDouble());
     var best = 0;
     var bestVal = -double.infinity;
     for (var k = 0; k < actions.length; k++) {
       final e = node.edges[k]!;
+      final bias = k == recommended
+          ? _config.biasWeight / (1 + e.visits)
+          : 0.0;
       final value =
           e.totalReward / e.visits +
-          _config.explorationConstant * sqrt(logN / e.visits);
+          _config.explorationConstant * sqrt(logN / e.visits) +
+          bias;
       if (value > bestVal) {
         bestVal = value;
+        best = k;
+      }
+    }
+    return best;
+  }
+
+  /// The abstracted action that best matches what [_rolloutPolicy] would do at
+  /// this spot — same type, nearest size. Used as the progressive-bias target.
+  int _recommendedKey(PokerGame state, Player hero, List<GameAction> actions) {
+    final rec = _rolloutPolicy.decide(state, hero);
+    var best = 0;
+    var bestScore = -double.infinity;
+    for (var k = 0; k < actions.length; k++) {
+      final a = actions[k];
+      // Prefer same action type; among those, the nearest bet/raise size.
+      final score =
+          (a.type == rec.type ? 0.0 : -1e6) - (a.amount - rec.amount).abs();
+      if (score > bestScore) {
+        bestScore = score;
         best = k;
       }
     }
