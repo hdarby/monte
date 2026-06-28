@@ -137,20 +137,29 @@ pure Dart (Kotlin-portable).
 ```bash
 flutter run -d macos      # or -d chrome
 flutter analyze
-flutter test
+flutter test               # full suite
+tool/test.sh new           # only recent-feature tests
+tool/test.sh old           # everything except the new tests
+tool/test.sh all|list      # all / show which files each group resolves to
 ```
+
+> `tool/test.sh` splits the suite into **new** (recent feature work, listed in
+> the script's `NEW_TESTS`) and **old** (everything else). As features stabilise,
+> move their files out of `NEW_TESTS`.
 
 ## Working agreement
 
 - **Architecture:** follow MVVM + Clean Architecture (above). Keep the domain
   framework-free; views thin; logic in ViewModels / use cases.
-- **Tests are continuous.** Write/edit/delete **unit and integration** tests
-  alongside every change. Keep the suite green and honest — no skips, no empty
-  assertions. Cover engine rules, ViewModels/use cases, and analytics.
+- **Tests are continuous, but don't auto-run them.** Keep writing/editing
+  **unit and integration** tests alongside every change (no skips, no empty
+  assertions; cover engine rules, ViewModels/use cases, analytics). But running
+  the suite costs tokens — **ask before running tests**, and prefer a targeted
+  run (`tool/test.sh new`, or a single file) over the full suite.
 - **TDD when it fits.** For well-specified logic (rules, evaluator, analytics,
   tournament structures) we often write the test first.
 - **Verify, don't assume.** Iterate in small steps: change → `flutter analyze`
-  (zero issues) → `flutter test` (all green) → confirm behavior.
+  (zero issues) → confirm behavior. Run tests when asked; keep them green.
 - **Pre-commit hygiene (every commit).** Remove unused imports and dead code, lint
   the codebase, ensure analyze and tests pass. Commit only when asked.
 
