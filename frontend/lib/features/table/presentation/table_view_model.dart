@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:monte/core/di/game_providers.dart';
+import 'package:monte/core/domain/ai/bot_spec.dart';
 import 'package:monte/core/domain/ai/personality.dart';
 import 'package:monte/core/domain/engine/actions.dart';
 import 'package:monte/features/table/domain/game_repository.dart';
@@ -44,6 +45,12 @@ class TableViewModel extends Notifier<TableSnapshot> {
 
   Future<void> submitAction(GameAction action) => _repo.submitAction(action);
   Future<void> newGame() => _repo.newGame();
+
+  /// Starts a fresh game, assigning each bot seat the behavior model (brain +
+  /// style) at the matching index of [bots] (seat order, human excluded).
+  Future<void> newGameWithBots(List<BotSpec> bots) =>
+      _repo.newGameWithBots(bots);
+
   Future<void> startNextHand() => _repo.startNextHand();
 
   /// Refills a busted seat's bankroll, keeping the same player.

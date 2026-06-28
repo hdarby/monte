@@ -25,6 +25,7 @@ class TableScreen extends StatelessWidget {
     required this.onNextHand,
     required this.onOpenSettings,
     required this.onOpenAnalytics,
+    this.showBehavior = false,
     this.autoDeal = false,
     this.onToggleAutoDeal,
   });
@@ -32,6 +33,9 @@ class TableScreen extends StatelessWidget {
   final TableSnapshot snapshot;
   final bool isAllBots;
   final int playerCount;
+
+  /// Whether to show each bot's behavior model (brain + style) on its seat.
+  final bool showBehavior;
   final ValueChanged<GameAction> onAction;
   final VoidCallback onNewGame;
   final VoidCallback onNextHand;
@@ -155,7 +159,12 @@ class TableScreen extends StatelessWidget {
             for (var i = 0; i < seats.length; i++)
               Align(
                 alignment: _seatAlignment(i, seats.length),
-                child: PlayerSeat(seat: seats[i], compact: !seats[i].isHuman),
+                child: PlayerSeat(
+                  seat: seats[i],
+                  compact: !seats[i].isHuman,
+                  buttonPlacement: _buttonPlacement(i, seats.length),
+                  showBehavior: showBehavior,
+                ),
               ),
           ],
         ),
@@ -168,6 +177,19 @@ class TableScreen extends StatelessWidget {
   Alignment _seatAlignment(int index, int total) {
     final theta = math.pi / 2 + index * (2 * math.pi / total);
     return Alignment(0.95 * math.cos(theta), 0.96 * math.sin(theta));
+  }
+
+  /// Which edge of the button seat's box the dealer button hugs — always the
+  /// one facing the centre of the table. Bottom-row seats get it above, top-row
+  /// below, and side seats on their inner side, so it clearly fronts one player.
+  ButtonPlacement _buttonPlacement(int index, int total) {
+    final theta = math.pi / 2 + index * (2 * math.pi / total);
+    final dx = math.cos(theta);
+    final dy = math.sin(theta);
+    if (dy.abs() >= dx.abs()) {
+      return dy > 0 ? ButtonPlacement.above : ButtonPlacement.below;
+    }
+    return dx > 0 ? ButtonPlacement.left : ButtonPlacement.right;
   }
 }
 

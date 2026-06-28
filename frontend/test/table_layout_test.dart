@@ -18,6 +18,8 @@ TableSnapshot _snapshotWith(int playerCount) {
         allIn: false,
         isButton: i == 0,
         isCurrent: i == 2,
+        // A deliberately long label to stress the seat's fixed footprint.
+        behavior: i == 0 ? null : 'Station · Personality',
         holeCards: i == 0
             ? const [
                 poker.Card(poker.Rank.ace, poker.Suit.spades),
@@ -38,7 +40,11 @@ TableSnapshot _snapshotWith(int playerCount) {
   );
 }
 
-Future<void> _pumpTable(WidgetTester tester, int playerCount) async {
+Future<void> _pumpTable(
+  WidgetTester tester,
+  int playerCount, {
+  bool showBehavior = false,
+}) async {
   tester.view.physicalSize = const Size(1280, 860);
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.resetPhysicalSize);
@@ -50,6 +56,7 @@ Future<void> _pumpTable(WidgetTester tester, int playerCount) async {
         snapshot: _snapshotWith(playerCount),
         isAllBots: false,
         playerCount: playerCount,
+        showBehavior: showBehavior,
         onAction: (_) {},
         onNewGame: () {},
         onNextHand: () {},
@@ -75,5 +82,15 @@ void main() {
     // Every seat is rendered.
     expect(find.text('You'), findsOneWidget);
     expect(find.text('Bot 9'), findsOneWidget);
+  });
+
+  testWidgets('full table with behavior badges lays out without overflow', (
+    tester,
+  ) async {
+    await _pumpTable(tester, 10, showBehavior: true);
+    expect(tester.takeException(), isNull);
+    // Badges are present but bounded — the long label is ellipsised, not
+    // overflowing, and the seat keeps its fixed footprint.
+    expect(find.textContaining('Station'), findsWidgets);
   });
 }

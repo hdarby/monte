@@ -6,6 +6,7 @@ class GameSettings {
   const GameSettings({
     this.playerCount = 4,
     this.showBigBlinds = false,
+    this.showBehavior = false,
     this.allBots = false,
     this.botType = BotType.heuristic,
     this.botPersonality = PersonalityArchetype.balanced,
@@ -22,6 +23,10 @@ class GameSettings {
   /// false, in actual dollars (e.g. "$1000").
   final bool showBigBlinds;
 
+  /// When true, each bot seat shows its behavior model (brain + playing style)
+  /// as a small badge — handy for telling personalities apart at a glance.
+  final bool showBehavior;
+
   /// Evaluation mode: every seat is a bot, hands play out automatically. Useful
   /// for quickly generating hand histories to validate engine/bot changes.
   final bool allBots;
@@ -36,12 +41,14 @@ class GameSettings {
   GameSettings copyWith({
     int? playerCount,
     bool? showBigBlinds,
+    bool? showBehavior,
     bool? allBots,
     BotType? botType,
     PersonalityArchetype? botPersonality,
   }) => GameSettings(
     playerCount: playerCount ?? this.playerCount,
     showBigBlinds: showBigBlinds ?? this.showBigBlinds,
+    showBehavior: showBehavior ?? this.showBehavior,
     allBots: allBots ?? this.allBots,
     botType: botType ?? this.botType,
     botPersonality: botPersonality ?? this.botPersonality,

@@ -19,6 +19,7 @@ class SettingsScreen extends ConsumerStatefulWidget {
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   late int _count;
   late bool _showBigBlinds;
+  late bool _showBehavior;
   late bool _allBots;
   late BotType _botType;
   late PersonalityArchetype _botPersonality;
@@ -30,6 +31,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ref.read(settingsControllerProvider).value ?? const GameSettings();
     _count = settings.playerCount;
     _showBigBlinds = settings.showBigBlinds;
+    _showBehavior = settings.showBehavior;
     _allBots = settings.allBots;
     _botType = settings.botType;
     _botPersonality = settings.botPersonality;
@@ -47,16 +49,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       appBar: AppBar(
         title: const Text('Table Settings'),
         backgroundColor: AppTheme.surface,
+        // No back arrow: changes are a draft until you Cancel or Apply, so we
+        // don't want a back gesture to silently discard a toggle.
+        automaticallyImplyLeading: false,
       ),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 520),
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(28),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+          child: Column(
+            children: [
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(28),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                 const Text(
                   'Number of players',
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
@@ -145,6 +153,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     style: const TextStyle(color: Colors.white54),
                   ),
                 ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  activeThumbColor: AppTheme.gold,
+                  value: _showBehavior,
+                  onChanged: (v) => setState(() => _showBehavior = v),
+                  title: const Text('Show behavior model on seats'),
+                  subtitle: const Text(
+                    'Badge each bot with its brain and playing style '
+                    '(e.g. "Maniac · MCTS").',
+                    style: TextStyle(color: Colors.white54),
+                  ),
+                ),
                 const SizedBox(height: 20),
                 const Divider(color: Colors.white12),
                 const SizedBox(height: 12),
@@ -208,50 +228,63 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     style: TextStyle(color: Colors.white54),
                   ),
                 ),
-                const SizedBox(height: 32),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => Navigator.pop(context),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                        ),
-                        child: const Text('Cancel'),
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: FilledButton(
-                        style: FilledButton.styleFrom(
-                          backgroundColor: AppTheme.gold,
-                          foregroundColor: Colors.black,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                        ),
-                        onPressed: () {
-                          ref
-                              .read(settingsControllerProvider.notifier)
-                              .save(
-                                GameSettings(
-                                  playerCount: _count,
-                                  showBigBlinds: _showBigBlinds,
-                                  allBots: _allBots,
-                                  botType: _botType,
-                                  botPersonality: _botPersonality,
-                                ),
-                              );
-                          Navigator.pop(context);
-                        },
-                        child: const Text('Apply'),
-                      ),
-                    ),
-                  ],
+                const SizedBox(height: 8),
+                    ],
+                  ),
                 ),
-              ],
-            ),
+              ),
+              _footer(context),
+            ],
           ),
         ),
       ),
     );
   }
+
+  /// A pinned footer so Cancel/Apply are always visible — the settings list can
+  /// scroll behind it, but the actions never disappear below the fold.
+  Widget _footer(BuildContext context) => Container(
+    padding: const EdgeInsets.fromLTRB(28, 12, 28, 16),
+    decoration: const BoxDecoration(
+      color: AppTheme.surface,
+      border: Border(top: BorderSide(color: Colors.white12)),
+    ),
+    child: Row(
+      children: [
+        Expanded(
+          child: OutlinedButton(
+            onPressed: () => Navigator.pop(context),
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+            ),
+            child: const Text('Cancel'),
+          ),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: AppTheme.gold,
+              foregroundColor: Colors.black,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+            ),
+            onPressed: () {
+              ref.read(settingsControllerProvider.notifier).save(
+                    GameSettings(
+                      playerCount: _count,
+                      showBigBlinds: _showBigBlinds,
+                      showBehavior: _showBehavior,
+                      allBots: _allBots,
+                      botType: _botType,
+                      botPersonality: _botPersonality,
+                    ),
+                  );
+              Navigator.pop(context);
+            },
+            child: const Text('Apply'),
+          ),
+        ),
+      ],
+    ),
+  );
 }

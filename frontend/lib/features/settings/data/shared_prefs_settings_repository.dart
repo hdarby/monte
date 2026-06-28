@@ -9,6 +9,7 @@ import 'package:monte/features/settings/domain/settings_repository.dart';
 class SharedPrefsSettingsRepository implements SettingsRepository {
   static const _kPlayerCount = 'player_count';
   static const _kShowBigBlinds = 'show_big_blinds';
+  static const _kShowBehavior = 'show_behavior';
   static const _kAllBots = 'all_bots';
   static const _kBotType = 'bot_type';
   static const _kBotPersonality = 'bot_personality';
@@ -23,6 +24,7 @@ class SharedPrefsSettingsRepository implements SettingsRepository {
     return GameSettings(
       playerCount: count,
       showBigBlinds: prefs.getBool(_kShowBigBlinds) ?? false,
+      showBehavior: prefs.getBool(_kShowBehavior) ?? false,
       allBots: prefs.getBool(_kAllBots) ?? false,
       botType: _enumByName(
         BotType.values,
@@ -42,6 +44,7 @@ class SharedPrefsSettingsRepository implements SettingsRepository {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_kPlayerCount, settings.playerCount);
     await prefs.setBool(_kShowBigBlinds, settings.showBigBlinds);
+    await prefs.setBool(_kShowBehavior, settings.showBehavior);
     await prefs.setBool(_kAllBots, settings.allBots);
     await prefs.setString(_kBotType, settings.botType.name);
     await prefs.setString(_kBotPersonality, settings.botPersonality.name);
