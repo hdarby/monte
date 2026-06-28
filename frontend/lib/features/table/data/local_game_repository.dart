@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:monte/core/domain/ai/bot_spec.dart';
 import 'package:monte/core/domain/ai/decider_factory.dart';
 import 'package:monte/core/domain/ai/ismcts.dart';
+import 'package:monte/core/domain/ai/opponent_model.dart';
 import 'package:monte/core/domain/ai/personality.dart';
 import 'package:monte/core/domain/ai/profile_calibrator.dart';
 import 'package:monte/core/domain/ai/profile_policy.dart';
@@ -126,6 +127,10 @@ class LocalGameRepository extends GameRepository {
   /// seat badge. Populated as deciders are built.
   final Map<String, BotSpec> _specByPlayer = {};
 
+  /// Per-session opponent reads, fed every finished hand and consulted by
+  /// exploitative profile bots' search.
+  final OpponentModel _opponentModel = OpponentModel();
+
   PokerGame? _game;
   bool _botsRunning = false;
   bool _disposed = false;
@@ -224,14 +229,24 @@ class LocalGameRepository extends GameRepository {
         // Named profile: calibrated preflop frequencies (style), MCTS postflop
         // (skill). Search depth scales with gto_adherence — disciplined pros
         // out-decide. Ranges are baked for the built-in pros, so this is instant.
+        // Skill = the search itself (a fixed budget — all pros think). Adherence
+        // is the GTO↔exploit dial, not depth: a disciplined (high-adherence) bot
+        // ignores reads and plays solid; a lower-adherence, exploit-leaning bot
+        // models opponents by their reads inside the search.
         final adherence = pro.strategicBaseline.gtoAdherenceWeight;
-        final iterations = (150 + 400 * adherence).round();
+        final mods = pro.behavioralModifiers;
+        final exploitBase =
+            (1 - adherence) *
+            mods.exploitativeWeight *
+            mods.weightOnOpponentHistory;
         return ProfilePolicy(
           pro,
           ranges: const ProfileCalibrator().rangesFor(pro),
           postflop: IsmctsEngine(
-            config: IsmctsConfig(iterations: iterations),
+            config: const IsmctsConfig(iterations: 500),
             rolloutPolicy: BotStrategy(),
+            opponentModel: _opponentModel,
+            exploitBase: exploitBase,
           ),
         );
       }
@@ -481,6 +496,7 @@ class LocalGameRepository extends GameRepository {
       finalStacks: {for (final p in _recPlayers) p.id: _stackOf(p.id)},
     );
     _history.add(hand);
+    _opponentModel.observe(hand); // accumulate reads for exploitative bots
     // Log interactive hands for diagnosis, but never the batch-sim flood.
     if (!_evaluating) config.onHandRecorded?.call(hand);
     _recPlayers = [];

@@ -2,7 +2,9 @@ import 'dart:math';
 
 import 'package:monte/core/domain/ai/action_abstraction.dart';
 import 'package:monte/core/domain/ai/determinizer.dart';
+import 'package:monte/core/domain/ai/opponent_model.dart';
 import 'package:monte/core/domain/ai/personality.dart';
+import 'package:monte/core/domain/ai/personality_policy.dart';
 import 'package:monte/core/domain/engine/actions.dart';
 import 'package:monte/core/domain/engine/bot.dart';
 import 'package:monte/core/domain/engine/decision_policy.dart';
@@ -53,9 +55,15 @@ class IsmctsEngine implements DecisionPolicy {
     Random? random,
     PersonalityProfile? profile,
     DecisionPolicy? rolloutPolicy,
+    OpponentModel? opponentModel,
+    double exploitBase = 0,
   }) : _config = config ?? const IsmctsConfig(),
        _random = random ?? Random(),
-       _profile = profile ?? const PersonalityProfile.balanced() {
+       _profile = profile ?? const PersonalityProfile.balanced(),
+       // ignore: prefer_initializing_formals
+       _opponentModel = opponentModel,
+       // ignore: prefer_initializing_formals
+       _exploitBase = exploitBase {
     _determinizer = Determinizer(random: _random);
     _rolloutPolicy = rolloutPolicy ?? BotStrategy(random: _random);
   }
@@ -66,10 +74,20 @@ class IsmctsEngine implements DecisionPolicy {
   late final Determinizer _determinizer;
   late final DecisionPolicy _rolloutPolicy;
 
+  /// Opponent reads + how strongly to exploit them. When [_exploitBase] > 0 and a
+  /// model is present, opponents in rollouts are played by a style lerped from
+  /// neutral toward their observed tendencies by `exploitBase × confidence`, so
+  /// exploitation emerges from the search. exploitBase =
+  /// (1 − gto_adherence) × exploitative_weight × weight_on_opponent_history.
+  final OpponentModel? _opponentModel;
+  final double _exploitBase;
+
   // Root context, captured per [chooseAction] call.
   late List<int> _rootStacks;
   late double _chipScale;
   late int _heroIndex;
+  late String _heroId;
+  Map<String, DecisionPolicy> _opponentPolicies = const {};
 
   /// [DecisionPolicy] entry point — equivalent to [chooseAction].
   @override
@@ -79,6 +97,8 @@ class IsmctsEngine implements DecisionPolicy {
   /// Chooses an action for [hero], who must be the player currently to act.
   GameAction chooseAction(PokerGame game, Player hero) {
     _heroIndex = game.players.indexWhere((p) => p.id == hero.id);
+    _heroId = hero.id;
+    _opponentPolicies = _buildOpponentPolicies(game, hero);
     _rootStacks = [for (final p in game.players) p.stack];
     // Total chips in play is conserved, so it bounds every payoff: use it to
     // normalize rewards into ~[-1, 1] for a stable exploration constant.
@@ -193,25 +213,67 @@ class IsmctsEngine implements DecisionPolicy {
     return best;
   }
 
-  /// Advances [state] by letting opponents act (default policy) until it is the
-  /// hero's turn or the hand is over.
+  /// Advances [state] by letting opponents act (their modelled policy) until it
+  /// is the hero's turn or the hand is over.
   void _autoPlayToHero(PokerGame state) {
     var guard = 0;
     while (state.currentPlayer != null &&
-        state.currentPlayer!.id != state.players[_heroIndex].id) {
-      state.applyAction(_rolloutPolicy.decide(state, state.currentPlayer!));
+        state.currentPlayer!.id != _heroId) {
+      final p = state.currentPlayer!;
+      state.applyAction(_policyFor(p).decide(state, p));
       if (++guard > _config.rolloutGuard) break;
     }
   }
 
-  /// Plays [state] to terminal with the default policy for everyone, then scores.
+  /// Plays [state] to terminal — opponents by their modelled policy, the hero by
+  /// the default — then scores.
   double _rollout(PokerGame state) {
     var guard = 0;
     while (state.currentPlayer != null) {
-      state.applyAction(_rolloutPolicy.decide(state, state.currentPlayer!));
+      final p = state.currentPlayer!;
+      state.applyAction(_policyFor(p).decide(state, p));
       if (++guard > _config.rolloutGuard) break;
     }
     return _heroPayoff(state);
+  }
+
+  /// The policy that plays seat [p] inside the search: the hero uses the default
+  /// rollout policy; opponents use their exploit-modelled policy when one was
+  /// built, else the default.
+  DecisionPolicy _policyFor(Player p) =>
+      p.id == _heroId ? _rolloutPolicy : (_opponentPolicies[p.id] ?? _rolloutPolicy);
+
+  /// Builds an opponent's rollout policy by lerping a neutral style toward their
+  /// observed style by `exploitBase × confidence` — so a high-exploit, confident
+  /// read shifts the model fully onto their tendencies, while a pure-GTO bot
+  /// (exploitBase 0) or an unread opponent stays neutral (no modelling cost).
+  Map<String, DecisionPolicy> _buildOpponentPolicies(
+    PokerGame game,
+    Player hero,
+  ) {
+    final model = _opponentModel;
+    if (model == null || _exploitBase <= 0) return const {};
+    final out = <String, DecisionPolicy>{};
+    for (final p in game.players) {
+      if (p.id == hero.id) continue;
+      final obs = model.of(p.id);
+      final w = (_exploitBase * obs.confidence).clamp(0.0, 1.0);
+      if (w < 0.02) continue; // not enough signal to bother modelling
+      out[p.id] = PersonalityPolicy(_lerpToNeutral(obs.readProfile(), w),
+          random: _random);
+    }
+    return out;
+  }
+
+  /// `w = 0` → balanced (neutral); `w = 1` → the read profile unchanged.
+  PersonalityProfile _lerpToNeutral(PersonalityProfile p, double w) {
+    double m(double v) => 0.5 + (v - 0.5) * w;
+    return PersonalityProfile(
+      aggression: m(p.aggression),
+      bluffFrequency: m(p.bluffFrequency),
+      tightness: m(p.tightness),
+      riskTolerance: m(p.riskTolerance),
+    );
   }
 
   /// Hero's net chips for the rest of the hand, normalized to ~[-1, 1] and run

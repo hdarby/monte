@@ -1,3 +1,4 @@
+import 'package:monte/core/domain/ai/personality.dart';
 import 'package:monte/core/domain/engine/actions.dart';
 import 'package:monte/core/domain/engine/game.dart';
 import 'package:monte/core/domain/hand_history.dart';
@@ -41,6 +42,22 @@ class OpponentObservations {
 
   /// How much to trust these reads, in [0, 1] — grows with sample size.
   double get confidence => hands / (hands + _priorWeight);
+
+  /// The playing style these reads imply, as a [PersonalityProfile] the search
+  /// can model the opponent with: looser VPIP → lower tightness; higher postflop
+  /// aggression factor → more aggression/bluffing.
+  PersonalityProfile readProfile() {
+    final tightness = (1.05 - vpip * 1.2).clamp(0.05, 0.95);
+    final af = aggressionFactor.isFinite ? aggressionFactor : 4.0;
+    final aggression = (0.25 + 0.16 * af).clamp(0.10, 0.95);
+    final bluff = (0.10 + 0.18 * af).clamp(0.05, 0.90);
+    return PersonalityProfile(
+      aggression: aggression,
+      bluffFrequency: bluff,
+      tightness: tightness,
+      riskTolerance: 0.5,
+    );
+  }
 }
 
 /// Per-opponent tendency tracker for one table/session. Fed completed hands; read
