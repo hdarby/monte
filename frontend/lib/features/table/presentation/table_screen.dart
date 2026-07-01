@@ -25,6 +25,7 @@ class TableScreen extends StatelessWidget {
     required this.onNextHand,
     required this.onOpenSettings,
     required this.onOpenAnalytics,
+    required this.onOpenHistory,
     this.showBehavior = false,
     this.autoDeal = false,
     this.onToggleAutoDeal,
@@ -41,6 +42,7 @@ class TableScreen extends StatelessWidget {
   final VoidCallback onNextHand;
   final VoidCallback onOpenSettings;
   final VoidCallback onOpenAnalytics;
+  final VoidCallback onOpenHistory;
 
   /// All-bots only: whether hands deal continuously until toggled off.
   final bool autoDeal;
@@ -116,6 +118,11 @@ class TableScreen extends StatelessWidget {
           ),
         ],
         const SizedBox(width: 8),
+        IconButton(
+          tooltip: 'Hand history',
+          icon: const Icon(Icons.history, color: Colors.white70),
+          onPressed: onOpenHistory,
+        ),
         IconButton(
           tooltip: 'Analytics',
           icon: const Icon(Icons.bar_chart, color: Colors.white70),

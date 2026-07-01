@@ -55,6 +55,23 @@ enum Rank {
 class Card {
   const Card(this.rank, this.suit);
 
+  /// Parses a compact code such as `As`, `Td`, `2c` — the inverse of [code].
+  /// Throws [FormatException] if the code isn't a valid rank+suit pair.
+  factory Card.fromCode(String code) {
+    if (code.length != 2) {
+      throw FormatException('Invalid card code: "$code"');
+    }
+    final rankChar = code[0].toUpperCase();
+    final suitChar = code[1].toLowerCase();
+    for (final rank in Rank.values) {
+      if (rank.label != rankChar) continue;
+      for (final suit in Suit.values) {
+        if (suit.letter == suitChar) return Card(rank, suit);
+      }
+    }
+    throw FormatException('Invalid card code: "$code"');
+  }
+
   final Rank rank;
   final Suit suit;
 

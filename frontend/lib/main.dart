@@ -8,6 +8,7 @@ import 'package:monte/core/domain/ai/decider_factory.dart';
 import 'package:monte/core/presentation/money_format.dart';
 import 'package:monte/core/theme/app_theme.dart';
 import 'package:monte/features/analytics/presentation/analytics_screen.dart';
+import 'package:monte/features/history/presentation/history_screen.dart';
 import 'package:monte/features/settings/domain/game_settings.dart';
 import 'package:monte/features/settings/presentation/settings_controller.dart';
 import 'package:monte/features/settings/presentation/settings_screen.dart';
@@ -72,6 +73,12 @@ class _GamePageState extends ConsumerState<GamePage> {
     Navigator.of(
       context,
     ).push(MaterialPageRoute(builder: (_) => const AnalyticsScreen()));
+  }
+
+  void _openHistory() {
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const HistoryScreen()));
   }
 
   /// Opens the pre-game setup so the player can set each bot seat's playing
@@ -231,6 +238,7 @@ class _GamePageState extends ConsumerState<GamePage> {
               onNextHand: () => _dealNext(vm),
               onOpenSettings: _openSettings,
               onOpenAnalytics: _openAnalytics,
+              onOpenHistory: _openHistory,
               autoDeal: _autoDeal,
               onToggleAutoDeal: (v) => setState(() => _autoDeal = v),
             ),

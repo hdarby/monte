@@ -63,6 +63,7 @@ contract (represented here in a baseline JSON specification).
   - `min_street`: `"PREFLOP" | "FLOP" | "TURN" | "RIVER"` (matches that street or
     later)
   - `has_nut_advantage`: `true | false`
+  - `trusts_reads`: `true | false` (gates read-based mechanics like `Soul_Read`)
   - (extend this whitelist as new mechanics need new predicates)
 
 ### Parameter Glossary
@@ -82,22 +83,19 @@ contract (represented here in a baseline JSON specification).
 Use these verified profiles to instantiate your testing matrix or seed active
 game tables.
 
-### Profile A: The High-Stakes Positional Trapper
+### Profile A: The Small-Ball Hand Reader
 
-**Target Dynamics:** Plays relatively standard, tight-aggressive preflop
-configurations, but fundamentally shifts behavior post-flop when holding absolute
-positional advantage (In Position).
+**Target Dynamics:** Manages risk with wide preflop range by using smaller bet sizes.
+Trusts hand reading ability and will sniff out bluffs to make hero calls.
 
-**Custom Mechanic:** `Positional_Leverage_Trap`. When IP on the Flop or Turn,
-check-calling frequencies scale exponentially with medium-strong holdings to
-disguise hand strength, followed by massive aggression multipliers on subsequent
-streets.
+**Custom Mechanic:** `Soul_Read`. Uncanny ability to significantly narrow range of 
+opponent's holdings based on understanding opponent tendencies.
 
 ```json
 {
   "id": "P047",
-  "name": "Hai Le",
-  "archetype": "Lag_Positional_Trapper",
+  "name": "Daniel Negraneau",
+  "archetype": "Small_Ball_Hand_Reader",
   "strategic_baseline": {
     "vpip_target": 0.26,
     "pfr_target": 0.21,
@@ -108,17 +106,13 @@ streets.
     "tilt_resistance": 0.85,
     "exploitative_weight": 0.75,
     "risk_premium_coefficient": 0.90,
-    "weight_on_opponent_history": 0.80
+    "weight_on_opponent_history": 0.90
   },
   "engine_triggers": {
-    "custom_mechanic": "Positional_Leverage_Trap",
+    "custom_mechanic": "Soul_Read",
     "trigger_condition": {
-      "in_position": true,
-      "min_street": "FLOP"
-    },
-    "action_modifier": {
-      "trapping_frequency_flop_turn": 1.50,
-      "postflop_aggression_multiplier_ip": 1.30
+      "min_street": "RIVER",
+      "trusts_reads": true
     }
   }
 }
@@ -192,6 +186,109 @@ mathematical baseline framework. Completely ignores opponent metadata.
 
 ---
 
+## 3. Candidate Parameter Extensions (backlog)
+
+A catalog of common behavioral modifiers used to define poker personalities.
+These are **candidates, not commitments** — we may or may not implement them. They
+extend the schema in Section 1; until one is implemented, treat it as documentation
+of intent. Units follow the **Conventions** above: frequencies/weights/adherence
+are `[0, 1]` fractions, multipliers are centred on `1.0` (unclamped), and a few
+fields are integers (hand counts).
+
+> Where a candidate overlaps existing work, it's cross-referenced: postflop
+> frequencies relate to Appendix F; opponent-memory fields to Phase 3; sizing and
+> overbet fields to the `Geometric_Overbet_Execution` mechanic (Phase 4);
+> tilt fields extend `tilt_resistance` (Phase 3); bubble/ICM relates to the MTT
+> trajectory in the project vision.
+
+### 3.1 Expanded preflop nuances
+
+Fine-tune baseline strategy before any community cards are dealt — the difference
+between a flat, mechanical opening range and a dynamic one. These sit alongside
+`strategic_baseline`'s `vpip_target` / `pfr_target` / `three_bet_frequency`.
+
+- **`four_bet_frequency`** *(0–1)* — probability of re-raising a 3-bet. Separates
+  tight-passive bots from aggressive meta-attackers.
+- **`cold_call_frequency`** *(0–1)* — inclination to flat-call a raise when closing
+  the action is not guaranteed (e.g. from the HJ or CO).
+- **`limp_frequency`** *(0–1)* — tendency to enter a pot passively without raising.
+  High for recreational archetypes; near-zero for elite bots.
+- **`squeeze_frequency`** *(0–1)* — propensity to raise big over an open-raiser and
+  one or more callers, typically from the blinds or late position.
+- **`fold_to_three_bet_weight`** *(0–1)* — how easily the player surrenders their
+  opening range to a 3-bet.
+
+### 3.2 Advanced postflop tendencies & sizing modifiers
+
+How the bot navigates flop/turn/river textures. These are the baseline postflop
+frequencies flagged as a future extension in **Appendix F**.
+
+- **`cbet_frequency_flop`** / **`cbet_frequency_turn`** *(0–1)* —
+  continuation-betting thresholds as the preflop aggressor.
+- **`fold_to_cbet_flop`** / **`fold_to_cbet_turn`** *(0–1)* — how sticky or elastic
+  the player is when facing aggression on wet vs. dry textures.
+- **`check_raise_frequency`** *(0–1)* — propensity to check-raise as the
+  out-of-position defender (a strong tell for aggressive, exploitative profiles).
+- **`river_bluff_frequency`** *(0–1)* — baseline for firing absolute air when missed
+  draws complete on the final street.
+- **`preferred_sizing_profiles`** *(object)* — default sizing bands per street/spot,
+  replacing a single static multiplier. (Relates to
+  `action_modifier.bet_size_multiplier_flop_turn_river` and the
+  `Geometric_Overbet_Execution` mechanic.)
+- **`flop_mdf_adherence`** *(0–1)* — adherence to Minimum Defense Frequency.
+- **`overbet_threshold_river`** *(0–1, pot fraction cap)* — maximum pot-percentage
+  the player is willing to jam/shove on the river.
+
+### 3.3 Table dynamics & environmental awareness (the meta)
+
+Adjust decisions based on variables independent of the two hole cards.
+
+- **`stack_size_sensitivity`** *(multiplier, centred 1.0)* — modifies behavior by
+  effective stack size (e.g. shifts toward a premium/survival mode under ~30BB,
+  scales up creative aggression when 200BB deep).
+- **`bubble_factor_coefficient`** *(multiplier, centred 1.0)* — scales the risk
+  premium up as tournament payout thresholds approach. Crucial for ICM / MTT
+  survival simulation (see the MTT trajectory in the project vision); composes with
+  `risk_premium_coefficient`.
+- **`position_awareness_slope`** *(0–1)* — how sharply the range opens up from UTG to
+  the BTN. A flat slope plays the same cards from every seat; a steep slope is an
+  elite positional strategist.
+- **`multiway_aggression_decay`** *(multiplier, ≤ 1.0)* — shrinks betting/raising
+  frequencies automatically when 3+ players are active in a pot.
+
+### 3.4 Mental game & psychological states
+
+Temporary, variable states that simulate human emotional flaws and deviation from a
+pure math model. These extend the Phase 3 `tilt_resistance` work into a *stateful*
+model.
+
+- **`tilt_threshold`** *(BB)* — a breaking point: losing a pot larger than X big
+  blinds over a short sample triggers a "Tilt State."
+- **`tilt_behavior_modifiers`** *(object)* — dynamic shifts applied **only while
+  tilted**:
+  - **`vpip_inflation_multiplier`** *(multiplier, centred 1.0)* — e.g. `1.4×` normal
+    VPIP as the player chases losses.
+  - **`pfr_decay`** *(multiplier, ≤ 1.0)* — stops raising, starts passively calling
+    down with weak holdings.
+- **`patience_decay_rate`** *(0–1)* — simulates boredom: each consecutive preflop
+  fold nudges the VPIP baseline up marginally until the player finally enters a pot,
+  then resets.
+
+### 3.5 Information processing & memory depth
+
+How the bot builds opponent models over a long session. These are the substrate for
+the Phase 3 `exploitative_weight` / `weight_on_opponent_history` composition
+(Appendix B's `read_confidence`).
+
+- **`sample_size_requirement`** *(int, hands)* — tracking hands required against an
+  opponent before `exploitative_weight` unlocks and begins altering GTO play.
+- **`memory_decay_halflife`** *(int, hands)* — older hands weigh less; actions 100
+  hands ago count for less than the last 10 in the opponent profile.
+- **`showdown_curiosity_coefficient`** *(0–1)* — propensity to call a final river bet
+  with a marginal, losing hand purely to buy information.
+
+---
+
 ## Appendix: Engine-mapping notes & open items
 
 Review notes for grounding the spec in Monte's actual engine (pure-Dart rules +
@@ -255,7 +352,7 @@ migrate the UI to it once Phase 1 proves out, then retire the old `PersonalityPr
 - `PlayerProfile` Dart model mirroring the schema (`strategic_baseline`,
   `behavioral_modifiers`, structured `engine_triggers`), with JSON round-trip and
   range/scale validation.
-- Seed the three pros (Hai Le, Addamo, Haxton) as built-in profiles.
+- Seed the three pros (Negraneau, Addamo, Haxton) as built-in profiles.
 - **Validates:** the contract parses and survives a round-trip. Pure data — nothing
   in the engine changes yet.
 
@@ -290,13 +387,16 @@ migrate the UI to it once Phase 1 proves out, then retire the old `PersonalityPr
   search now defaults to sound play instead of noisy over-exploration. Impact on
   MCTS@250 (6-max): median pot **417bb → 4bb**, stack-offs/hand **3.7 → 0.0**, vs
   heuristic **−18 → −0.4** (even). MCTS@1500 still +107. The MCTS brain is usable.
-- **Skill via adherence (done):** profile seats now play **calibrated frequencies
-  preflop (style) + MCTS postflop (skill)**, with search depth
-  `150 + 400·gto_adherence` iterations. Same-style head-to-head: high-adherence
-  beats low-adherence **+11.2 bb/100** — pros out-*decide*.
-- **Still open:** tie adherence to *exploitation* (not just depth) once opponent
-  modelling exists (Phase 3); tune the depth/latency curve; consider per-street
-  iteration budgets.
+- **Skill via adherence (explored):** an earlier build ran profile seats as
+  **calibrated frequencies preflop + MCTS postflop**, depth `150 + 400·gto_adherence`;
+  same-style head-to-head, high-adherence beat low-adherence **+11.2 bb/100**. But
+  that search used a *style-blind* (`BotStrategy`) rollout, so pros converged to one
+  line postflop and expressed no personality. **Superseded** for default profile
+  seating by the range-aware postflop brain below (Phase 3); the MCTS brain remains
+  available via the `mcts` bot type.
+- **Still open:** give the ISMCTS search a *range-aware, style-shaped* rollout
+  without the MC-in-MC cost blowup, so search skill and personality can coexist for
+  pros; tune the depth/latency curve; per-street iteration budgets.
 
 ### Diagnosis aids & the MCTS-is-weak reality
 - **Hand transcripts**: every interactive hand prints a readable transcript
@@ -323,11 +423,26 @@ migrate the UI to it once Phase 1 proves out, then retire the old `PersonalityPr
   result, which is the honest trade (sound play over inflated-by-spew stats).
 
 ### Phase 3 — Behavioral modifiers
-- `exploitative_weight` + `weight_on_opponent_history` → lightweight opponent
-  modelling (track opponents' measured stats, shade actions to attack imbalances),
-  composed per Appendix B.
+- **Range-aware postflop (done):** `HandRange` (a perceived villain range built
+  from the baked `preflopOf` table, tightened by raises/street) + `PostflopEquity`
+  (Monte-Carlo runout equity via the real `HandEvaluator`, exact on the river) give
+  policies an honest "how good is my hand vs what they can hold here" number that
+  sees draws and kickers — replacing the old category-only postflop scalar.
+- **Personality/GTO-vs-exploit postflop (done):** `PersonalityPolicy` (with
+  `rangeAware`) decides on that equity — nits overfold, stations overcall, gamblers
+  /maniacs hunt fold-equity and semibluff draws. `ProfilePostflopPolicy` expresses
+  the profile dial: high `gto_adherence_weight` plays equity/pot-odds straight
+  (Haxton anchor), while `exploit = (1 − gto_adherence)·exploitative_weight` applies
+  pressure (thinner value, more bluffs/semibluff-raises) vs a static population
+  prior. MCTS rollouts keep the cheap category estimate (no MC-in-MC).
+- **Still open (per-opponent reads):** `exploitative_weight` +
+  `weight_on_opponent_history` → wire the live `OpponentModel` (VPIP/PFR/AF +
+  confidence) into these policies so the *perceived range* and exploit strength
+  adapt per villain (the full Appendix B composition, incl. the confidence term).
 - `risk_premium_coefficient` → bet-sizing / variance (extends today's CARA curve).
 - `tilt_resistance` → stateful degradation after big losses.
+- `overfold_to_river_action` → likelihood to exploitively fold to river bet from 
+  recreational players due to the underbetting tendency of recreational players.
 
 ### Phase 4 — Engine triggers (situational mechanics)
 - Structured-condition evaluator + `action_modifier` application.

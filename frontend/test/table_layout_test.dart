@@ -62,6 +62,7 @@ Future<void> _pumpTable(
         onNextHand: () {},
         onOpenSettings: () {},
         onOpenAnalytics: () {},
+        onOpenHistory: () {},
       ),
     ),
   );

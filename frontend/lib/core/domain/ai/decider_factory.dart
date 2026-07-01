@@ -48,12 +48,14 @@ DecisionPolicy buildDecider(
     case BotType.heuristic:
       return BotStrategy(random: random);
     case BotType.personality:
-      return PersonalityPolicy(profile, random: random);
+      // Standalone bot: reason about ranges postflop.
+      return PersonalityPolicy(profile, random: random, rangeAware: true);
     case BotType.mcts:
       return IsmctsEngine(
         config: IsmctsConfig(iterations: mctsIterations),
         profile: profile,
         random: random,
+        // Rollout self-model stays cheap (category-only) — no MC-in-MC.
         rolloutPolicy: PersonalityPolicy(profile, random: random),
       );
   }

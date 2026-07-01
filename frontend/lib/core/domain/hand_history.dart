@@ -29,6 +29,11 @@ class ActionRecord {
 }
 
 /// A player as they were dealt into a hand.
+///
+/// [holeCards] holds cards only when they were actually exposed — the human's own
+/// hand, or a player who reached showdown. Folded/mucked players are masked
+/// ([revealed] is false and [holeCards] is empty), so a recorded hand mirrors what
+/// was really shown at the table.
 class HandPlayer {
   const HandPlayer({
     required this.id,
@@ -36,6 +41,7 @@ class HandPlayer {
     required this.startingStack,
     required this.holeCards,
     required this.isButton,
+    this.revealed = true,
   });
 
   final String id;
@@ -44,12 +50,16 @@ class HandPlayer {
   final List<String> holeCards;
   final bool isButton;
 
+  /// Whether this player's [holeCards] were exposed (else masked/empty).
+  final bool revealed;
+
   Map<String, dynamic> toJson() => {
     'id': id,
     'name': name,
     'startingStack': startingStack,
     'holeCards': holeCards,
     'isButton': isButton,
+    'revealed': revealed,
   };
 }
 
@@ -126,9 +136,8 @@ class HandHistory {
       ..writeln('Hand #$handNumber  (blinds $smallBlind/$bigBlind)');
     for (final p in players) {
       final btn = p.isButton ? ' [BTN]' : '';
-      sb.writeln(
-        '  ${p.name}$btn  ${p.holeCards.join(' ')}  (stack ${p.startingStack})',
-      );
+      final cards = p.revealed ? p.holeCards.join(' ') : '?? ??';
+      sb.writeln('  ${p.name}$btn  $cards  (stack ${p.startingStack})');
     }
     BettingRound? street;
     for (final a in actions) {

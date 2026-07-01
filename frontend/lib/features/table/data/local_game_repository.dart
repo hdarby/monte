@@ -2,12 +2,11 @@ import 'dart:async';
 
 import 'package:monte/core/domain/ai/bot_spec.dart';
 import 'package:monte/core/domain/ai/decider_factory.dart';
-import 'package:monte/core/domain/ai/ismcts.dart';
 import 'package:monte/core/domain/ai/opponent_model.dart';
 import 'package:monte/core/domain/ai/personality.dart';
 import 'package:monte/core/domain/ai/profile_calibrator.dart';
 import 'package:monte/core/domain/ai/profile_policy.dart';
-import 'package:monte/core/domain/engine/bot.dart';
+import 'package:monte/core/domain/ai/profile_postflop_policy.dart';
 import 'package:monte/core/domain/engine/actions.dart';
 import 'package:monte/core/domain/engine/deck.dart';
 import 'package:monte/core/domain/engine/decision_policy.dart';
@@ -226,28 +225,17 @@ class LocalGameRepository extends GameRepository {
       _specByPlayer[playerId] = spec;
       final pro = spec.profile;
       if (pro != null) {
-        // Named profile: calibrated preflop frequencies (style), MCTS postflop
-        // (skill). Search depth scales with gto_adherence — disciplined pros
-        // out-decide. Ranges are baked for the built-in pros, so this is instant.
-        // Skill = the search itself (a fixed budget — all pros think). Adherence
-        // is the GTO↔exploit dial, not depth: a disciplined (high-adherence) bot
-        // ignores reads and plays solid; a lower-adherence, exploit-leaning bot
-        // models opponents by their reads inside the search.
-        final adherence = pro.strategicBaseline.gtoAdherenceWeight;
-        final mods = pro.behavioralModifiers;
-        final exploitBase =
-            (1 - adherence) *
-            mods.exploitativeWeight *
-            mods.weightOnOpponentHistory;
+        // Named profile: calibrated preflop frequencies (style) + a fast,
+        // range-aware postflop brain that expresses the GTO↔exploit dial
+        // (`ProfilePostflopPolicy`). A disciplined (high-adherence) pro plays
+        // equity/pot-odds straight; a lower-adherence, exploit-leaning pro
+        // applies pressure. Ranges are baked for the built-in pros, so this is
+        // instant. (The search-based MCTS brain remains available via the MCTS
+        // bot type; per-opponent reads are a later refinement here.)
         return ProfilePolicy(
           pro,
           ranges: const ProfileCalibrator().rangesFor(pro),
-          postflop: IsmctsEngine(
-            config: const IsmctsConfig(iterations: 500),
-            rolloutPolicy: BotStrategy(),
-            opponentModel: _opponentModel,
-            exploitBase: exploitBase,
-          ),
+          postflop: ProfilePostflopPolicy(pro),
         );
       }
       return buildDecider(
@@ -478,11 +466,21 @@ class LocalGameRepository extends GameRepository {
     final game = _game!;
     if (_recPlayers.isEmpty) return;
 
+    // Record only the cards that were actually exposed: the human always knows
+    // their own hand, and a live (non-folded) player who reached a showdown shows
+    // — mirroring the live table reveal. Everyone else is masked. Safe: no stat
+    // or opponent-model logic reads holeCards (only display does).
+    final showdownHappened = game.results.any((r) => r.handValue != null);
+    final exposedPlayers = [
+      for (final rec in _recPlayers)
+        _exposeIfShown(rec, game, showdownHappened: showdownHappened),
+    ];
+
     final hand = HandHistory(
       handNumber: _handCounter,
       smallBlind: game.smallBlind,
       bigBlind: game.bigBlind,
-      players: _recPlayers,
+      players: exposedPlayers,
       actions: _recActions,
       board: game.board.map((c) => c.code).toList(),
       results: [
@@ -504,6 +502,26 @@ class LocalGameRepository extends GameRepository {
   }
 
   int _stackOf(String id) => _game!.players.firstWhere((p) => p.id == id).stack;
+
+  /// Returns [rec] unchanged if its cards were exposed (human, or a non-folded
+  /// player at a showdown), otherwise a masked copy (no cards, `revealed: false`).
+  HandPlayer _exposeIfShown(
+    HandPlayer rec,
+    PokerGame game, {
+    required bool showdownHappened,
+  }) {
+    final live = game.players.firstWhere((p) => p.id == rec.id);
+    final exposed = live.isHuman || (showdownHappened && live.inHand);
+    if (exposed) return rec;
+    return HandPlayer(
+      id: rec.id,
+      name: rec.name,
+      startingStack: rec.startingStack,
+      holeCards: const [],
+      isButton: rec.isButton,
+      revealed: false,
+    );
+  }
 
   // ---- Snapshot -------------------------------------------------------------
 
