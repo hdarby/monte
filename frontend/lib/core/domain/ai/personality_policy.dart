@@ -4,6 +4,7 @@ import 'package:monte/core/domain/ai/hand_range.dart';
 import 'package:monte/core/domain/ai/personality.dart';
 import 'package:monte/core/domain/ai/postflop_equity.dart';
 import 'package:monte/core/domain/engine/actions.dart';
+import 'package:monte/core/domain/engine/bet_snap.dart';
 import 'package:monte/core/domain/engine/decision_policy.dart';
 import 'package:monte/core/domain/engine/game.dart';
 import 'package:monte/core/domain/engine/hand_strength.dart';
@@ -56,7 +57,8 @@ class PersonalityPolicy implements DecisionPolicy {
     final canRaise = p.stack > toCall;
 
     GameAction openRaise() {
-      final to = (game.minRaiseTo(p) + (game.pot * (0.4 + 0.5 * aggr)).round())
+      final raw = game.minRaiseTo(p) + (game.pot * (0.4 + 0.5 * aggr)).round();
+      final to = snapBet(raw, smallBlind: game.smallBlind, bigBlind: game.bigBlind)
           .clamp(game.minRaiseTo(p), game.maxRaiseTo(p));
       return GameAction.raise(to);
     }
@@ -117,10 +119,9 @@ class PersonalityPolicy implements DecisionPolicy {
     final canRaise = p.stack > toCall;
 
     GameAction raiseBy(double fraction) {
-      final to = (game.minRaiseTo(p) + (game.pot * fraction).round()).clamp(
-        game.minRaiseTo(p),
-        game.maxRaiseTo(p),
-      );
+      final raw = game.minRaiseTo(p) + (game.pot * fraction).round();
+      final to = snapBet(raw, smallBlind: game.smallBlind, bigBlind: game.bigBlind)
+          .clamp(game.minRaiseTo(p), game.maxRaiseTo(p));
       return GameAction.raise(to);
     }
 
@@ -130,8 +131,10 @@ class PersonalityPolicy implements DecisionPolicy {
       final wantsValue = s > 0.72 - 0.30 * aggr;
       final wantsBluff = _random.nextDouble() < bluff * (1 - s) * 0.6;
       if ((wantsValue || wantsBluff) && p.stack > bb) {
-        final size = (game.pot * (0.4 + 0.6 * aggr)).round().clamp(bb, p.stack);
-        return GameAction.bet(p.currentBet + size);
+        final raw = p.currentBet + (game.pot * (0.4 + 0.6 * aggr)).round();
+        final to = snapBet(raw, smallBlind: game.smallBlind, bigBlind: bb)
+            .clamp(p.currentBet + bb, p.currentBet + p.stack);
+        return GameAction.bet(to);
       }
       return const GameAction.check();
     }
@@ -192,15 +195,16 @@ class PersonalityPolicy implements DecisionPolicy {
     final isDraw = eq >= 0.32 && eq <= 0.55;
 
     GameAction betBy(double fraction) {
-      final size = (game.pot * fraction).round().clamp(bb, p.stack);
-      return GameAction.bet(p.currentBet + size);
+      final raw = p.currentBet + (game.pot * fraction).round();
+      final to = snapBet(raw, smallBlind: game.smallBlind, bigBlind: bb)
+          .clamp(p.currentBet + bb, p.currentBet + p.stack);
+      return GameAction.bet(to);
     }
 
     GameAction raiseBy(double fraction) {
-      final to = (game.minRaiseTo(p) + (game.pot * fraction).round()).clamp(
-        game.minRaiseTo(p),
-        game.maxRaiseTo(p),
-      );
+      final raw = game.minRaiseTo(p) + (game.pot * fraction).round();
+      final to = snapBet(raw, smallBlind: game.smallBlind, bigBlind: game.bigBlind)
+          .clamp(game.minRaiseTo(p), game.maxRaiseTo(p));
       return GameAction.raise(to);
     }
 

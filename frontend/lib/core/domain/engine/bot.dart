@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'package:monte/core/domain/engine/actions.dart';
+import 'package:monte/core/domain/engine/bet_snap.dart';
 import 'package:monte/core/domain/engine/decision_policy.dart';
 import 'package:monte/core/domain/engine/game.dart';
 import 'package:monte/core/domain/engine/hand_strength.dart';
@@ -30,8 +31,10 @@ class BotStrategy implements DecisionPolicy {
     final adjusted = strength * aggression;
 
     GameAction raiseBy(double potFraction) {
-      final raiseTo = (game.minRaiseTo(p) + (game.pot * potFraction).round())
-          .clamp(game.minRaiseTo(p), game.maxRaiseTo(p));
+      final raw = game.minRaiseTo(p) + (game.pot * potFraction).round();
+      final raiseTo =
+          snapBet(raw, smallBlind: game.smallBlind, bigBlind: game.bigBlind)
+              .clamp(game.minRaiseTo(p), game.maxRaiseTo(p));
       return GameAction.raise(raiseTo);
     }
 
@@ -68,8 +71,10 @@ class BotStrategy implements DecisionPolicy {
     // ----- Postflop: bet/raise strong, continue on pot odds -----
     if (toCall == 0) {
       if (adjusted > 0.62 && p.stack > bb) {
-        final size = (game.pot * 0.6).round().clamp(bb, p.stack);
-        return GameAction.bet(p.currentBet + size);
+        final raw = p.currentBet + (game.pot * 0.6).round();
+        final to = snapBet(raw, smallBlind: game.smallBlind, bigBlind: bb)
+            .clamp(p.currentBet + bb, p.currentBet + p.stack);
+        return GameAction.bet(to);
       }
       return const GameAction.check();
     }

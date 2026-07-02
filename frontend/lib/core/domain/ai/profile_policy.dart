@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:monte/core/domain/ai/player_profile.dart';
 import 'package:monte/core/domain/ai/preflop_ranges.dart';
 import 'package:monte/core/domain/engine/actions.dart';
+import 'package:monte/core/domain/engine/bet_snap.dart';
 import 'package:monte/core/domain/engine/bot.dart';
 import 'package:monte/core/domain/engine/decision_policy.dart';
 import 'package:monte/core/domain/engine/game.dart';
@@ -61,8 +62,10 @@ class ProfilePolicy implements DecisionPolicy {
     final canRaise = p.stack > toCall;
 
     GameAction raiseBy(double potFraction) {
-      final raiseTo = (game.minRaiseTo(p) + (game.pot * potFraction).round())
-          .clamp(game.minRaiseTo(p), game.maxRaiseTo(p));
+      final raw = game.minRaiseTo(p) + (game.pot * potFraction).round();
+      final raiseTo =
+          snapBet(raw, smallBlind: game.smallBlind, bigBlind: game.bigBlind)
+              .clamp(game.minRaiseTo(p), game.maxRaiseTo(p));
       return GameAction.raise(raiseTo);
     }
 

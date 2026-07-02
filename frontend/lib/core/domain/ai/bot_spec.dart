@@ -3,6 +3,7 @@ import 'package:meta/meta.dart';
 import 'package:monte/core/domain/ai/decider_factory.dart';
 import 'package:monte/core/domain/ai/personality.dart';
 import 'package:monte/core/domain/ai/player_profile.dart';
+import 'package:monte/core/domain/ai/player_profiles.dart';
 
 /// One bot seat's behavior model. Either a *custom* bot ([brain] + [style]) or,
 /// when [profile] is set, a calibrated named player profile that overrides them.
@@ -11,7 +12,7 @@ import 'package:monte/core/domain/ai/player_profile.dart';
 @immutable
 class BotSpec {
   const BotSpec({
-    this.brain = BotType.heuristic,
+    this.brain = BotType.personality,
     this.style = PersonalityArchetype.balanced,
     this.profile,
   });
@@ -37,6 +38,35 @@ class BotSpec {
   /// Replaces (or clears, when null) the named profile, keeping brain + style.
   BotSpec withProfile(PlayerProfile? profile) =>
       BotSpec(brain: brain, style: style, profile: profile);
+
+  /// A compact `brain:style:profileId` string (empty id = custom). Used for
+  /// persistence and as the game-rebuild key; the inverse is [decode].
+  String encode() => '${brain.name}:${style.name}:${profile?.id ?? ''}';
+
+  /// Parses an [encode]d spec. Unknown brains/styles fall back to sensible
+  /// defaults and an unknown/empty profile id means "custom" — so stale stored
+  /// values never crash.
+  static BotSpec decode(String s) {
+    final parts = s.split(':');
+    if (parts.length < 3) return const BotSpec(brain: BotType.personality);
+    final brain = BotType.values.where((b) => b.name == parts[0]);
+    final style = PersonalityArchetype.values.where((a) => a.name == parts[1]);
+    final id = parts[2];
+    PlayerProfile? profile;
+    if (id.isNotEmpty) {
+      for (final p in builtInProfiles) {
+        if (p.id == id) {
+          profile = p;
+          break;
+        }
+      }
+    }
+    return BotSpec(
+      brain: brain.isEmpty ? BotType.personality : brain.first,
+      style: style.isEmpty ? PersonalityArchetype.balanced : style.first,
+      profile: profile,
+    );
+  }
 
   /// A short label for a seat badge — the profile name, or "Maniac · MCTS"
   /// style. The heuristic ignores personality, so it shows only the brain.

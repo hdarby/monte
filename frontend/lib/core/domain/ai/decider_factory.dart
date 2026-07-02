@@ -8,7 +8,10 @@ import 'package:monte/core/domain/engine/decision_policy.dart';
 
 /// The kinds of bot brain the table can be configured with.
 enum BotType {
-  /// Fast, fixed heuristic. Snappy; good for quick evaluation runs.
+  /// Fast, fixed heuristic. **Not player-selectable** — it ignores personality,
+  /// so it's kept only as an internal baseline: the MCTS rollout self-model, the
+  /// profile-postflop default, calibration's reference field, and the strength
+  /// eval gate. Excluded from [selectable].
   heuristic('Heuristic'),
 
   /// Fast, fully personality-driven thresholds (no search).
@@ -20,6 +23,13 @@ enum BotType {
   const BotType(this.label);
 
   final String label;
+
+  /// The brains a player can actually pick for a seat. The heuristic is
+  /// deliberately absent — it exists only for testing/evaluation (see above).
+  static const List<BotType> selectable = [
+    BotType.personality,
+    BotType.mcts,
+  ];
 
   /// A compact label for tight spots like a seat badge.
   String get shortLabel => switch (this) {

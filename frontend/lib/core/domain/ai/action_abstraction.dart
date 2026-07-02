@@ -1,4 +1,5 @@
 import 'package:monte/core/domain/engine/actions.dart';
+import 'package:monte/core/domain/engine/bet_snap.dart';
 import 'package:monte/core/domain/engine/game.dart';
 import 'package:monte/core/domain/engine/player.dart';
 
@@ -66,12 +67,13 @@ class ActionAbstraction {
       final seen = <int>{};
 
       for (final f in potFractions) {
-        final target = (game.currentBet + game.pot * f).round().clamp(
-          minTo,
-          maxTo,
-        );
+        final raw = (game.currentBet + game.pot * f).round();
+        // Snap to a human-style amount for the stake, then keep it legal.
+        final target =
+            snapBet(raw, smallBlind: game.smallBlind, bigBlind: game.bigBlind)
+                .clamp(minTo, maxTo);
         // Skip sizes that collapse onto an all-in (handled below) or duplicate
-        // an already-offered size.
+        // an already-offered size (snapping can merge nearby fractions).
         if (target < maxTo && seen.add(target)) {
           actions.add(
             isBet ? GameAction.bet(target) : GameAction.raise(target),

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:monte/core/di/game_providers.dart';
 import 'package:monte/core/domain/ai/bot_spec.dart';
 import 'package:monte/core/domain/ai/decider_factory.dart';
 import 'package:monte/core/presentation/money_format.dart';
@@ -118,18 +117,15 @@ class _GamePageState extends ConsumerState<GamePage> {
     await vm.newGameWithBots(chosen);
   }
 
-  /// On a freshly built table, open the personality chooser before play so the
-  /// game always starts on the setup page. The default deal sits behind it and
-  /// is replaced when the player confirms (or kept as-is if they cancel).
-  void _maybePromptStartup(
-    TableSnapshot snapshot,
-    GameSettings settings,
-    TableViewModel vm,
-  ) {
+  /// On a freshly built table, open the Settings screen first so each session
+  /// starts on setup (stakes, players, bots) before play — that's the natural
+  /// order. The default deal sits behind it; leaving Settings (Apply/Cancel)
+  /// drops the player onto the table.
+  void _maybePromptStartup(TableSnapshot snapshot) {
     if (_startupPrompted || snapshot.seats.isEmpty) return;
     _startupPrompted = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _openNewGame(snapshot, settings, vm);
+      if (mounted) _openSettings();
     });
   }
 
@@ -207,8 +203,6 @@ class _GamePageState extends ConsumerState<GamePage> {
 
   @override
   Widget build(BuildContext context) {
-    // A new table (player-count / mode change) re-arms the startup chooser.
-    ref.listen(gameRepositoryProvider, (_, _) => _startupPrompted = false);
     final settingsAsync = ref.watch(settingsControllerProvider);
     return settingsAsync.when(
       loading: () =>
@@ -220,11 +214,14 @@ class _GamePageState extends ConsumerState<GamePage> {
         final vm = ref.read(tableViewModelProvider.notifier);
         // A hand is dealing/in progress again — re-arm the deal guard.
         if (!snapshot.isHandOver) _nextHandPending = false;
-        _maybePromptStartup(snapshot, settings, vm);
+        _maybePromptStartup(snapshot);
         _maybePromptBust(snapshot, vm);
         _maybeAutoDeal(snapshot, vm);
         return MoneyScope(
-          format: MoneyFormat(showBigBlinds: settings.showBigBlinds),
+          format: MoneyFormat(
+            showBigBlinds: settings.showBigBlinds,
+            bigBlind: settings.bigBlind,
+          ),
           child: Focus(
             autofocus: true,
             onKeyEvent: (_, event) => _onKey(event, snapshot, vm),

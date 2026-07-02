@@ -4,6 +4,7 @@ import 'package:monte/core/domain/ai/hand_range.dart';
 import 'package:monte/core/domain/ai/player_profile.dart';
 import 'package:monte/core/domain/ai/postflop_equity.dart';
 import 'package:monte/core/domain/engine/actions.dart';
+import 'package:monte/core/domain/engine/bet_snap.dart';
 import 'package:monte/core/domain/engine/decision_policy.dart';
 import 'package:monte/core/domain/engine/game.dart';
 import 'package:monte/core/domain/engine/player.dart';
@@ -64,15 +65,16 @@ class ProfilePostflopPolicy implements DecisionPolicy {
     final isDraw = eq >= 0.32 && eq <= 0.55;
 
     GameAction betBy(double fraction) {
-      final size = (game.pot * fraction).round().clamp(bb, p.stack);
-      return GameAction.bet(p.currentBet + size);
+      final raw = p.currentBet + (game.pot * fraction).round();
+      final to = snapBet(raw, smallBlind: game.smallBlind, bigBlind: bb)
+          .clamp(p.currentBet + bb, p.currentBet + p.stack);
+      return GameAction.bet(to);
     }
 
     GameAction raiseBy(double fraction) {
-      final to = (game.minRaiseTo(p) + (game.pot * fraction).round()).clamp(
-        game.minRaiseTo(p),
-        game.maxRaiseTo(p),
-      );
+      final raw = game.minRaiseTo(p) + (game.pot * fraction).round();
+      final to = snapBet(raw, smallBlind: game.smallBlind, bigBlind: game.bigBlind)
+          .clamp(game.minRaiseTo(p), game.maxRaiseTo(p));
       return GameAction.raise(to);
     }
 

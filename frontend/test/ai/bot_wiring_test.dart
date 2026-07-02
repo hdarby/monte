@@ -31,6 +31,15 @@ void main() {
       }
     });
 
+    test('selectable brains exclude the test-only heuristic', () {
+      // The heuristic stays buildable (rollout/postflop/eval baseline) but must
+      // never be offered to the player.
+      expect(BotType.selectable, isNot(contains(BotType.heuristic)));
+      expect(BotType.selectable, contains(BotType.personality));
+      expect(BotType.selectable, contains(BotType.mcts));
+      expect(buildDecider(BotType.heuristic), isA<BotStrategy>());
+    });
+
     test('every brain returns a legal action for the player to act', () {
       for (final type in BotType.values) {
         final game = _freshHand(11);

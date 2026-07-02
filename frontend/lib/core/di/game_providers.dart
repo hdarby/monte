@@ -1,5 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:monte/core/domain/ai/bot_spec.dart';
+import 'package:monte/core/domain/ai/decider_factory.dart';
 import 'package:monte/features/settings/domain/game_settings.dart';
 import 'package:monte/features/settings/presentation/settings_controller.dart';
 import 'package:monte/features/table/data/local_game_repository.dart';
@@ -16,13 +18,44 @@ import 'package:monte/features/table/domain/game_repository.dart';
 /// and nothing else in the app changes.
 final gameRepositoryProvider = Provider<GameRepository>((ref) {
   // Select only the fields that define the game itself, so a display-unit
-  // toggle (dollars vs BB) doesn't restart the game.
-  final (playerCount, allBots, botType, botPersonality) = ref.watch(
+  // toggle (dollars vs BB) doesn't restart the game — but a stake change does.
+  final (
+    playerCount,
+    allBots,
+    botType,
+    botPersonality,
+    smallBlind,
+    bigBlind,
+    startingStack,
+    seatBotsKey,
+  ) = ref.watch(
     settingsControllerProvider.select((s) {
       final v = s.value ?? const GameSettings();
-      return (v.playerCount, v.allBots, v.botType, v.botPersonality);
+      return (
+        v.playerCount,
+        v.allBots,
+        v.botType,
+        v.botPersonality,
+        v.smallBlind,
+        v.bigBlind,
+        v.startingStack,
+        // Content-based key so a per-seat lineup change triggers a rebuild.
+        v.seatBots.map((b) => b.encode()).join(';'),
+      );
     }),
   );
+  // Each bot seat plays its own configured spec (brain + style, or a named pro),
+  // padded with a usable Personality default when shorter than the table.
+  final lineup = seatBotsKey.isEmpty
+      ? const <BotSpec>[]
+      : [for (final s in seatBotsKey.split(';')) BotSpec.decode(s)];
+  final botCount = allBots ? playerCount : playerCount - 1;
+  final seatBots = [
+    for (var i = 0; i < botCount; i++)
+      i < lineup.length
+          ? lineup[i]
+          : const BotSpec(brain: BotType.personality),
+  ];
   final repo = LocalGameRepository(
     config: TableConfig(
       playerCount: playerCount,
@@ -30,6 +63,10 @@ final gameRepositoryProvider = Provider<GameRepository>((ref) {
       botType: botType,
       personality: botPersonality.profile,
       defaultStyle: botPersonality,
+      seatBots: seatBots,
+      smallBlind: smallBlind,
+      bigBlind: bigBlind,
+      startingStack: startingStack,
       botThinkTime: allBots
           ? const Duration(milliseconds: 250)
           : const Duration(milliseconds: 700),

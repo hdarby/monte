@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:monte/core/domain/ai/bot_spec.dart';
 import 'package:monte/core/domain/ai/decider_factory.dart';
-import 'package:monte/core/domain/ai/personality.dart';
+import 'package:monte/core/presentation/bot_lineup_editor.dart';
 import 'package:monte/core/theme/app_theme.dart';
 import 'package:monte/features/settings/domain/game_settings.dart';
 import 'package:monte/features/settings/presentation/settings_controller.dart';
@@ -21,20 +23,49 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   late bool _showBigBlinds;
   late bool _showBehavior;
   late bool _allBots;
-  late BotType _botType;
-  late PersonalityArchetype _botPersonality;
+  late List<BotSpec> _specs;
+  late GameSettings _initial;
+  final _sbController = TextEditingController();
+  final _bbController = TextEditingController();
+  final _stackController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     final settings =
         ref.read(settingsControllerProvider).value ?? const GameSettings();
+    _initial = settings;
     _count = settings.playerCount;
     _showBigBlinds = settings.showBigBlinds;
     _showBehavior = settings.showBehavior;
     _allBots = settings.allBots;
-    _botType = settings.botType;
-    _botPersonality = settings.botPersonality;
+    _specs = settings.seatBotsFor(settings.botSeatCount);
+    _sbController.text = '${settings.smallBlind}';
+    _bbController.text = '${settings.bigBlind}';
+    _stackController.text = '${settings.startingStack}';
+  }
+
+  /// The number of bot seats for the current draft (human takes one unless
+  /// all-bots).
+  int get _botSeatCount => _allBots ? _count : _count - 1;
+
+  /// Pads (with a usable Personality default) or truncates the per-seat lineup
+  /// to match the current bot-seat count — call inside setState after a change
+  /// to player count or all-bots.
+  void _resizeSpecs() {
+    final n = _botSeatCount;
+    _specs = [
+      for (var i = 0; i < n; i++)
+        i < _specs.length ? _specs[i] : const BotSpec(brain: BotType.personality),
+    ];
+  }
+
+  @override
+  void dispose() {
+    _sbController.dispose();
+    _bbController.dispose();
+    _stackController.dispose();
+    super.dispose();
   }
 
   String get _countLabel {
@@ -111,7 +142,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     divisions:
                         GameSettings.maxPlayers - GameSettings.minPlayers,
                     label: '$_count',
-                    onChanged: (v) => setState(() => _count = v.round()),
+                    onChanged: (v) => setState(() {
+                      _count = v.round();
+                      _resizeSpecs();
+                    }),
                   ),
                 ),
                 const Padding(
@@ -130,6 +164,23 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     ],
                   ),
                 ),
+                const SizedBox(height: 28),
+                const Divider(color: Colors.white12),
+                const SizedBox(height: 12),
+                const Text(
+                  'Stakes',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'Blinds and buy-in (each seat\'s starting stack). Changing '
+                  'these starts a new game at the new stake.',
+                  style: TextStyle(color: Colors.white60),
+                ),
+                const SizedBox(height: 16),
+                _stakeField('Small blind', _sbController),
+                _stakeField('Big blind', _bbController),
+                _stakeField('Buy-in (starting stack)', _stackController),
                 const SizedBox(height: 28),
                 const Divider(color: Colors.white12),
                 const SizedBox(height: 12),
@@ -169,44 +220,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 const Divider(color: Colors.white12),
                 const SizedBox(height: 12),
                 const Text(
-                  'Bot behavior',
+                  'Bots',
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 6),
                 const Text(
-                  'How your opponents think. MCTS is the strongest '
-                  '(Monte Carlo search); personality shapes personality and '
-                  'MCTS bots.',
+                  'Set each opponent: a named Pro, or a custom Brain + '
+                  'Personality.',
                   style: TextStyle(color: Colors.white60),
                 ),
                 const SizedBox(height: 16),
-                DropdownButtonFormField<BotType>(
-                  initialValue: _botType,
-                  decoration: const InputDecoration(
-                    labelText: 'Brain',
-                    border: OutlineInputBorder(),
-                  ),
-                  items: [
-                    for (final t in BotType.values)
-                      DropdownMenuItem(value: t, child: Text(t.label)),
+                BotLineupEditor(
+                  seatNames: [
+                    for (var i = 0; i < _specs.length; i++) 'Bot ${i + 1}',
                   ],
-                  onChanged: (v) => setState(() => _botType = v!),
-                ),
-                const SizedBox(height: 16),
-                DropdownButtonFormField<PersonalityArchetype>(
-                  initialValue: _botPersonality,
-                  decoration: const InputDecoration(
-                    labelText: 'Personality',
-                    border: OutlineInputBorder(),
-                  ),
-                  items: [
-                    for (final a in PersonalityArchetype.values)
-                      DropdownMenuItem(value: a, child: Text(a.label)),
-                  ],
-                  // Personality has no effect on the fixed heuristic.
-                  onChanged: _botType == BotType.heuristic
-                      ? null
-                      : (v) => setState(() => _botPersonality = v!),
+                  specs: _specs,
+                  onChanged: (s) => setState(() => _specs = s),
                 ),
                 const SizedBox(height: 20),
                 const Divider(color: Colors.white12),
@@ -220,7 +249,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   contentPadding: EdgeInsets.zero,
                   activeThumbColor: AppTheme.gold,
                   value: _allBots,
-                  onChanged: (v) => setState(() => _allBots = v),
+                  onChanged: (v) => setState(() {
+                    _allBots = v;
+                    _resizeSpecs();
+                  }),
                   title: const Text('All bots (no human)'),
                   subtitle: const Text(
                     'Every seat is a bot. Watch hands play out, or batch-'
@@ -240,6 +272,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       ),
     );
   }
+
+  /// A plain numeric text field for a stake amount (blank/invalid falls back to
+  /// the loaded value on Apply).
+  Widget _stakeField(String label, TextEditingController controller) => Padding(
+    padding: const EdgeInsets.only(bottom: 12),
+    child: TextField(
+      controller: controller,
+      keyboardType: TextInputType.number,
+      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+      decoration: InputDecoration(
+        labelText: label,
+        isDense: true,
+        border: const OutlineInputBorder(),
+      ),
+    ),
+  );
 
   /// A pinned footer so Cancel/Apply are always visible — the settings list can
   /// scroll behind it, but the actions never disappear below the fold.
@@ -269,14 +317,27 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               padding: const EdgeInsets.symmetric(vertical: 16),
             ),
             onPressed: () {
+              // Blank/invalid entries keep the loaded value; then coerce into a
+              // coherent stake (bb ≥ 1, sb ≤ bb, buy-in ≥ bb).
+              final stake = GameSettings.sanitizeStake(
+                int.tryParse(_sbController.text) ?? _initial.smallBlind,
+                int.tryParse(_bbController.text) ?? _initial.bigBlind,
+                int.tryParse(_stackController.text) ?? _initial.startingStack,
+              );
               ref.read(settingsControllerProvider.notifier).save(
                     GameSettings(
                       playerCount: _count,
                       showBigBlinds: _showBigBlinds,
                       showBehavior: _showBehavior,
                       allBots: _allBots,
-                      botType: _botType,
-                      botPersonality: _botPersonality,
+                      // Global brain/personality are kept only as fallbacks;
+                      // the per-seat lineup is the real bot config now.
+                      botType: _initial.botType,
+                      botPersonality: _initial.botPersonality,
+                      smallBlind: stake.smallBlind,
+                      bigBlind: stake.bigBlind,
+                      startingStack: stake.startingStack,
+                      seatBots: _specs,
                     ),
                   );
               Navigator.pop(context);
