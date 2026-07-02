@@ -1,6 +1,7 @@
 import 'package:meta/meta.dart';
 
 import 'package:monte/core/domain/ai/decider_factory.dart';
+import 'package:monte/core/domain/ai/home_game_profiles.dart';
 import 'package:monte/core/domain/ai/personality.dart';
 import 'package:monte/core/domain/ai/player_profile.dart';
 import 'package:monte/core/domain/ai/player_profiles.dart';
@@ -54,7 +55,7 @@ class BotSpec {
     final id = parts[2];
     PlayerProfile? profile;
     if (id.isNotEmpty) {
-      for (final p in builtInProfiles) {
+      for (final p in [...builtInProfiles, ...homeGameProfiles]) {
         if (p.id == id) {
           profile = p;
           break;
@@ -66,6 +67,18 @@ class BotSpec {
       style: style.isEmpty ? PersonalityArchetype.balanced : style.first,
       profile: profile,
     );
+  }
+
+  /// The seat's display name derived from its persona: a named pro's real name
+  /// (e.g. "Daniel Negreanu"), or a distinctive archetype's name (e.g.
+  /// "Maniac"). Returns null when there's nothing distinctive to name the seat
+  /// after — the personality-agnostic heuristic, or the neutral Balanced default
+  /// — so the caller falls back to a generic table name.
+  String? get personaName {
+    if (profile != null) return profile!.name;
+    if (!brain.usesPersonality) return null;
+    if (style == PersonalityArchetype.balanced) return null;
+    return style.label;
   }
 
   /// A short label for a seat badge — the profile name, or "Maniac · MCTS"

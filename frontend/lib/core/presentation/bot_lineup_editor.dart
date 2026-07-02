@@ -2,10 +2,31 @@ import 'package:flutter/material.dart';
 
 import 'package:monte/core/domain/ai/bot_spec.dart';
 import 'package:monte/core/domain/ai/decider_factory.dart';
+import 'package:monte/core/domain/ai/home_game_profiles.dart';
 import 'package:monte/core/domain/ai/personality.dart';
 import 'package:monte/core/domain/ai/player_profile.dart';
 import 'package:monte/core/domain/ai/player_profiles.dart';
 import 'package:monte/core/theme/app_theme.dart';
+
+/// A non-null, unselectable value backing dropdown section-header rows, so they
+/// never collide with the null "custom" selection.
+final PlayerProfile _sectionSentinel = const PlayerProfile(
+  id: '__section__',
+  name: '',
+  archetype: '',
+  strategicBaseline: StrategicBaseline(
+    vpipTarget: 0,
+    pfrTarget: 0,
+    threeBetFrequency: 0,
+    gtoAdherenceWeight: 0,
+  ),
+  behavioralModifiers: BehavioralModifiers(
+    tiltResistance: 0,
+    exploitativeWeight: 0,
+    riskPremiumCoefficient: 0,
+    weightOnOpponentHistory: 0,
+  ),
+);
 
 /// A per-seat bot lineup editor: one row per seat choosing a named **Pro** or a
 /// custom **Brain + Personality**, plus a "Set all custom" convenience row.
@@ -174,7 +195,14 @@ class _ProDropdown extends StatelessWidget {
         const DropdownMenuItem<PlayerProfile?>(
           child: Text('— Custom —', style: TextStyle(fontSize: 14)),
         ),
+        _header('PROS'),
         for (final p in builtInProfiles)
+          DropdownMenuItem<PlayerProfile?>(
+            value: p,
+            child: Text(p.name, style: const TextStyle(fontSize: 14)),
+          ),
+        _header('HOME GAME'),
+        for (final p in homeGameProfiles)
           DropdownMenuItem<PlayerProfile?>(
             value: p,
             child: Text(p.name, style: const TextStyle(fontSize: 14)),
@@ -183,6 +211,24 @@ class _ProDropdown extends StatelessWidget {
       onChanged: onChanged,
     );
   }
+
+  /// A non-selectable section label. It shares a single non-null sentinel value
+  /// so it never collides with the null "custom" selection (which would trip
+  /// `DropdownButton`'s one-item-per-value assertion).
+  static DropdownMenuItem<PlayerProfile?> _header(String label) =>
+      DropdownMenuItem<PlayerProfile?>(
+        value: _sectionSentinel,
+        enabled: false,
+        child: Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white38,
+            fontSize: 11,
+            letterSpacing: 1.2,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      );
 }
 
 class _BrainDropdown extends StatelessWidget {

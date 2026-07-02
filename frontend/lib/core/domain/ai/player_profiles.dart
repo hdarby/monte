@@ -4,16 +4,23 @@ import 'package:monte/core/domain/engine/game.dart';
 /// Built-in seed profiles from `docs/personality-model.md` (the Master Archetype
 /// Catalog). These are the verified profiles used to seed evaluation tables.
 const List<PlayerProfile> builtInProfiles = [
-  haiLe,
+  danielNegreanu,
   michaelAddamo,
   isaacHaxton,
 ];
 
-/// Profile A — The High-Stakes Positional Trapper.
-const haiLe = PlayerProfile(
+/// Profile A — The Small-Ball Hand Reader.
+///
+/// Plays a wide, controlled-aggression small-ball game: loose VPIP with modest
+/// sizing (low `riskPremiumCoefficient`), leaning on reads rather than raw GTO
+/// (low `gtoAdherenceWeight`, high `exploitativeWeight` + opponent-history
+/// weight) to apply calculated pressure — and shifting gears to aggressive when
+/// he has an edge in position (the `Soul_Read` trigger). Modelled on Daniel
+/// Negreanu's game.
+const danielNegreanu = PlayerProfile(
   id: 'P047',
-  name: 'Hai Le',
-  archetype: 'Lag_Positional_Trapper',
+  name: 'Daniel Negreanu',
+  archetype: 'Small_Ball_Hand_Reader',
   strategicBaseline: StrategicBaseline(
     vpipTarget: 0.26,
     pfrTarget: 0.21,
@@ -24,16 +31,18 @@ const haiLe = PlayerProfile(
     tiltResistance: 0.85,
     exploitativeWeight: 0.75,
     riskPremiumCoefficient: 0.90,
-    weightOnOpponentHistory: 0.80,
+    // Extremely accurate hand reads: leans hard on observed opponent history.
+    weightOnOpponentHistory: 0.90,
   ),
   engineTriggers: EngineTriggers(
-    customMechanic: 'Positional_Leverage_Trap',
+    // "Switch to aggressive when warranted": armed in position from the flop on,
+    // the read-based gear shift ramps postflop aggression.
+    customMechanic: 'Soul_Read',
     condition: TriggerCondition(
       inPosition: true,
       minStreet: BettingRound.flop,
     ),
     actionModifier: ActionModifier(
-      trappingFrequencyFlopTurn: 1.50,
       postflopAggressionMultiplierIp: 1.30,
     ),
   ),

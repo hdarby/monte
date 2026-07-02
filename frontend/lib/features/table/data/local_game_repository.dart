@@ -1,7 +1,9 @@
 import 'dart:async';
 
+import 'package:monte/core/domain/ai/amateur_policy.dart';
 import 'package:monte/core/domain/ai/bot_spec.dart';
 import 'package:monte/core/domain/ai/decider_factory.dart';
+import 'package:monte/core/domain/ai/home_game_profiles.dart';
 import 'package:monte/core/domain/ai/opponent_model.dart';
 import 'package:monte/core/domain/ai/personality.dart';
 import 'package:monte/core/domain/ai/profile_calibrator.dart';
@@ -176,6 +178,11 @@ class LocalGameRepository extends GameRepository {
 
   /// Builds a fresh table (players + engine) without dealing a hand.
   void _createGame() {
+    // Name each bot seat after its persona (a named pro's real name, or its
+    // archetype), so the table shows who's who; seats with no distinctive
+    // persona fall back to the generic name pool.
+    final specs = [for (var i = 0; i < config.botCount; i++) _specForSeat(i)];
+    final botNames = _seatNamesFor(specs);
     final players = <Player>[
       if (!config.allBots)
         Player(
@@ -187,7 +194,7 @@ class LocalGameRepository extends GameRepository {
       for (var i = 0; i < config.botCount; i++)
         Player(
           id: 'bot_$i',
-          name: TableConfig.botNamePool[i % TableConfig.botNamePool.length],
+          name: botNames[i],
           stack: config.startingStack,
         ),
     ];
@@ -211,6 +218,35 @@ class LocalGameRepository extends GameRepository {
     }
   }
 
+  /// The resolved behavior model for the bot at [botIndex] (seat order, human
+  /// excluded): its configured lineup spec, or the table default for seats past
+  /// the lineup. Mirrors [_deciderForBot]'s resolution, used to name seats.
+  BotSpec _specForSeat(int botIndex) => botIndex < _seatBots.length
+      ? _seatBots[botIndex]
+      : BotSpec(brain: config.botType, style: config.defaultStyle);
+
+  /// Names each bot seat after its persona (pro or distinctive archetype),
+  /// numbering repeats ("Maniac 1", "Maniac 2"). Seats with no persona fall back
+  /// to the generic name pool, in order.
+  List<String> _seatNamesFor(List<BotSpec> specs) {
+    final personaTotals = <String, int>{};
+    for (final s in specs) {
+      final n = s.personaName;
+      if (n != null) personaTotals[n] = (personaTotals[n] ?? 0) + 1;
+    }
+    final personaSeen = <String, int>{};
+    var poolIndex = 0;
+    return [
+      for (final s in specs)
+        if (s.personaName case final base?)
+          personaTotals[base]! > 1
+              ? '$base ${personaSeen[base] = (personaSeen[base] ?? 0) + 1}'
+              : base
+        else
+          TableConfig.botNamePool[poolIndex++ % TableConfig.botNamePool.length],
+    ];
+  }
+
   /// Builds the decider for the bot at [botIndex] (seat order, human excluded),
   /// recording its resolved behavior model for the seat badge. Bots past the
   /// configured lineup fall back to the table defaults.
@@ -225,8 +261,15 @@ class LocalGameRepository extends GameRepository {
       _specByPlayer[playerId] = spec;
       final pro = spec.profile;
       if (pro != null) {
-        // Named profile: calibrated preflop frequencies (style) + a fast,
-        // range-aware postflop brain that expresses the GTO↔exploit dial
+        // Amateur (home-game) profile: the degraded `AmateurPolicy` brain, which
+        // builds its own intentionally-off ranges — so it bypasses the pro
+        // calibrator (calibrating would erase the leaks) and reliably loses to
+        // the pros.
+        if (pro.skill < 1.0 || homeGameProfiles.any((a) => a.id == pro.id)) {
+          return AmateurPolicy(pro);
+        }
+        // Named pro: calibrated preflop frequencies (style) + a fast, range-aware
+        // postflop brain that expresses the GTO↔exploit dial
         // (`ProfilePostflopPolicy`). A disciplined (high-adherence) pro plays
         // equity/pot-odds straight; a lower-adherence, exploit-leaning pro
         // applies pressure. Ranges are baked for the built-in pros, so this is
@@ -355,8 +398,9 @@ class LocalGameRepository extends GameRepository {
     if (p == null) return;
     p.stack = config.startingStack;
     if (!p.isHuman) {
-      p.name = _freshBotName();
-      _specByPlayer[id] = BotSpec(brain: config.botType, style: archetype);
+      final spec = BotSpec(brain: config.botType, style: archetype);
+      _specByPlayer[id] = spec;
+      p.name = _freshBotName(spec.personaName);
       _deciders[id] = buildDecider(
         config.botType,
         profile: archetype.profile,
@@ -366,9 +410,17 @@ class LocalGameRepository extends GameRepository {
     _publish();
   }
 
-  /// Picks a bot name not currently seated, falling back to a numbered guest.
-  String _freshBotName() {
+  /// A table-unique name for a reseated bot: its [persona] name (numbering a
+  /// collision, e.g. "Maniac 2"), or — when it has no persona — the first free
+  /// name from the pool, falling back to a numbered guest.
+  String _freshBotName([String? persona]) {
     final taken = {for (final p in _game?.players ?? const <Player>[]) p.name};
+    if (persona != null) {
+      if (!taken.contains(persona)) return persona;
+      for (var i = 2; ; i++) {
+        if (!taken.contains('$persona $i')) return '$persona $i';
+      }
+    }
     for (final name in TableConfig.botNamePool) {
       if (!taken.contains(name)) return name;
     }

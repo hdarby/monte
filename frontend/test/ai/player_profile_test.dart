@@ -5,12 +5,12 @@ import 'package:monte/core/domain/ai/player_profile.dart';
 import 'package:monte/core/domain/ai/player_profiles.dart';
 import 'package:monte/core/domain/engine/game.dart';
 
-/// The Hai Le profile exactly as it appears in docs/personality-model.md, used to
-/// prove the on-disk JSON contract parses into the model.
-const _haiLeJson = {
+/// The Daniel Negreanu profile exactly as it appears in docs/personality-model.md,
+/// used to prove the on-disk JSON contract parses into the model.
+const _negreanuJson = {
   'id': 'P047',
-  'name': 'Hai Le',
-  'archetype': 'Lag_Positional_Trapper',
+  'name': 'Daniel Negreanu',
+  'archetype': 'Small_Ball_Hand_Reader',
   'strategic_baseline': {
     'vpip_target': 0.26,
     'pfr_target': 0.21,
@@ -21,13 +21,12 @@ const _haiLeJson = {
     'tilt_resistance': 0.85,
     'exploitative_weight': 0.75,
     'risk_premium_coefficient': 0.90,
-    'weight_on_opponent_history': 0.80,
+    'weight_on_opponent_history': 0.90,
   },
   'engine_triggers': {
-    'custom_mechanic': 'Positional_Leverage_Trap',
+    'custom_mechanic': 'Soul_Read',
     'trigger_condition': {'in_position': true, 'min_street': 'FLOP'},
     'action_modifier': {
-      'trapping_frequency_flop_turn': 1.50,
       'postflop_aggression_multiplier_ip': 1.30,
     },
   },
@@ -47,20 +46,22 @@ void main() {
     });
 
     test('parses the spec JSON into the typed model', () {
-      final p = PlayerProfile.fromJson(_haiLeJson);
+      final p = PlayerProfile.fromJson(_negreanuJson);
       expect(p.id, 'P047');
-      expect(p.name, 'Hai Le');
+      expect(p.name, 'Daniel Negreanu');
       expect(p.strategicBaseline.vpipTarget, 0.26);
       expect(p.strategicBaseline.threeBetFrequency, 0.095);
       expect(p.behavioralModifiers.riskPremiumCoefficient, 0.90);
+      expect(p.behavioralModifiers.weightOnOpponentHistory, 0.90);
 
       final t = p.engineTriggers!;
-      expect(t.customMechanic, 'Positional_Leverage_Trap');
+      expect(t.customMechanic, 'Soul_Read');
       expect(t.condition.inPosition, isTrue);
       expect(t.condition.minStreet, BettingRound.flop);
       expect(t.condition.hasNutAdvantage, isNull);
-      expect(t.actionModifier.trappingFrequencyFlopTurn, 1.50);
-      // Omitted multiplier defaults to neutral (1.0).
+      expect(t.actionModifier.postflopAggressionMultiplierIp, 1.30);
+      // Omitted multipliers default to neutral (1.0).
+      expect(t.actionModifier.trappingFrequencyFlopTurn, 1.0);
       expect(t.actionModifier.betSizeMultiplierFlopTurnRiver, 1.0);
     });
 
@@ -71,16 +72,16 @@ void main() {
     });
 
     test('rejects a percentage where a 0–1 fraction is required', () {
-      final bad = Map<String, dynamic>.from(_haiLeJson);
+      final bad = Map<String, dynamic>.from(_negreanuJson);
       bad['strategic_baseline'] = {
-        ..._haiLeJson['strategic_baseline'] as Map,
+        ..._negreanuJson['strategic_baseline'] as Map,
         'vpip_target': 26.0, // percentage mistake
       };
       expect(() => PlayerProfile.fromJson(bad), throwsFormatException);
     });
 
     test('rejects an unknown min_street', () {
-      final bad = Map<String, dynamic>.from(_haiLeJson);
+      final bad = Map<String, dynamic>.from(_negreanuJson);
       bad['engine_triggers'] = {
         'trigger_condition': {'min_street': 'COSMIC'},
       };

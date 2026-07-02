@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:monte/core/domain/ai/bot_spec.dart';
 import 'package:monte/core/domain/ai/decider_factory.dart';
 import 'package:monte/core/domain/ai/personality.dart';
+import 'package:monte/core/domain/ai/player_profiles.dart';
 import 'package:monte/features/table/data/local_game_repository.dart';
 import 'package:monte/features/table/domain/table_snapshot.dart';
 
@@ -83,6 +84,65 @@ void main() {
       ]);
 
       expect(_bots(repo).length, 3);
+    });
+  });
+
+  group('seat names track the persona', () {
+    test('a distinctive archetype names the seat after itself', () async {
+      final repo = _repo(
+        playerCount: 3,
+        seatBots: const [
+          BotSpec(brain: BotType.personality, style: PersonalityArchetype.nit),
+          BotSpec(brain: BotType.mcts, style: PersonalityArchetype.station),
+        ],
+      );
+      addTearDown(repo.dispose);
+      await repo.newGame();
+
+      final bots = _bots(repo);
+      expect(bots[0].name, 'Nit');
+      expect(bots[1].name, 'Calling Station');
+    });
+
+    test('a named pro uses the pro\'s real name', () async {
+      final pro = builtInProfiles.first;
+      final repo = _repo(playerCount: 2, seatBots: [BotSpec(profile: pro)]);
+      addTearDown(repo.dispose);
+      await repo.newGame();
+
+      expect(_bots(repo).single.name, pro.name);
+    });
+
+    test('repeated personas are numbered', () async {
+      final repo = _repo(
+        playerCount: 3,
+        seatBots: const [
+          BotSpec(style: PersonalityArchetype.maniac),
+          BotSpec(style: PersonalityArchetype.maniac),
+        ],
+      );
+      addTearDown(repo.dispose);
+      await repo.newGame();
+
+      final names = _bots(repo).map((s) => s.name).toList();
+      expect(names, ['Maniac 1', 'Maniac 2']);
+    });
+
+    test('personality-less / balanced seats fall back to generic names',
+        () async {
+      final repo = _repo(
+        playerCount: 3,
+        seatBots: const [
+          BotSpec(brain: BotType.heuristic),
+          BotSpec(style: PersonalityArchetype.balanced),
+        ],
+      );
+      addTearDown(repo.dispose);
+      await repo.newGame();
+
+      for (final s in _bots(repo)) {
+        expect(TableConfig.botNamePool, contains(s.name));
+      }
     });
   });
 }

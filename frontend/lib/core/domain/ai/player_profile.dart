@@ -18,7 +18,8 @@ class PlayerProfile {
     required this.strategicBaseline,
     required this.behavioralModifiers,
     this.engineTriggers,
-  });
+    this.skill = 1.0,
+  }) : assert(skill >= 0 && skill <= 1);
 
   final String id;
   final String name;
@@ -28,6 +29,13 @@ class PlayerProfile {
 
   /// Null when the profile has no situational override.
   final EngineTriggers? engineTriggers;
+
+  /// Execution quality in [0, 1]: 1.0 = flawless (pro-tier), lower = noisier
+  /// hand reads, looser discipline, and the occasional blunder. The single dial
+  /// separating amateurs from pros; every amateur leak scales with `1 - skill`,
+  /// so `skill == 1` plays byte-identically to the disciplined pro brain.
+  /// Defaults to 1.0 so existing pro profiles (and their JSON) are unchanged.
+  final double skill;
 
   factory PlayerProfile.fromJson(Map<String, dynamic> json) => PlayerProfile(
     id: _str(json, 'id'),
@@ -40,6 +48,8 @@ class PlayerProfile {
     engineTriggers: json['engine_triggers'] == null
         ? null
         : EngineTriggers.fromJson(_obj(json, 'engine_triggers')),
+    // Optional: older profiles predate `skill` and default to pro-tier 1.0.
+    skill: _unitOr(json, 'skill', 1.0),
   );
 
   Map<String, dynamic> toJson() => {
@@ -49,6 +59,7 @@ class PlayerProfile {
     'strategic_baseline': strategicBaseline.toJson(),
     'behavioral_modifiers': behavioralModifiers.toJson(),
     'engine_triggers': engineTriggers?.toJson(),
+    'skill': skill,
   };
 
   /// Soft, cross-field sanity checks (each entry is a human-readable warning).
@@ -158,7 +169,7 @@ class EngineTriggers {
     required this.actionModifier,
   });
 
-  /// Identifier for the bespoke mechanic (e.g. `Positional_Leverage_Trap`).
+  /// Identifier for the bespoke mechanic (e.g. `Soul_Read`).
   final String? customMechanic;
   final TriggerCondition condition;
   final ActionModifier actionModifier;
@@ -265,6 +276,13 @@ double _unit(Map<String, dynamic> j, String key) {
     throw FormatException('Field "$key" must be a 0–1 fraction (got $d).');
   }
   return d;
+}
+
+/// A 0–1 fraction that defaults to [fallback] when the key is absent (unlike
+/// [_unit], which requires it). Rejects percentages when present.
+double _unitOr(Map<String, dynamic> j, String key, double fallback) {
+  if (j[key] == null) return fallback;
+  return _unit(j, key);
 }
 
 /// A multiplier centred on 1.0; defaults to 1.0 when absent. Must be >= 0.

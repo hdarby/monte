@@ -47,7 +47,7 @@ class ProfileCalibrator {
       pfr: 0.5086,
       threeBet: 0.5086,
     ),
-    // Hai Le (26 / 21 / 9.5) -> measured 24.9 / 19.6 / 8.4.
+    // Daniel Negreanu (26 / 21 / 9.5) -> measured 24.9 / 19.6 / 8.4.
     '0.26_0.21_0.095_6': const PreflopRanges(
       vpip: 0.4729,
       pfr: 0.5086,

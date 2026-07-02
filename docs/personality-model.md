@@ -88,13 +88,14 @@ game tables.
 **Target Dynamics:** Manages risk with wide preflop range by using smaller bet sizes.
 Trusts hand reading ability and will sniff out bluffs to make hero calls.
 
-**Custom Mechanic:** `Soul_Read`. Uncanny ability to significantly narrow range of 
-opponent's holdings based on understanding opponent tendencies.
+**Custom Mechanic:** `Soul_Read`. Uncanny ability to significantly narrow range of
+opponent's holdings based on understanding opponent tendencies, and to shift
+gears to aggressive when the read warrants it.
 
 ```json
 {
   "id": "P047",
-  "name": "Daniel Negraneau",
+  "name": "Daniel Negreanu",
   "archetype": "Small_Ball_Hand_Reader",
   "strategic_baseline": {
     "vpip_target": 0.26,
@@ -111,8 +112,11 @@ opponent's holdings based on understanding opponent tendencies.
   "engine_triggers": {
     "custom_mechanic": "Soul_Read",
     "trigger_condition": {
-      "min_street": "RIVER",
-      "trusts_reads": true
+      "in_position": true,
+      "min_street": "FLOP"
+    },
+    "action_modifier": {
+      "postflop_aggression_multiplier_ip": 1.30
     }
   }
 }
@@ -352,7 +356,7 @@ migrate the UI to it once Phase 1 proves out, then retire the old `PersonalityPr
 - `PlayerProfile` Dart model mirroring the schema (`strategic_baseline`,
   `behavioral_modifiers`, structured `engine_triggers`), with JSON round-trip and
   range/scale validation.
-- Seed the three pros (Negraneau, Addamo, Haxton) as built-in profiles.
+- Seed the three pros (Negreanu, Addamo, Haxton) as built-in profiles.
 - **Validates:** the contract parses and survives a round-trip. Pure data — nothing
   in the engine changes yet.
 
@@ -378,7 +382,7 @@ migrate the UI to it once Phase 1 proves out, then retire the old `PersonalityPr
   fixed-point on the admitted fractions (PFR = opens + 3-bets, so it targets open
   = PFR − 3-bet), keeping the bands nested (3-bet ⊆ open ⊆ VPIP).
 - **Result (all within ~1.5 pts):** Haxton 23.8 / 19.1 / 7.4 (tgt 24 / 19.5 / 8),
-  Hai Le 25.3 / 21.1 / 9.6 (tgt 26 / 21 / 9.5), Addamo 31.3 / 26.5 / 13.0 (tgt 32 /
+  Negreanu 25.3 / 21.1 / 9.6 (tgt 26 / 21 / 9.5), Addamo 31.3 / 26.5 / 13.0 (tgt 32 /
   28 / 14). Validated by `test/ai/profile_calibration_test.dart`.
 
 ### Phase 2 — Skill via the search (`gto_adherence_weight`) — **IN PROGRESS**
@@ -444,9 +448,33 @@ migrate the UI to it once Phase 1 proves out, then retire the old `PersonalityPr
 - `overfold_to_river_action` → likelihood to exploitively fold to river bet from 
   recreational players due to the underbetting tendency of recreational players.
 
+### Phase 3.5 — Skill dial & amateur (home-game) players — **DONE**
+- **`skill` field** on `PlayerProfile` (`[0, 1]`, default **1.0**; JSON-optional so
+  existing pros round-trip). 1.0 = flawless pro-tier execution; lower = weaker.
+- **`AmateurPolicy`** (`amateur_policy.dart`) is the pro substrate degraded by
+  `k = 1 − skill`: (a) Gaussian **read-noise** on the equity estimate (the primary,
+  style-independent dial); (b) **misjudged perceived ranges** (nits imagine nits →
+  overfold, stations imagine bluffers → call light); (c) a **pot-odds discipline**
+  shift (loose call / tight overfold); (d) distorted value/bluff thresholds; (e) a
+  bounded (≤10%) **plausible blunder**. Preflop leaks are a *widened analytic*
+  `PreflopRanges` (loose calling, limps via the VPIP≫PFR gap, under-3-betting) — so
+  amateurs bypass `ProfileCalibrator`. Every term is `k × (non-negative bias)`, so
+  it's monotonic in skill and collapses onto the pro brain at `skill = 1`.
+- **Home-game roster** (`home_game_profiles.dart`): `buildAmateur({strength 1–10,
+  style knobs})` maps a strength rating to `skill` and stats; `homeGameProfiles`
+  seeds two examples. Amateurs appear under a "Home game" group in the lineup
+  editor and are seated via the same `_deciderForBot` seam.
+- **Strength gate** (`test/ai/amateur_strength_test.dart`): a seeded, seat-rotated
+  sim seats one amateur among the pro field. Observed: the strong-amateur example
+  loses ~49 bb/100 to the pros (which each stay net-positive), the loose station
+  ~199; and loss rate is monotonic in skill above the loss *floor* (very-low skills
+  plateau near the max bleed a stack-topped game allows). This is the right
+  instrument — a mixed table's bb/100 just measures who feasts on the biggest fish,
+  and heads-up exposes the pros' 6-max ranges to blind-stealing.
+
 ### Phase 4 — Engine triggers (situational mechanics)
 - Structured-condition evaluator + `action_modifier` application.
-- Implement `Positional_Leverage_Trap` and `Geometric_Overbet_Execution`.
+- Implement `Soul_Read` and `Geometric_Overbet_Execution`.
 
 ### Phase 5 — UI & integration
 - Profile picker in the New Game / seat setup (named pros alongside archetypes).

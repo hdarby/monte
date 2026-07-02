@@ -118,8 +118,8 @@ void main() {
       final hero = _p(g, 'p1');
       expect(g.callAmount(hero), 0);
 
-      // haiLe: adherence 0.65, exploit 0.75 -> deviates; Haxton: adherence 1.0.
-      final exploiter = _aggressiveRate(_pol(haiLe), g, hero, trials);
+      // danielNegreanu: adherence 0.65, exploit 0.75 -> deviates; Haxton: adherence 1.0.
+      final exploiter = _aggressiveRate(_pol(danielNegreanu), g, hero, trials);
       final gto = _aggressiveRate(_pol(isaacHaxton), g, hero, trials);
       expect(exploiter, greaterThan(gto));
     });
@@ -135,7 +135,7 @@ void main() {
           );
       final g1 = draw();
       final g2 = draw();
-      final exploiter = _aggressiveRate(_pol(haiLe), g1, _p(g1, 'p1'), trials);
+      final exploiter = _aggressiveRate(_pol(danielNegreanu), g1, _p(g1, 'p1'), trials);
       final gto = _aggressiveRate(_pol(isaacHaxton), g2, _p(g2, 'p1'), trials);
       expect(exploiter, greaterThan(gto));
     });

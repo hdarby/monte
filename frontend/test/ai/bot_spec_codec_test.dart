@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:monte/core/domain/ai/bot_spec.dart';
 import 'package:monte/core/domain/ai/decider_factory.dart';
+import 'package:monte/core/domain/ai/home_game_profiles.dart';
 import 'package:monte/core/domain/ai/personality.dart';
 import 'package:monte/core/domain/ai/player_profiles.dart';
 
@@ -19,6 +20,14 @@ void main() {
       final decoded = BotSpec.decode(spec.encode());
       expect(decoded.isProfile, isTrue);
       expect(decoded.profile!.id, builtInProfiles.first.id);
+    });
+
+    test('round-trips a home-game amateur by id', () {
+      final spec = BotSpec(profile: homeGameProfiles.first);
+      final decoded = BotSpec.decode(spec.encode());
+      expect(decoded.isProfile, isTrue);
+      expect(decoded.profile!.id, homeGameProfiles.first.id);
+      expect(decoded.profile!.skill, lessThan(1.0));
     });
 
     test('falls back safely on malformed / unknown input', () {
