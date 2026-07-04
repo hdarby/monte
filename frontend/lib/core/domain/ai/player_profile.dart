@@ -30,6 +30,19 @@ class PlayerProfile {
   /// Null when the profile has no situational override.
   final EngineTriggers? engineTriggers;
 
+  /// A copy with [strategicBaseline] replaced — used to apply a tuned baseline
+  /// override while keeping the profile's identity, skill, and modifiers.
+  PlayerProfile withStrategicBaseline(StrategicBaseline baseline) =>
+      PlayerProfile(
+        id: id,
+        name: name,
+        archetype: archetype,
+        strategicBaseline: baseline,
+        behavioralModifiers: behavioralModifiers,
+        engineTriggers: engineTriggers,
+        skill: skill,
+      );
+
   /// Execution quality in [0, 1]: 1.0 = flawless (pro-tier), lower = noisier
   /// hand reads, looser discipline, and the occasional blunder. The single dial
   /// separating amateurs from pros; every amateur leak scales with `1 - skill`,

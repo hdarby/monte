@@ -91,7 +91,10 @@ monte/
 │       └── features/
 │           ├── table/{domain,data,presentation}      game + table UI (GameRepository, TableViewModel)
 │           ├── settings/{domain,data,presentation}   persisted GameSettings (SettingsController)
-│           └── analytics/{domain,presentation}       VPIP/PFR/AF (AnalyticsViewModel)
+│           ├── analytics/{domain,presentation}       VPIP/PFR/AF (AnalyticsViewModel)
+│           └── eval_history/{domain,data,presentation}  permanent full-info tuning
+│                                                     record (EvalHand, JSONL store, EvalMetrics)
+│                                                     + offline AutoTuner → persisted ProfileOverrides
 └── backend/    Ktor scaffold (Postgres/Exposed, WebSocket — TODO)
 ```
 
@@ -171,3 +174,10 @@ tool/test.sh all|list      # all / show which files each group resolves to
 - macOS terminal lacks Screen Recording / Accessibility perms: I can't screenshot
   or foreground the running app — owner Cmd-Tabs to it.
 - `cd X && cmd` in one Bash call does not persist the working dir to later calls.
+- **Two hand records, kept separate on purpose.** `HandHistory` (bot-facing) masks
+  folded/mucked cards — the opponent model and any display read only this ("no free
+  information"). `EvalHand` (`features/eval_history/`) is the *full-information*
+  tuning record (all cards, positions, model per seat), captured at the same
+  `_finalizeHand` seam via `TableConfig.onEvalHandRecorded` and written only to the
+  on-disk JSONL store. Never route an `EvalHand` to a `DecisionPolicy`/`OpponentModel`.
+  Analytics → **Wipe tuning history** clears the file *and* in-session reads.

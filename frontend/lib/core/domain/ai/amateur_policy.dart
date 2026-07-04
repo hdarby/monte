@@ -8,6 +8,7 @@ import 'package:monte/core/domain/engine/actions.dart';
 import 'package:monte/core/domain/engine/bet_snap.dart';
 import 'package:monte/core/domain/engine/decision_policy.dart';
 import 'package:monte/core/domain/engine/game.dart';
+import 'package:monte/core/domain/engine/hand_evaluator.dart';
 import 'package:monte/core/domain/engine/hand_strength.dart';
 import 'package:monte/core/domain/engine/player.dart';
 
@@ -62,8 +63,10 @@ class AmateurPolicy implements DecisionPolicy {
 
   /// Facing escalation, the premium cutoffs that stop junk raise-wars (copied
   /// from `ProfilePolicy` so amateurs stay believable rather than insane).
+  /// Amateurs re-raise/4-bet only genuine premiums (top ~1.2%) — recreational
+  /// players rarely put in a third bet, so this keeps preflop aggression low.
   static final double _vs3betCall = PreflopRanges.thresholdForFraction(0.055);
-  static final double _stackOff = PreflopRanges.thresholdForFraction(0.025);
+  static final double _stackOff = PreflopRanges.thresholdForFraction(0.012);
 
   /// The profile's preflop targets widened by its leaks: loose players enter
   /// wider (`vpip`), everyone under-raises (passive VPIP≫PFR gap → limps) and
@@ -141,6 +144,7 @@ class AmateurPolicy implements DecisionPolicy {
     final bb = game.bigBlind;
     final raises = game.raiseCountThisRound;
     final canRaise = p.stack > toCall;
+    final onRiver = game.round == BettingRound.river;
 
     final adherence = profile.strategicBaseline.gtoAdherenceWeight;
     final exploit =
@@ -165,9 +169,11 @@ class AmateurPolicy implements DecisionPolicy {
     );
     // Draw recognition uses the honest equity; decisions use the misread one.
     // Read-noise is the primary, *style-independent* skill dial: even a
-    // neutral-style amateur misreads hands, so it trails every pro.
+    // neutral-style amateur misreads hands, so it trails every pro. Kept
+    // moderate — the realism guards below stop it from producing absurd actions
+    // (calling off with air, shipping junk) while it still costs EV believably.
     final isDraw = eq >= 0.32 && eq <= 0.55;
-    final noisy = (eq + _gaussian() * 0.30 * _k).clamp(0.0, 1.0);
+    final noisy = (eq + _gaussian() * 0.26 * _k).clamp(0.0, 1.0);
 
     GameAction betBy(double fraction) {
       final raw = p.currentBet + (game.pot * fraction).round();
@@ -185,14 +191,16 @@ class AmateurPolicy implements DecisionPolicy {
     }
 
     // Occasional plausible blunder (bounded), scaled purely by incompetence.
-    final blunderP = (0.12 * _k).clamp(0.0, 0.10);
+    // Kept believable: a small stab or spew-fold, never a big call-off with air.
+    final blunderP = (0.12 * _k).clamp(0.0, 0.08);
     if (_random.nextDouble() < blunderP) {
       if (toCall == 0) {
         return (_random.nextBool() && p.stack > bb)
-            ? betBy((0.5 * sizeScale).clamp(0.33, 1.0)) // spazz stab
+            ? betBy((0.5 * sizeScale).clamp(0.33, 0.9)) // spazz stab
             : const GameAction.check();
       }
-      // Facing a bet: overcall (station off) or spew-fold — both legal.
+      // Facing a bet: spazz-fold, or a small overcall — never call off a big bet.
+      if (toCall > 4 * bb) return const GameAction.fold();
       return _random.nextBool()
           ? const GameAction.fold()
           : const GameAction.call();
@@ -200,33 +208,68 @@ class AmateurPolicy implements DecisionPolicy {
 
     // No bet to face: value-bet or bluff, with style-shifted thresholds.
     if (toCall == 0) {
+      // The river bar is higher — thin river value bets just get called by
+      // better and bloat the pot into a stack-off, so amateurs value-bet the
+      // end more selectively.
       final valueCut =
-          ((0.60 - 0.10 * exploit) + 0.12 * _k * _tight - 0.10 * _k * _loose)
-              .clamp(0.30, 0.85);
+          ((0.60 - 0.08 * exploit) + 0.12 * _k * _tight - 0.10 * _k * _loose +
+                  (onRiver ? 0.10 : 0.0))
+              .clamp(0.40, 0.90);
       final wantsValue = noisy > valueCut;
-      final bluffChance = ((0.10 + 0.35 * exploit) + 0.25 * _k * _loose) *
+      final bluffChance = ((0.10 + 0.30 * exploit) + 0.15 * _k * _loose) *
           ((1 - noisy) * 0.6 + (isDraw ? 0.4 : 0.0));
       final wantsBluff = _random.nextDouble() < bluffChance;
       if ((wantsValue || wantsBluff) && p.stack > bb) {
-        return betBy((0.55 * sizeScale).clamp(0.33, 1.0));
+        return betBy((0.55 * sizeScale).clamp(0.33, 0.9));
       }
       return const GameAction.check();
     }
 
     // Facing a bet.
     final potOdds = toCall / (game.pot + toCall);
-    final valueRaiseCut =
-        ((0.74 - 0.08 * exploit) + 0.12 * _k * _tight - 0.10 * _k * _loose)
-            .clamp(0.40, 0.95);
-    final wantsValueRaise = noisy > valueRaiseCut;
-    final wantsBluffRaise =
-        isDraw && _random.nextDouble() < 0.05 + 0.30 * exploit + 0.10 * _k * _loose;
-    if (canRaise && (wantsValueRaise || wantsBluffRaise)) {
-      return raiseBy((0.5 * sizeScale).clamp(0.33, 1.2));
+    final commit = toCall / (p.stack + toCall); // share of remaining stack risked
+
+    // River discipline floor: never call a real bet with a hand that can't beat
+    // a pair. Amateurs pay off with weak *made* hands (stations call with a
+    // pair), but not with literal air — no calling off with king-high on the
+    // end. Uses the actual made hand, so noise can't override it.
+    if (onRiver && toCall > bb) {
+      final made = HandEvaluator.evaluate([...p.hole, ...game.board]).rank;
+      if (made == HandRank.highCard) return const GameAction.fold();
     }
-    // Discipline leak: stations call below pot odds, nits overfold above.
+
+    // Short-stack / committed play: once calling would put more than ~40% of the
+    // remaining stack in, amateurs jam or fold — they rarely just flat a big
+    // chunk. Continue only with a genuine hand or live draw (honest-equity floor
+    // so a noisy read can't ship air), and prefer shoving for the fold equity.
+    if (commit > 0.4) {
+      final strongEnough = noisy >= 0.45 && eq >= 0.42;
+      if (!strongEnough) return const GameAction.fold();
+      return canRaise
+          ? GameAction.raise(game.maxRaiseTo(p)) // jam
+          : const GameAction.call(); // already facing a (near) all-in
+    }
+
+    // Not committed: a value-raise needs *genuine* strength (honest equity), not
+    // just a noisy read — so amateurs don't ship weak hands. And don't re-raise
+    // into an already-raised pot without a premium: this stops the multi-raise
+    // all-in wars with holdings that don't support them.
+    final valueRaiseCut =
+        ((0.74 - 0.06 * exploit) + 0.12 * _k * _tight - 0.08 * _k * _loose)
+            .clamp(0.55, 0.95);
+    final wantsValueRaise = noisy > valueRaiseCut && eq > 0.60;
+    final wantsBluffRaise = isDraw &&
+        raises == 0 &&
+        _random.nextDouble() < 0.04 + 0.20 * exploit + 0.06 * _k * _loose;
+    final mayRaise = canRaise && (raises == 0 || eq > 0.80);
+    if (mayRaise && (wantsValueRaise || wantsBluffRaise)) {
+      return raiseBy((0.5 * sizeScale).clamp(0.33, 0.9));
+    }
+
+    // Discipline leak: stations call a bit below pot odds, nits overfold above —
+    // bounded so it stays a believable leak, not a spew.
     final callThreshold =
-        (potOdds + 0.10 * _k * _tight - 0.16 * _k * _loose).clamp(0.0, 1.0);
+        (potOdds + 0.10 * _k * _tight - 0.10 * _k * _loose).clamp(0.0, 1.0);
     if (noisy >= callThreshold) return const GameAction.call();
     return const GameAction.fold();
   }

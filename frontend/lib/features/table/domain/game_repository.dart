@@ -61,6 +61,10 @@ abstract class GameRepository {
   /// Clears the recorded hand history.
   void clearHistory();
 
+  /// Wipes in-session memory used for tuning — recorded history and accumulated
+  /// opponent reads — so a changed model isn't judged on stale observations.
+  void resetMemory();
+
   /// Releases resources (closes the snapshot stream).
   void dispose();
 }

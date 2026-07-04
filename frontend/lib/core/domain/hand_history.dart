@@ -19,6 +19,14 @@ class ActionRecord {
   final int amount;
   final int potAfter;
 
+  factory ActionRecord.fromJson(Map<String, dynamic> j) => ActionRecord(
+    playerId: j['playerId'] as String,
+    street: BettingRound.values.byName(j['street'] as String),
+    type: ActionType.values.byName(j['type'] as String),
+    amount: j['amount'] as int,
+    potAfter: j['potAfter'] as int,
+  );
+
   Map<String, dynamic> toJson() => {
     'playerId': playerId,
     'street': street.name,
@@ -74,6 +82,12 @@ class HandResultRecord {
   final String playerId;
   final int amountWon;
   final String? handRank;
+
+  factory HandResultRecord.fromJson(Map<String, dynamic> j) => HandResultRecord(
+    playerId: j['playerId'] as String,
+    amountWon: j['amountWon'] as int,
+    handRank: j['handRank'] as String?,
+  );
 
   Map<String, dynamic> toJson() => {
     'playerId': playerId,

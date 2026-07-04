@@ -72,6 +72,10 @@ class OpponentModel {
   /// Player ids seen so far.
   Iterable<String> get knownPlayers => _byId.keys;
 
+  /// Forgets every accumulated read — used when wiping tuning memory so a
+  /// changed model isn't judged on stale observations.
+  void reset() => _byId.clear();
+
   /// Folds a completed [hand] into every dealt player's running observations.
   void observe(HandHistory hand) {
     for (final player in hand.players) {

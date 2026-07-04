@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:monte/core/di/game_providers.dart';
 import 'package:monte/features/analytics/domain/analytics.dart';
+import 'package:monte/features/eval_history/domain/eval_metrics.dart';
+import 'package:monte/features/eval_history/presentation/eval_history_provider.dart';
 import 'package:monte/features/table/domain/game_repository.dart';
 
 /// Immutable analytics view state.
@@ -16,10 +18,19 @@ class AnalyticsState {
     this.isSimulating = false,
     this.simulated = 0,
     this.target = 0,
+    this.tuningCount = 0,
+    this.tuningMetrics = const [],
+    this.tuningLoading = false,
   });
 
   final List<PlayerStats> stats;
   final int handCount;
+
+  /// Permanent tuning history: total hands recorded, and per-model metrics
+  /// (loaded on demand from the on-disk full-information record).
+  final int tuningCount;
+  final List<ModelMetrics> tuningMetrics;
+  final bool tuningLoading;
 
   /// Whether the dealer button rotates each hand during simulation.
   final bool rotateButton;
@@ -43,6 +54,9 @@ class AnalyticsState {
     bool? isSimulating,
     int? simulated,
     int? target,
+    int? tuningCount,
+    List<ModelMetrics>? tuningMetrics,
+    bool? tuningLoading,
   }) => AnalyticsState(
     stats: stats ?? this.stats,
     handCount: handCount ?? this.handCount,
@@ -51,6 +65,9 @@ class AnalyticsState {
     isSimulating: isSimulating ?? this.isSimulating,
     simulated: simulated ?? this.simulated,
     target: target ?? this.target,
+    tuningCount: tuningCount ?? this.tuningCount,
+    tuningMetrics: tuningMetrics ?? this.tuningMetrics,
+    tuningLoading: tuningLoading ?? this.tuningLoading,
   );
 }
 
@@ -118,8 +135,63 @@ class AnalyticsViewModel extends Notifier<AnalyticsState> {
       }
     } finally {
       _suppressRecompute = false;
-      state = _compute();
+      // Persist the tuning records this run produced, then refresh the count.
+      final store = ref.read(evalHistoryStoreProvider);
+      await store.flush();
+      state = _compute().copyWith(tuningCount: await store.count());
     }
+  }
+
+  /// Loads the persisted tuning history and computes per-model metrics for
+  /// display. Kept on-demand — the file can be large.
+  Future<void> loadTuning() async {
+    state = state.copyWith(tuningLoading: true);
+    final store = ref.read(evalHistoryStoreProvider);
+    final hands = await store.loadAll();
+    final metrics = EvalMetrics.byModel(hands).values.toList()
+      ..sort((a, b) => b.bbPer100.compareTo(a.bbPer100));
+    state = state.copyWith(
+      tuningLoading: false,
+      tuningCount: hands.length,
+      tuningMetrics: metrics,
+    );
+  }
+
+  /// Wipes ALL tuning memory: the on-disk full-information history *and* the
+  /// in-session recorded hands + opponent reads — the reset to run clean after
+  /// changing a model, so stale behavior can't pollute tuning.
+  Future<void> wipeTuning() async {
+    await ref.read(evalHistoryStoreProvider).wipe();
+    _repo.resetMemory();
+    state = _compute().copyWith(
+      tuningCount: 0,
+      tuningMetrics: const [],
+      tuningLoading: false,
+    );
+  }
+
+  /// Offline auto-tune: reads the tuning file and nudges amateur personalities'
+  /// preflop parameters toward their type targets (no tokens), then resets the
+  /// now-stale sample. Returns how many models were adjusted this pass.
+  Future<int> autoTunePersonalities() async {
+    final hands = await ref.read(evalHistoryStoreProvider).loadAll();
+    final changed = await ref
+        .read(profileOverridesProvider.notifier)
+        .autoTune(hands);
+    await wipeTuning(); // sample is stale under the new params
+    return changed;
+  }
+
+  /// Reverts every personality to its code-defined type (clears tuning overrides).
+  Future<void> resetTuningAdjustments() =>
+      ref.read(profileOverridesProvider.notifier).reset();
+
+  /// The full-information tuning history as pretty JSON (one array), for export.
+  Future<String> tuningExportJson() async {
+    final hands = await ref.read(evalHistoryStoreProvider).loadAll();
+    return const JsonEncoder.withIndent(
+      '  ',
+    ).convert(hands.map((h) => h.toJson()).toList());
   }
 
   /// Requests the current simulation stop at the next chunk boundary.

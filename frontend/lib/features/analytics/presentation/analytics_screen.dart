@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:monte/core/theme/app_theme.dart';
 import 'package:monte/features/analytics/domain/analytics.dart';
 import 'package:monte/features/analytics/presentation/analytics_view_model.dart';
+import 'package:monte/features/eval_history/domain/eval_metrics.dart';
+import 'package:monte/features/eval_history/presentation/eval_history_provider.dart';
 
 /// Shows poker analytics (VPIP, PFR, Aggression, win rate) computed from the
 /// recorded hand histories, with controls to simulate an arbitrary number of
@@ -109,11 +111,87 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
                         v == double.infinity ? '∞' : v.toStringAsFixed(2),
                   ),
                 ],
+                const SizedBox(height: 24),
+                const Divider(color: Colors.white12),
+                const SizedBox(height: 16),
+                _tuningSection(state),
               ],
             ),
           ),
         ),
       ),
+    );
+  }
+
+  /// The permanent, full-information tuning history — recorded for every hand
+  /// (live and simulated), including folded cards, and never shown to a bot.
+  Widget _tuningSection(AnalyticsState state) {
+    final vm = ref.read(analyticsViewModelProvider.notifier);
+    final busy = state.isSimulating;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Tuning history (permanent)',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          '${state.tuningCount} hands recorded — full information (incl. folded '
+          'cards, positions, model per seat). Never shown to bots; persists '
+          'across sessions until wiped.',
+          style: const TextStyle(color: Colors.white54),
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            OutlinedButton.icon(
+              icon: const Icon(Icons.insights),
+              onPressed: busy || state.tuningLoading ? null : vm.loadTuning,
+              label: const Text('Load metrics by model'),
+            ),
+            OutlinedButton.icon(
+              icon: const Icon(Icons.download),
+              onPressed: busy ? null : () => _exportTuning(context),
+              label: const Text('Export full JSON'),
+            ),
+            FilledButton.icon(
+              style: FilledButton.styleFrom(
+                backgroundColor: AppTheme.gold,
+                foregroundColor: Colors.black,
+              ),
+              icon: const Icon(Icons.auto_fix_high),
+              onPressed: busy ? null : () => _autoTune(context),
+              label: const Text('Auto-tune personalities'),
+            ),
+            OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFFEF5350),
+              ),
+              icon: const Icon(Icons.delete_forever),
+              onPressed: busy ? null : () => _confirmWipe(context),
+              label: const Text('Wipe tuning history'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        _adjustmentsStatus(),
+        if (state.tuningLoading) ...[
+          const SizedBox(height: 16),
+          const LinearProgressIndicator(
+            minHeight: 4,
+            backgroundColor: Colors.white10,
+            color: AppTheme.gold,
+          ),
+        ],
+        if (state.tuningMetrics.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          _tuningTable(state.tuningMetrics),
+        ],
+      ],
     );
   }
 
@@ -238,6 +316,179 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
         SnackBar(content: Text('Copied $handCount hands as JSON to clipboard')),
       );
     }
+  }
+
+  Future<void> _exportTuning(BuildContext context) async {
+    final json = await ref
+        .read(analyticsViewModelProvider.notifier)
+        .tuningExportJson();
+    await Clipboard.setData(ClipboardData(text: json));
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Copied full-information tuning history to clipboard'),
+        ),
+      );
+    }
+  }
+
+  Widget _adjustmentsStatus() {
+    final n = ref.watch(profileOverridesProvider).length;
+    if (n == 0) {
+      return const Text(
+        'No tuning adjustments applied — personalities use their code defaults.',
+        style: TextStyle(color: Colors.white38, fontSize: 12),
+      );
+    }
+    return Row(
+      children: [
+        Text(
+          '$n ${n == 1 ? 'personality' : 'personalities'} currently adjusted '
+          'by the tuner.',
+          style: const TextStyle(color: AppTheme.gold, fontSize: 12),
+        ),
+        const SizedBox(width: 12),
+        TextButton(
+          onPressed: () => _resetAdjustments(context),
+          child: const Text('Reset adjustments'),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _autoTune(BuildContext context) async {
+    final changed = await ref
+        .read(analyticsViewModelProvider.notifier)
+        .autoTunePersonalities();
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            changed == 0
+                ? 'No models had enough hands to tune (need ~300+). Simulate '
+                    'more, then auto-tune again.'
+                : 'Auto-tuned $changed ${changed == 1 ? 'personality' : 'personalities'} '
+                    'toward target. Tuning history reset — simulate again to refine.',
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _resetAdjustments(BuildContext context) async {
+    await ref
+        .read(analyticsViewModelProvider.notifier)
+        .resetTuningAdjustments();
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Adjustments cleared — personalities reverted to defaults'),
+        ),
+      );
+    }
+  }
+
+  Future<void> _confirmWipe(BuildContext context) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        title: const Text('Wipe tuning history?'),
+        content: const Text(
+          'Permanently deletes the recorded full-information hand history and '
+          'resets in-session opponent reads. Do this after changing a model so '
+          'old behavior can\'t pollute tuning. This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFEF5350),
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Wipe'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) {
+      await ref.read(analyticsViewModelProvider.notifier).wipeTuning();
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Tuning history wiped')),
+        );
+      }
+    }
+  }
+
+  Widget _tuningTable(List<ModelMetrics> metrics) {
+    String pct(double v) => v.toStringAsFixed(0);
+    String vpipCell(ModelMetrics m) {
+      final t = m.vpipTarget;
+      return t == null ? pct(m.vpip) : '${pct(m.vpip)} (t${pct(t)})';
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.black26,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: DataTable(
+          columns: const [
+            DataColumn(label: Text('Model')),
+            DataColumn(label: Text('Hands'), numeric: true),
+            DataColumn(label: Text('VPIP% (t)'), numeric: true),
+            DataColumn(label: Text('PFR%'), numeric: true),
+            DataColumn(label: Text('3B%'), numeric: true),
+            DataColumn(label: Text('Limp%'), numeric: true),
+            DataColumn(label: Text('AF'), numeric: true),
+            DataColumn(label: Text('Steal%'), numeric: true),
+            DataColumn(label: Text('StlWin%'), numeric: true),
+            DataColumn(label: Text('FoldRvr%'), numeric: true),
+            DataColumn(label: Text('WTSD%'), numeric: true),
+            DataColumn(label: Text('bb/100'), numeric: true),
+          ],
+          rows: [
+            for (final m in metrics)
+              DataRow(
+                cells: [
+                  DataCell(Text(m.modelLabel)),
+                  DataCell(Text('${m.hands}')),
+                  DataCell(Text(vpipCell(m))),
+                  DataCell(Text(pct(m.pfr))),
+                  DataCell(Text(pct(m.threeBet))),
+                  DataCell(Text(pct(m.limp))),
+                  DataCell(Text(
+                    m.aggressionFactor == double.infinity
+                        ? '∞'
+                        : m.aggressionFactor.toStringAsFixed(2),
+                  )),
+                  DataCell(Text(pct(m.stealAttemptPct))),
+                  DataCell(Text(pct(m.stealSuccessPct))),
+                  DataCell(Text(pct(m.foldToRiverBet))),
+                  DataCell(Text(pct(m.wtsd))),
+                  DataCell(Text(
+                    m.bbPer100.toStringAsFixed(1),
+                    style: TextStyle(
+                      color: m.bbPer100 >= 0
+                          ? const Color(0xFF66BB6A)
+                          : const Color(0xFFEF5350),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  )),
+                ],
+              ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _statsTable(List<PlayerStats> stats, Map<String, String> behavior) {

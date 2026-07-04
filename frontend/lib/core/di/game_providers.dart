@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:monte/core/domain/ai/bot_spec.dart';
 import 'package:monte/core/domain/ai/decider_factory.dart';
+import 'package:monte/features/eval_history/presentation/eval_history_provider.dart';
 import 'package:monte/features/settings/domain/game_settings.dart';
 import 'package:monte/features/settings/presentation/settings_controller.dart';
 import 'package:monte/features/table/data/local_game_repository.dart';
@@ -78,6 +79,12 @@ final gameRepositoryProvider = Provider<GameRepository>((ref) {
           print('HHLOG $line');
         }
       },
+      // Every finished hand (live + simulated) is appended to the permanent
+      // full-information tuning history. This record is never read by a bot.
+      onEvalHandRecorded: ref.read(evalHistoryStoreProvider).record,
+      // Swap in any tuned preflop baselines from the offline auto-tuner. Watched
+      // so a tune rebuilds the table with the new personality parameters.
+      overrideProfile: ref.watch(profileOverridesProvider).apply,
     ),
   );
   ref.onDispose(repo.dispose);

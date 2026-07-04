@@ -35,6 +35,9 @@ class RemoteGameRepository extends GameRepository {
   void clearHistory() {}
 
   @override
+  void resetMemory() {}
+
+  @override
   Future<void> newGame() => throw UnimplementedError(
     'RemoteGameRepository is a stub for the upcoming Ktor backend.',
   );

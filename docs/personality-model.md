@@ -456,21 +456,33 @@ migrate the UI to it once Phase 1 proves out, then retire the old `PersonalityPr
   style-independent dial); (b) **misjudged perceived ranges** (nits imagine nits →
   overfold, stations imagine bluffers → call light); (c) a **pot-odds discipline**
   shift (loose call / tight overfold); (d) distorted value/bluff thresholds; (e) a
-  bounded (≤10%) **plausible blunder**. Preflop leaks are a *widened analytic*
+  bounded **plausible blunder**. Preflop leaks are a *widened analytic*
   `PreflopRanges` (loose calling, limps via the VPIP≫PFR gap, under-3-betting) — so
-  amateurs bypass `ProfileCalibrator`. Every term is `k × (non-negative bias)`, so
-  it's monotonic in skill and collapses onto the pro brain at `skill = 1`.
+  amateurs bypass `ProfileCalibrator`. Monotonic in skill; collapses onto the pro
+  brain at `skill = 1`.
+- **Realism guards** (added after a play-session review flagged over-aggression and
+  river air-calls): the noise/blunder dial is capped by hard guards so it degrades
+  EV *believably* instead of spewing — (i) a **river made-hand floor** (never call a
+  real river bet with a hand that can't beat a pair), (ii) a **deep-stack
+  commitment guard** (don't call off a big share of stack without genuine, honest
+  equity — no light 100bb stack-offs), (iii) **value-raises need honest strength**
+  and **no re-raising into escalation** without a premium (kills multi-raise all-in
+  wars), and (iv) a **higher river value bar**. `test/ai/amateur_realism_test.dart`
+  locks these in: 0 big river air-calls and bounded stack-off frequency over a
+  spicy 6-amateur table.
 - **Home-game roster** (`home_game_profiles.dart`): `buildAmateur({strength 1–10,
   style knobs})` maps a strength rating to `skill` and stats; `homeGameProfiles`
-  seeds two examples. Amateurs appear under a "Home game" group in the lineup
-  editor and are seated via the same `_deciderForBot` seam.
+  holds the owner's 13-player roster. Amateurs appear under a "Home game" group in
+  the lineup editor and seat via the same `_deciderForBot` seam.
 - **Strength gate** (`test/ai/amateur_strength_test.dart`): a seeded, seat-rotated
-  sim seats one amateur among the pro field. Observed: the strong-amateur example
-  loses ~49 bb/100 to the pros (which each stay net-positive), the loose station
-  ~199; and loss rate is monotonic in skill above the loss *floor* (very-low skills
-  plateau near the max bleed a stack-topped game allows). This is the right
-  instrument — a mixed table's bb/100 just measures who feasts on the biggest fish,
-  and heads-up exposes the pros' 6-max ranges to blind-stealing.
+  sim seats one amateur among a **6-max field of the two solid pros** (Haxton +
+  Negreanu; Addamo is excluded — his overbet profile is a net loser in the fast
+  brain, so not a valid yardstick). Verified: every amateur is a net loser to the
+  pro field (best example ~−28 bb/100, station ~−71), the field is net-positive,
+  and loss rate is monotonic in skill. This is the right instrument — a mixed table
+  measures who feasts on the biggest fish, heads-up/4-handed exposes the pros' 6-max
+  ranges, and comparing against the pros' *mean* (not an unlucky single seat) is the
+  fair benchmark.
 
 ### Phase 4 — Engine triggers (situational mechanics)
 - Structured-condition evaluator + `action_modifier` application.

@@ -6,6 +6,7 @@ import 'package:monte/core/domain/ai/decider_factory.dart';
 import 'package:monte/core/domain/ai/home_game_profiles.dart';
 import 'package:monte/core/domain/ai/opponent_model.dart';
 import 'package:monte/core/domain/ai/personality.dart';
+import 'package:monte/core/domain/ai/player_profile.dart';
 import 'package:monte/core/domain/ai/profile_calibrator.dart';
 import 'package:monte/core/domain/ai/profile_policy.dart';
 import 'package:monte/core/domain/ai/profile_postflop_policy.dart';
@@ -16,6 +17,7 @@ import 'package:monte/core/domain/engine/game.dart';
 import 'package:monte/core/domain/engine/hand_evaluator.dart';
 import 'package:monte/core/domain/engine/player.dart';
 import 'package:monte/core/domain/hand_history.dart';
+import 'package:monte/features/eval_history/domain/eval_hand.dart';
 import 'package:monte/features/table/domain/game_repository.dart';
 import 'package:monte/features/table/domain/table_snapshot.dart';
 
@@ -38,6 +40,8 @@ class TableConfig {
     this.deckBuilder,
     this.deciderBuilder,
     this.onHandRecorded,
+    this.onEvalHandRecorded,
+    this.overrideProfile,
   });
 
   /// Total seats including the human. 2 = heads-up, up to 10 for a full table.
@@ -85,6 +89,17 @@ class TableConfig {
   /// Called for each finished hand of *interactive* play (not batch
   /// [simulate]), e.g. to log a transcript for diagnosis.
   final void Function(HandHistory hand)? onHandRecorded;
+
+  /// Called for **every** finished hand (interactive *and* batch [simulate])
+  /// with the full-information tuning record — all hole cards, positions, and
+  /// the model each seat played. Feeds the permanent tuning history; must never
+  /// be routed to a bot / opponent model (that would leak folded cards).
+  final void Function(EvalHand hand)? onEvalHandRecorded;
+
+  /// Maps a seat's named [PlayerProfile] to the *effective* profile to play —
+  /// used to swap in the offline auto-tuner's tuned preflop baseline. Identity
+  /// when null. Applied to profile seats only, before the decider is built.
+  final PlayerProfile Function(PlayerProfile profile)? overrideProfile;
 
   /// Smallest and largest supported table sizes.
   static const int minPlayers = 2;
@@ -168,6 +183,12 @@ class LocalGameRepository extends GameRepository {
   @override
   void clearHistory() {
     _history.clear();
+  }
+
+  @override
+  void resetMemory() {
+    _history.clear();
+    _opponentModel.reset();
   }
 
   @override
@@ -259,7 +280,10 @@ class LocalGameRepository extends GameRepository {
     if (botIndex < _seatBots.length) {
       final spec = _seatBots[botIndex];
       _specByPlayer[playerId] = spec;
-      final pro = spec.profile;
+      final base = spec.profile;
+      // Apply the offline auto-tuner's tuned baseline (amateurs only; pros are
+      // never in the override map, so they keep their cached calibration).
+      final pro = base == null ? null : (config.overrideProfile?.call(base) ?? base);
       if (pro != null) {
         // Amateur (home-game) profile: the degraded `AmateurPolicy` brain, which
         // builds its own intentionally-off ranges — so it bypasses the pro
@@ -523,6 +547,14 @@ class LocalGameRepository extends GameRepository {
     // — mirroring the live table reveal. Everyone else is masked. Safe: no stat
     // or opponent-model logic reads holeCards (only display does).
     final showdownHappened = game.results.any((r) => r.handValue != null);
+
+    // Full-information tuning record — built from the *unmasked* data (all hole
+    // cards, positions, model per seat) before masking below. Routed only to the
+    // tuning store, never to a bot or the opponent model.
+    if (config.onEvalHandRecorded != null) {
+      config.onEvalHandRecorded!(_buildEvalHand(game));
+    }
+
     final exposedPlayers = [
       for (final rec in _recPlayers)
         _exposeIfShown(rec, game, showdownHappened: showdownHappened),
@@ -572,6 +604,73 @@ class LocalGameRepository extends GameRepository {
       holeCards: const [],
       isButton: rec.isButton,
       revealed: false,
+    );
+  }
+
+  /// Builds the full-information [EvalHand] for the just-finished hand: every
+  /// dealt player with their real hole cards, position, model, and (when a board
+  /// ran out) made-hand rank. Reads only the live [game] + this hand's records —
+  /// it does not touch the masked history or opponent model.
+  EvalHand _buildEvalHand(PokerGame game) {
+    final n = game.players.length;
+    final board = game.board.map((c) => c.code).toList();
+    final startingStackOf = {for (final r in _recPlayers) r.id: r.startingStack};
+
+    final players = <EvalHandPlayer>[];
+    for (final live in game.players) {
+      if (!startingStackOf.containsKey(live.id)) continue; // not dealt in
+      final offset = (game.players.indexOf(live) - game.buttonIndex + n) % n;
+      final spec = _specByPlayer[live.id];
+      final profile = spec?.profile;
+      String? foldStreet;
+      for (final a in _recActions) {
+        if (a.playerId == live.id && a.type == ActionType.fold) {
+          foldStreet = a.street.name;
+          break;
+        }
+      }
+      players.add(
+        EvalHandPlayer(
+          id: live.id,
+          name: live.name,
+          modelId: profile?.id ??
+              (spec != null
+                  ? '${spec.brain.name}:${spec.style.name}'
+                  : 'human'),
+          modelLabel: spec?.label ?? live.name,
+          position: positionLabel(offset, n),
+          seatsFromButton: offset,
+          holeCards: live.hole.map((c) => c.code).toList(),
+          startingStack: startingStackOf[live.id]!,
+          finalStack: live.stack,
+          folded: live.hasFolded,
+          foldStreet: foldStreet,
+          madeHand: game.board.length >= 3
+              ? HandEvaluator.evaluate([...live.hole, ...game.board]).rank.label
+              : null,
+          skill: profile?.skill,
+          vpipTarget: profile?.strategicBaseline.vpipTarget,
+          pfrTarget: profile?.strategicBaseline.pfrTarget,
+          threeBetTarget: profile?.strategicBaseline.threeBetFrequency,
+        ),
+      );
+    }
+
+    return EvalHand(
+      handNumber: _handCounter,
+      smallBlind: game.smallBlind,
+      bigBlind: game.bigBlind,
+      players: players,
+      actions: List.of(_recActions),
+      board: board,
+      results: [
+        for (final r in game.results)
+          HandResultRecord(
+            playerId: r.player.id,
+            amountWon: r.amountWon,
+            handRank: r.handValue?.rank.label,
+          ),
+      ],
     );
   }
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
 
 import 'package:monte/core/domain/ai/bot_spec.dart';
 import 'package:monte/core/domain/ai/decider_factory.dart';
@@ -15,9 +16,24 @@ import 'package:monte/features/table/domain/table_snapshot.dart';
 import 'package:monte/features/table/presentation/table_screen.dart';
 import 'package:monte/features/table/presentation/table_view_model.dart';
 import 'package:monte/features/table/presentation/widgets/bust_out_dialog.dart';
+import 'package:monte/features/eval_history/data/file_eval_history_store.dart';
+import 'package:monte/features/eval_history/presentation/eval_history_provider.dart';
 import 'package:monte/features/table/presentation/widgets/new_game_dialog.dart';
 
-void main() => runApp(const ProviderScope(child: MonteApp()));
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  // Resolve the permanent tuning-history location once, up front, so the store
+  // can append synchronously as hands complete.
+  final dir = await getApplicationSupportDirectory();
+  runApp(
+    ProviderScope(
+      overrides: [
+        evalHistoryStoreProvider.overrideWithValue(FileEvalHistoryStore(dir)),
+      ],
+      child: const MonteApp(),
+    ),
+  );
+}
 
 class MonteApp extends StatelessWidget {
   const MonteApp({super.key});

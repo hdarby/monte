@@ -24,6 +24,20 @@ final List<PlayerProfile> homeGameProfiles = [
   justinVidovitch,
   haiLe,
   johnPineta,
+  chrisRansom,
+  richieHelms,
+  bobLiddle,
+  markBenchabbat,
+  nateGross,
+  jasonEadie,
+  donPerry,
+  daveCoyle,
+  ianZech,
+  steveKruger,
+  mattCarter,
+  steveStrong,
+  halDarby,
+  brettCooper,
 ];
 
 /// Maps the owner's 1–10 strength rating to the internal `skill` dial in
@@ -56,7 +70,10 @@ PlayerProfile buildAmateur({
     strategicBaseline: StrategicBaseline(
       vpipTarget: vpip,
       pfrTarget: pfr,
-      threeBetFrequency: threeBet,
+      // Recreational players third-bet well below their nominal aggression —
+      // they'd rather flat a raise than put in a third bet — so the [threeBet]
+      // style knob is damped to a realistic home-game frequency.
+      threeBetFrequency: threeBet * 0.5,
       // Below a pro's 1.0 even at max skill, so amateurs never play pure GTO.
       gtoAdherenceWeight: (0.5 + 0.5 * skill).clamp(0.0, 0.98),
     ),
@@ -248,4 +265,187 @@ final PlayerProfile johnPineta = buildAmateur(
   exploitativeWeight: 0.20, // doesn't bluff a lot
   riskPremium: 0.90, // small value sizing
   tiltResistance: 0.75,
+);
+
+/// Loose-to-balanced, limpy; not tuned to pot odds/position/stacks, conservative
+/// with few bluffs, plays draws.
+final PlayerProfile chrisRansom = buildAmateur(
+  id: 'H014',
+  name: 'Chris Ransom',
+  strength: 5,
+  vpip: 0.34,
+  pfr: 0.12, // limps, conservative
+  threeBet: 0.03,
+  exploitativeWeight: 0.20, // few bluffs
+  tiltResistance: 0.55,
+);
+
+/// Nitty-to-balanced, limpy; not tuned to position/stacks, low bluff, plays draws.
+final PlayerProfile richieHelms = buildAmateur(
+  id: 'H015',
+  name: 'Richie Helms',
+  strength: 5,
+  vpip: 0.24,
+  pfr: 0.12, // limps
+  threeBet: 0.03,
+  exploitativeWeight: 0.15, // low bluff
+  tiltResistance: 0.55,
+);
+
+/// Limpy, level-0, scared money; between nitty and OMC.
+final PlayerProfile bobLiddle = buildAmateur(
+  id: 'H016',
+  name: 'Bob Liddle',
+  strength: 3,
+  vpip: 0.20, // tight/scared
+  pfr: 0.07, // limps, scared to raise
+  threeBet: 0.01,
+  exploitativeWeight: 0.08, // rarely bluffs
+  riskPremium: 0.80, // scared money → small
+  tiltResistance: 0.40,
+);
+
+/// Experienced but loose, limpy; plays draws, folds to river aggression.
+final PlayerProfile markBenchabbat = buildAmateur(
+  id: 'H017',
+  name: 'Mark Benchabbat',
+  strength: 4,
+  vpip: 0.40, // loose
+  pfr: 0.15, // limps
+  threeBet: 0.03,
+  exploitativeWeight: 0.25, // plays draws
+  tiltResistance: 0.55,
+);
+
+/// Aggressive but poor, almost unbluffable (calls down), hates getting outdrawn,
+/// tilts easily.
+final PlayerProfile nateGross = buildAmateur(
+  id: 'H018',
+  name: 'Nate Gross',
+  strength: 2,
+  vpip: 0.42, // loose
+  pfr: 0.22, // aggressive
+  threeBet: 0.05,
+  exploitativeWeight: 0.50, // aggressive but not thoughtful
+  riskPremium: 1.20, // bets big to protect (hates being outdrawn)
+  tiltResistance: 0.20, // tilts easily
+);
+
+/// Experienced, balanced-but-loose; can limp, can semibluff, likes draws.
+final PlayerProfile jasonEadie = buildAmateur(
+  id: 'H019',
+  name: 'Jason Eadie',
+  strength: 5,
+  vpip: 0.32,
+  pfr: 0.18,
+  threeBet: 0.05,
+  exploitativeWeight: 0.35, // semibluffs
+  tiltResistance: 0.65,
+);
+
+/// Tight-passive, limpy; rarely bluffs, plays draws, no position/stack awareness.
+final PlayerProfile donPerry = buildAmateur(
+  id: 'H020',
+  name: 'Don Perry',
+  strength: 4,
+  vpip: 0.24,
+  pfr: 0.10, // passive, limps
+  threeBet: 0.02,
+  exploitativeWeight: 0.12, // rarely bluffs
+  riskPremium: 0.90,
+  tiltResistance: 0.50,
+);
+
+/// Total wildcard: plays any two, aggressive, bluffs constantly, ignores money
+/// and odds — plays for fun.
+final PlayerProfile daveCoyle = buildAmateur(
+  id: 'H021',
+  name: 'Dave Coyle',
+  strength: 1,
+  vpip: 0.75, // any two
+  pfr: 0.35, // aggressive
+  threeBet: 0.12,
+  exploitativeWeight: 0.85, // bluffs a lot
+  riskPremium: 1.40, // doesn't care about money
+  tiltResistance: 0.50,
+);
+
+/// Extremely passive; no position/odds/stack sense, low bluff, never bets for
+/// value but calls with strong cards.
+final PlayerProfile ianZech = buildAmateur(
+  id: 'H022',
+  name: 'Ian Zech',
+  strength: 3,
+  vpip: 0.30, // calls in with strong-ish
+  pfr: 0.06, // extremely passive — huge limp/call gap
+  threeBet: 0.01,
+  exploitativeWeight: 0.08, // low bluff, no value pushing
+  riskPremium: 0.80, // doesn't push value → small bets
+  tiltResistance: 0.50,
+);
+
+/// Loose-passive; no position/odds/stack sense, low bluff, value-only betting.
+final PlayerProfile steveKruger = buildAmateur(
+  id: 'H023',
+  name: 'Steve Kruger',
+  strength: 4,
+  vpip: 0.42, // loose
+  pfr: 0.10, // passive
+  threeBet: 0.02,
+  exploitativeWeight: 0.12, // low bluff
+  riskPremium: 0.95,
+  tiltResistance: 0.50,
+);
+
+/// No position/odds/stack sense, bluffs erratically, calls down light.
+final PlayerProfile mattCarter = buildAmateur(
+  id: 'H024',
+  name: 'Matt Carter',
+  strength: 2,
+  vpip: 0.45, // loose, calls down
+  pfr: 0.14,
+  threeBet: 0.03,
+  exploitativeWeight: 0.50, // erratic bluffs
+  riskPremium: 1.10,
+  tiltResistance: 0.40,
+);
+
+/// Experienced, balanced; low bluff, straightforward ABC poker.
+final PlayerProfile steveStrong = buildAmateur(
+  id: 'H025',
+  name: 'Steve Strong',
+  strength: 5,
+  vpip: 0.24, // ABC balanced
+  pfr: 0.18,
+  threeBet: 0.05,
+  exploitativeWeight: 0.15, // low bluff
+  tiltResistance: 0.70,
+);
+
+/// The owner. Experienced and exploitative; tight, near-GTO preflop, stacks off
+/// with AKs (AKo almost as hard), likes to set-mine, capable of big folds but
+/// mostly plays strong hands aggressively; can get trapped by tricky opponents.
+final PlayerProfile halDarby = buildAmateur(
+  id: 'H026',
+  name: 'Hal Darby',
+  strength: 6,
+  vpip: 0.22, // tight preflop
+  pfr: 0.18, // tight-aggressive
+  threeBet: 0.06,
+  exploitativeWeight: 0.50, // exploitative reads
+  riskPremium: 1.05, // strong hands played hard
+  tiltResistance: 0.70,
+);
+
+/// Loose-passive; doesn't bluff much.
+final PlayerProfile brettCooper = buildAmateur(
+  id: 'H027',
+  name: 'Brett Cooper',
+  strength: 3,
+  vpip: 0.42, // loose
+  pfr: 0.10, // passive
+  threeBet: 0.02,
+  exploitativeWeight: 0.12, // doesn't bluff much
+  riskPremium: 0.95,
+  tiltResistance: 0.45,
 );
