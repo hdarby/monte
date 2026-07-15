@@ -19,13 +19,32 @@ enum BettingRound {
 
 /// The outcome for one player at showdown / hand end.
 class HandResult {
-  HandResult({required this.player, required this.amountWon, this.handValue});
+  HandResult({
+    required this.player,
+    required this.amountWon,
+    this.handValue,
+    this.isSplit = false,
+    this.uncalledReturn = 0,
+  });
 
   final Player player;
   final int amountWon;
 
   /// Null when the player won uncontested (everyone else folded).
   final HandValue? handValue;
+
+  /// True when this win was a *split* pot — tied with another player of equal
+  /// hand strength (a chop).
+  final bool isSplit;
+
+  /// The part of [amountWon] that is the player's own over-bet coming back
+  /// because an all-in opponent couldn't match it — not chips won from anyone.
+  /// Their genuine winnings from opponents are [netWon].
+  final int uncalledReturn;
+
+  /// Chips actually won from opponents this hand (excludes a returned uncalled
+  /// bet). Zero when the player only got their own uncalled money back.
+  int get netWon => amountWon - uncalledReturn;
 }
 
 /// A self-contained No-Limit Texas Hold'em hand engine.
@@ -141,6 +160,8 @@ class PokerGame {
           player: clonedPlayers[players.indexOf(r.player)],
           amountWon: r.amountWon,
           handValue: r.handValue,
+          isSplit: r.isSplit,
+          uncalledReturn: r.uncalledReturn,
         ),
     ];
     return g;
@@ -219,6 +240,10 @@ class PokerGame {
         log.add('${p.name} checks.');
       case ActionType.call:
         final paid = p.commit(callAmount(p));
+        // A call takes on the current betting level, so its indicator matches
+        // the raise it called (an unraised limp stays at level 0).
+        p.betLevel = raiseCountThisRound;
+        p.wagerIsCall = true;
         p.hasActedThisRound = true;
         log.add('${p.name} calls $paid.');
       case ActionType.bet:
@@ -239,6 +264,8 @@ class PokerGame {
     if (increment >= minRaise) minRaise = increment;
     currentBet = target;
     raiseCountThisRound++;
+    p.betLevel = raiseCountThisRound;
+    p.wagerIsCall = false;
     p.hasActedThisRound = true;
     log.add('${p.name} ${isBet ? 'bets' : 'raises to'} $target.');
   }
@@ -252,8 +279,13 @@ class PokerGame {
       if (increment >= minRaise) minRaise = increment;
       currentBet = p.currentBet;
       raiseCountThisRound++;
+      p.betLevel = raiseCountThisRound;
+      p.wagerIsCall = false;
       log.add('${p.name} is all-in for ${p.currentBet}.');
     } else {
+      // A non-aggressive (calling) all-in matches the current level.
+      p.betLevel = raiseCountThisRound;
+      p.wagerIsCall = true;
       log.add('${p.name} is all-in for ${p.currentBet - before} (call).');
     }
     p.hasActedThisRound = true;
@@ -356,14 +388,16 @@ class PokerGame {
       );
     }
 
-    final winnings = _distributeSidePots(contenders, values);
+    final dist = _distributeSidePots(contenders, values);
     results = [
-      for (final entry in winnings.entries)
+      for (final entry in dist.winnings.entries)
         if (entry.value > 0)
           HandResult(
             player: entry.key,
             amountWon: entry.value,
             handValue: values[entry.key],
+            isSplit: dist.chopped.contains(entry.key),
+            uncalledReturn: dist.uncalled[entry.key] ?? 0,
           ),
     ]..sort((a, b) => b.amountWon - a.amountWon);
 
@@ -378,12 +412,21 @@ class PokerGame {
   }
 
   /// Splits the pot into side pots by contribution level and awards each to the
-  /// best eligible (non-folded) hand. Returns chips won per player.
-  Map<Player, int> _distributeSidePots(
+  /// best eligible (non-folded) hand. Returns, per player: chips won
+  /// ([winnings]); the part of that which is their own **uncalled** over-bet
+  /// coming back ([uncalled] — a layer only they funded); and whether any layer
+  /// they won was a **chop** ([chopped] — tied with another player).
+  ({
+    Map<Player, int> winnings,
+    Map<Player, int> uncalled,
+    Set<Player> chopped,
+  }) _distributeSidePots(
     List<Player> contenders,
     Map<Player, HandValue> values,
   ) {
     final winnings = {for (final p in players) p: 0};
+    final uncalled = {for (final p in players) p: 0};
+    final chopped = <Player>{};
 
     // Distinct contribution levels across *all* players (folded chips count
     // toward pot size but folded players can't win).
@@ -399,8 +442,10 @@ class PokerGame {
     for (final level in levels) {
       final layer = level - previous;
       // Chips in this layer: one `layer` slice from every player who reached it.
-      final contributors = players.where((p) => p.totalContributed >= level);
-      var potChunk = layer * contributors.length;
+      final contributors = players
+          .where((p) => p.totalContributed >= level)
+          .toList();
+      final potChunk = layer * contributors.length;
 
       // Eligible winners: still in the hand and reached this level.
       final eligible = contenders
@@ -413,6 +458,7 @@ class PokerGame {
         final winners = eligible
             .where((p) => values[p]!.compareTo(best) == 0)
             .toList();
+        if (winners.length > 1) chopped.addAll(winners);
 
         final share = potChunk ~/ winners.length;
         var remainder = potChunk - share * winners.length;
@@ -421,10 +467,17 @@ class PokerGame {
         for (final w in ordered) {
           winnings[w] = winnings[w]! + share + (remainder-- > 0 ? 1 : 0);
         }
+
+        // A layer only one player funded is uncalled — they simply get their own
+        // over-bet back (the sole eligible winner is that contributor).
+        if (contributors.length == 1) {
+          final p = eligible.first;
+          uncalled[p] = uncalled[p]! + potChunk;
+        }
       }
       previous = level;
     }
-    return winnings;
+    return (winnings: winnings, uncalled: uncalled, chopped: chopped);
   }
 
   void _finishHand() {

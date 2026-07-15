@@ -7,6 +7,7 @@ const List<PlayerProfile> builtInProfiles = [
   danielNegreanu,
   michaelAddamo,
   isaacHaxton,
+  bradOwen
 ];
 
 /// Profile A — The Small-Ball Hand Reader.
@@ -91,5 +92,36 @@ const isaacHaxton = PlayerProfile(
     exploitativeWeight: 0.00,
     riskPremiumCoefficient: 1.00,
     weightOnOpponentHistory: 0.00,
+  ),
+);
+
+/// Profile C — The exploitive pro.
+const bradOwen = PlayerProfile(
+  id: 'P002',
+  name: 'Brad Owen',
+  archetype: 'Exploitive_Pro',
+  strategicBaseline: StrategicBaseline(
+    vpipTarget: 0.30,
+    pfrTarget: 0.175,
+    threeBetFrequency: 0.10,
+    gtoAdherenceWeight: 0.65,
+  ),
+  behavioralModifiers: BehavioralModifiers(
+    tiltResistance: 0.85,
+    exploitativeWeight: 0.50,
+    riskPremiumCoefficient: 1.15,
+    weightOnOpponentHistory: 0.25,
+  ),
+  engineTriggers: EngineTriggers(
+    // "Switch to aggressive when warranted": armed in position from the flop on,
+    // the read-based gear shift ramps postflop aggression.
+    customMechanic: 'Soul_Read',
+    condition: TriggerCondition(
+      inPosition: true,
+      minStreet: BettingRound.flop,
+    ),
+    actionModifier: ActionModifier(
+      postflopAggressionMultiplierIp: 1.20,
+    ),
   ),
 );

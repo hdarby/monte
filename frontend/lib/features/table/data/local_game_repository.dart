@@ -684,7 +684,10 @@ class LocalGameRepository extends GameRepository {
   TableSnapshot _buildSnapshot() {
     final game = _game!;
     final showdownHappened = game.results.any((r) => r.handValue != null);
-    final wonByPlayer = {for (final r in game.results) r.player: r.amountWon};
+    // Show only chips genuinely won from opponents (a returned uncalled bet isn't
+    // a win), and flag chops.
+    final wonByPlayer = {for (final r in game.results) r.player: r.netWon};
+    final chopByPlayer = {for (final r in game.results) r.player: r.isSplit};
     final current = game.currentPlayer;
 
     final seats = <SeatView>[];
@@ -708,9 +711,12 @@ class LocalGameRepository extends GameRepository {
           allIn: p.isAllIn,
           isButton: i == game.buttonIndex,
           isCurrent: current != null && current.id == p.id,
+          raiseLevel: p.betLevel,
+          wagerIsCall: p.wagerIsCall,
           holeCards: reveal ? List.of(p.hole) : null,
           handLabel: label,
           wonAmount: wonByPlayer[p] ?? 0,
+          wonIsChop: chopByPlayer[p] ?? false,
           behavior: _specByPlayer[p.id]?.label,
         ),
       );

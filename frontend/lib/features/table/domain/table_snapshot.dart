@@ -18,9 +18,12 @@ class SeatView {
     required this.allIn,
     required this.isButton,
     required this.isCurrent,
+    this.raiseLevel = 0,
+    this.wagerIsCall = false,
     this.holeCards,
     this.handLabel,
     this.wonAmount = 0,
+    this.wonIsChop = false,
     this.behavior,
   });
 
@@ -34,14 +37,28 @@ class SeatView {
   final bool isButton;
   final bool isCurrent;
 
+  /// The raise level of this seat's current wager: 1 = bet/open, 2 = 3-bet,
+  /// 3+ = 4-bet or higher (0 = no raise — a check/limp/blind). Drives the
+  /// escalating bet-indicator colour.
+  final int raiseLevel;
+
+  /// Whether the current wager came from a call (vs a bet/raise) — picks the
+  /// "CALL" vs "BET" label on the indicator.
+  final bool wagerIsCall;
+
   /// Visible only for the local player, or for everyone at showdown.
   final List<Card>? holeCards;
 
   /// Set at showdown, e.g. "Full House".
   final String? handLabel;
 
-  /// Chips won in the just-completed hand (for a highlight).
+  /// Chips *won from opponents* in the just-completed hand (for a highlight).
+  /// Excludes a returned uncalled bet, so a player who only got their own
+  /// over-bet back shows nothing.
   final int wonAmount;
+
+  /// Whether [wonAmount] was a split pot (a chop) — labels the tag "CHOP".
+  final bool wonIsChop;
 
   /// The bot's behavior model label (brain + style), e.g. "Maniac · MCTS".
   /// Null for the human seat. Shown on the seat only when the player enables it.

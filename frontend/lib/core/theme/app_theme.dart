@@ -9,6 +9,13 @@ class AppTheme {
   static const chip = Color(0xFFE63946);
   static const surface = Color(0xFF1B2A22);
 
+  /// Escalating bet-indicator colours by raise level: blinds/limps keep the
+  /// neutral [feltEdge]; the initial raise is [betYellow]; a 3-bet warns in
+  /// [warnOrange]; a 4-bet+ alarms in [alarmRed]. Calls take their level's colour.
+  static const betYellow = Color(0xFFEBC233);
+  static const warnOrange = Color(0xFFE8811E);
+  static const alarmRed = Color(0xFFD32F2F);
+
   static ThemeData dark() {
     final base = ThemeData.dark(useMaterial3: true);
     return base.copyWith(

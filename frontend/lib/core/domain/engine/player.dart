@@ -37,6 +37,16 @@ class Player {
   /// Whether the player has acted at least once in the current betting round.
   bool hasActedThisRound = false;
 
+  /// The raise level of this player's most recent chip action this betting
+  /// round: 0 = none (checked / posted a blind / limped), 1 = a bet/open,
+  /// 2 = a 3-bet, 3+ = a 4-bet or higher. A call takes on the level it matched.
+  /// Reset each round; used by the UI to escalate the bet-indicator colour.
+  int betLevel = 0;
+
+  /// Whether the chips in [currentBet] came from *calling* (vs betting/raising).
+  /// Reset each round; drives the "CALL" vs "BET" label on the seat indicator.
+  bool wagerIsCall = false;
+
   /// Eligible to act: still in the hand and has chips behind.
   bool get canAct => !hasFolded && !isAllIn && stack > 0;
 
@@ -51,7 +61,9 @@ class Player {
       ..totalContributed = totalContributed
       ..hasFolded = hasFolded
       ..isAllIn = isAllIn
-      ..hasActedThisRound = hasActedThisRound;
+      ..hasActedThisRound = hasActedThisRound
+      ..betLevel = betLevel
+      ..wagerIsCall = wagerIsCall;
     p.hole.addAll(hole);
     return p;
   }
@@ -64,12 +76,16 @@ class Player {
     hasFolded = false;
     isAllIn = false;
     hasActedThisRound = false;
+    betLevel = 0;
+    wagerIsCall = false;
   }
 
   /// Resets per-round state (called at the start of flop/turn/river).
   void resetForRound() {
     currentBet = 0;
     hasActedThisRound = false;
+    betLevel = 0;
+    wagerIsCall = false;
   }
 
   /// Moves [amount] chips from the stack into the pot, capping at the stack

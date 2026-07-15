@@ -92,7 +92,11 @@ void main() {
       for (final p in builtInProfiles) {
         expect(p.validate(), isEmpty, reason: '${p.name}: ${p.validate()}');
       }
-      expect(builtInProfiles.map((p) => p.id).toSet().length, 3);
+      // Every built-in profile has a distinct id.
+      expect(
+        builtInProfiles.map((p) => p.id).toSet(),
+        hasLength(builtInProfiles.length),
+      );
     });
 
     test('validate() flags PFR above VPIP', () {

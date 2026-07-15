@@ -198,7 +198,7 @@ class PlayerSeat extends StatelessWidget {
   Widget _statusLine(MoneyFormat money) {
     if (seat.wonAmount > 0) {
       return _tag(
-        'WON +${money.format(seat.wonAmount)}',
+        '${seat.wonIsChop ? 'CHOP' : 'WON'} +${money.format(seat.wonAmount)}',
         AppTheme.gold,
         Colors.black,
       );
@@ -209,11 +209,18 @@ class PlayerSeat extends StatelessWidget {
       return _tag(seat.handLabel!.toUpperCase(), Colors.white12, Colors.white);
     }
     if (seat.currentBet > 0) {
-      return _tag(
-        'BET ${money.format(seat.currentBet)}',
-        AppTheme.feltEdge,
-        Colors.white,
-      );
+      // Escalate the colour with the raise level: blinds/limps stay neutral, the
+      // initial raise is yellow, a 3-bet orange, a 4-bet+ red. A call takes the
+      // colour of the level it called.
+      final bg = switch (seat.raiseLevel) {
+        >= 3 => AppTheme.alarmRed,
+        2 => AppTheme.warnOrange,
+        1 => AppTheme.betYellow,
+        _ => AppTheme.feltEdge,
+      };
+      final fg = seat.raiseLevel == 1 ? Colors.black : Colors.white;
+      final verb = seat.wagerIsCall ? 'CALL' : 'BET';
+      return _tag('$verb ${money.format(seat.currentBet)}', bg, fg);
     }
     return const SizedBox(height: 22);
   }
