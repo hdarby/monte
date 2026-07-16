@@ -92,6 +92,9 @@ monte/
 │           ├── table/{domain,data,presentation}      game + table UI (GameRepository, TableViewModel)
 │           ├── settings/{domain,data,presentation}   persisted GameSettings (SettingsController)
 │           ├── analytics/{domain,presentation}       VPIP/PFR/AF (AnalyticsViewModel)
+│           ├── coach/{domain,presentation}           in-hand coach: HandCoach (SPR/equity,
+│           │                                          range beat/lose split, polarized reads,
+│           │                                          per-action EV + recommendation) + dialog
 │           └── eval_history/{domain,data,presentation}  permanent full-info tuning
 │                                                     record (EvalHand, JSONL store, EvalMetrics)
 │                                                     + offline AutoTuner → persisted ProfileOverrides

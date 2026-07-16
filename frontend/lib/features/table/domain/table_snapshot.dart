@@ -74,6 +74,7 @@ class ActionContext {
     required this.maxRaiseTo,
     required this.bigBlind,
     required this.currentBet,
+    this.raiseCount = 0,
   });
 
   final int callAmount;
@@ -82,6 +83,10 @@ class ActionContext {
   final int maxRaiseTo;
   final int bigBlind;
   final int currentBet;
+
+  /// Voluntary bets/raises so far this street: 0 unraised, 1 open, 2 3-bet,
+  /// 3+ 4-bet. Lets the coach infer how tight the opponents' range should be.
+  final int raiseCount;
 
   bool get canRaise => maxRaiseTo > currentBet && maxRaiseTo > callAmount;
 }

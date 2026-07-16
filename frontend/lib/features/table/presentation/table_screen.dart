@@ -29,6 +29,7 @@ class TableScreen extends StatelessWidget {
     this.showBehavior = false,
     this.autoDeal = false,
     this.onToggleAutoDeal,
+    this.onCoach,
   });
 
   final TableSnapshot snapshot;
@@ -47,6 +48,9 @@ class TableScreen extends StatelessWidget {
   /// All-bots only: whether hands deal continuously until toggled off.
   final bool autoDeal;
   final ValueChanged<bool>? onToggleAutoDeal;
+
+  /// Opens the in-hand coach for the human seat. Null hides the coach icon.
+  final VoidCallback? onCoach;
 
   @override
   Widget build(BuildContext context) {
@@ -171,6 +175,7 @@ class TableScreen extends StatelessWidget {
                   compact: !seats[i].isHuman,
                   buttonPlacement: _buttonPlacement(i, seats.length),
                   showBehavior: showBehavior,
+                  onCoach: seats[i].isHuman ? onCoach : null,
                 ),
               ),
           ],

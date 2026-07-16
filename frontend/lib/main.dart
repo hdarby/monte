@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,6 +8,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:monte/core/domain/ai/bot_spec.dart';
 import 'package:monte/core/domain/ai/decider_factory.dart';
 import 'package:monte/core/presentation/money_format.dart';
+import 'package:monte/features/coach/domain/hand_coach.dart';
+import 'package:monte/features/coach/presentation/coach_dialog.dart';
 import 'package:monte/core/theme/app_theme.dart';
 import 'package:monte/features/analytics/presentation/analytics_screen.dart';
 import 'package:monte/features/history/presentation/history_screen.dart';
@@ -94,6 +98,55 @@ class _GamePageState extends ConsumerState<GamePage> {
     Navigator.of(
       context,
     ).push(MaterialPageRoute(builder: (_) => const HistoryScreen()));
+  }
+
+  /// Opens the in-hand coach for the human, computing the read once from the
+  /// current [snapshot]. Models only opponents still in the hand who've put
+  /// chips in (those "yet to act" reveal no range).
+  void _openCoach(TableSnapshot snapshot, GameSettings settings) {
+    final human = snapshot.human;
+    if (human == null) return;
+    final live = snapshot.seats
+        .where((s) => !s.isHuman && !s.folded)
+        .toList();
+    final acted = live.where((s) => s.currentBet > 0).toList();
+    final modeled = acted.isNotEmpty ? acted : live;
+    final ctx = snapshot.actionContext;
+    final effStack = live.isEmpty
+        ? human.stack
+        : math.min(human.stack, live.map((s) => s.stack).reduce(math.max));
+    // raiseCount is only on ActionContext (hero's turn); off-turn fall back to
+    // the loudest seat's raise level so the range read still reflects aggression.
+    final raiseCount = ctx?.raiseCount ??
+        snapshot.seats.fold<int>(0, (m, s) => math.max(m, s.raiseLevel));
+
+    final report = HandCoach.analyze(
+      HandCoachInput(
+        hole: human.holeCards ?? const [],
+        board: snapshot.board,
+        pot: snapshot.pot,
+        toCall: ctx?.callAmount ?? 0,
+        heroCurrentBet: human.currentBet,
+        currentBet: ctx?.currentBet ?? 0,
+        effectiveStack: effStack,
+        bigBlind: settings.bigBlind,
+        street: snapshot.round,
+        raiseCount: raiseCount,
+        opponents: modeled.length,
+        opponentLabels: [for (final s in modeled) s.name],
+        canCheck: ctx?.canCheck ?? false,
+        canRaise: ctx?.canRaise ?? false,
+        minRaiseTo: ctx?.minRaiseTo ?? 0,
+        maxRaiseTo: ctx?.maxRaiseTo ?? 0,
+        random: math.Random(),
+      ),
+      analysisAvailable: snapshot.isHumanTurn,
+    );
+    showCoachDialog(
+      context,
+      report,
+      MoneyFormat(showBigBlinds: settings.showBigBlinds, bigBlind: settings.bigBlind),
+    );
   }
 
   /// Opens the pre-game setup so the player can set each bot seat's playing
@@ -252,6 +305,7 @@ class _GamePageState extends ConsumerState<GamePage> {
               onOpenSettings: _openSettings,
               onOpenAnalytics: _openAnalytics,
               onOpenHistory: _openHistory,
+              onCoach: () => _openCoach(snapshot, settings),
               autoDeal: _autoDeal,
               onToggleAutoDeal: (v) => setState(() => _autoDeal = v),
             ),

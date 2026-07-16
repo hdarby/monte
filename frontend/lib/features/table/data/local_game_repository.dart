@@ -731,6 +731,7 @@ class LocalGameRepository extends GameRepository {
         maxRaiseTo: game.maxRaiseTo(current),
         bigBlind: game.bigBlind,
         currentBet: game.currentBet,
+        raiseCount: game.raiseCountThisRound,
       );
     }
 

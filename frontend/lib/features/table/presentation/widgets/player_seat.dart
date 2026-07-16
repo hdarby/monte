@@ -18,10 +18,14 @@ class PlayerSeat extends StatelessWidget {
     this.compact = false,
     this.buttonPlacement = ButtonPlacement.none,
     this.showBehavior = false,
+    this.onCoach,
   });
 
   final SeatView seat;
   final bool compact;
+
+  /// Tapped to open the in-hand coach. Only shown on the human seat.
+  final VoidCallback? onCoach;
 
   /// Which edge of this box the dealer button hugs. Only honoured when this
   /// seat actually has the button ([SeatView.isButton]).
@@ -51,15 +55,39 @@ class PlayerSeat extends StatelessWidget {
       child: _seat(highlight, money),
     );
 
-    if (!seat.isButton || buttonPlacement == ButtonPlacement.none) return box;
+    final showButton = seat.isButton && buttonPlacement != ButtonPlacement.none;
+    final showCoach = seat.isHuman && onCoach != null;
+    if (!showButton && !showCoach) return box;
 
-    // The button straddles the centre-facing edge — mostly outside the box, a
-    // little overlap so it reads as attached to this seat.
+    // Overlays straddle the box edges (clipped none) so they read as attached.
     return Stack(
       clipBehavior: Clip.none,
-      children: [box, _button()],
+      children: [
+        box,
+        if (showButton) _button(),
+        if (showCoach) _coachIcon(),
+      ],
     );
   }
+
+  /// A small "?" coach button pinned to the seat's top-right corner.
+  Widget _coachIcon() => Positioned(
+    top: -10,
+    right: -10,
+    child: Material(
+      color: AppTheme.gold,
+      shape: const CircleBorder(),
+      elevation: 2,
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onCoach,
+        child: const Padding(
+          padding: EdgeInsets.all(4),
+          child: Icon(Icons.school, size: 16, color: Colors.black),
+        ),
+      ),
+    ),
+  );
 
   Widget _button() {
     final button = DealerButton(size: compact ? 26 : 30);
