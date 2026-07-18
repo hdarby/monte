@@ -133,5 +133,36 @@ void main() {
       expect(a.type, b.type);
       expect(a.amount, b.amount);
     });
+
+    test('decideTimed returns a legal action and honours maxIterations',
+        () async {
+      // River, hero holds the nuts — a tiny budget with a low iteration cap
+      // should still finish quickly and pick a value bet.
+      final order = _stack(
+        p0: cards('2c 7d'),
+        p1: cards('Ah Kh'),
+        board: cards('Qh Jh Th 2s 3d'),
+      );
+      final game = _headsUp(order);
+      _passiveUntilRiver(game);
+      final hero = game.currentPlayer!;
+
+      final engine = IsmctsEngine(
+        config: const IsmctsConfig(iterations: 50, maxIterations: 200),
+        random: Random(1),
+      );
+      final sw = Stopwatch()..start();
+      final action = await engine.decideTimed(
+        game,
+        hero,
+        budget: const Duration(milliseconds: 50),
+      );
+      sw.stop();
+
+      expect(action.type, ActionType.bet, reason: 'the nuts should bet/raise');
+      // The 200-iteration cap bounds the work, so even with a longer budget it
+      // can't run away (generous ceiling to avoid CI flakiness).
+      expect(sw.elapsed, lessThan(const Duration(seconds: 5)));
+    });
   });
 }

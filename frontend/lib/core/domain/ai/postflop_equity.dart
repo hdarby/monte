@@ -87,4 +87,91 @@ class PostflopEquity {
       : cmp == 0
           ? 0.5
           : 0.0;
+
+  /// Hero equity **share** against [opponents] independent hands, each drawn
+  /// from the same [villain] range, on [board]. Returns the fraction of the pot
+  /// the hero wins on average in [0,1] (tie for best → split among the tied).
+  ///
+  /// This is the honest multiway number: the hero must be best of *all*
+  /// opponents to scoop, and a k-way tie pays 1/k. For [opponents] `<= 1` it
+  /// delegates to the heads-up [equity]. Note this is genuinely — and correctly
+  /// — lower than heads-up equity, but nowhere near the `equity^opponents`
+  /// approximation it replaces (which double-counts and collapses strong hands).
+  static double equityMultiway(
+    List<Card> hole,
+    List<Card> board,
+    HandRange villain, {
+    int opponents = 1,
+    int iterations = 400,
+    Random? random,
+  }) {
+    if (opponents <= 1) {
+      return equity(hole, board, villain,
+          iterations: iterations, random: random);
+    }
+    final rng = random ?? Random();
+    final dead = {...hole, ...board};
+    final combos = [
+      for (final c in villain.combos)
+        if (!dead.contains(c.$1) && !dead.contains(c.$2)) c,
+    ];
+    if (combos.isEmpty) return 0.5;
+
+    final need = 5 - board.length;
+    var score = 0.0;
+    var valid = 0;
+    for (var i = 0; i < iterations; i++) {
+      // Draw `opponents` non-colliding villain hands from the range.
+      final used = <Card>{...dead};
+      final villains = <(Card, Card)>[];
+      for (var v = 0; v < opponents; v++) {
+        (Card, Card)? pick;
+        for (var tries = 0; tries < 12; tries++) {
+          final c = combos[rng.nextInt(combos.length)];
+          if (!used.contains(c.$1) && !used.contains(c.$2)) {
+            pick = c;
+            break;
+          }
+        }
+        if (pick == null) break; // couldn't seat this many distinct hands
+        used
+          ..add(pick.$1)
+          ..add(pick.$2);
+        villains.add(pick);
+      }
+      if (villains.length < opponents) continue; // skip crowded sample
+
+      // Deal the runout from what's left.
+      final pool = [
+        for (final suit in Suit.values)
+          for (final rank in Rank.values)
+            if (!used.contains(Card(rank, suit))) Card(rank, suit),
+      ];
+      final runout = <Card>[];
+      for (var k = 0; k < need; k++) {
+        final idx = k + rng.nextInt(pool.length - k);
+        final tmp = pool[k];
+        pool[k] = pool[idx];
+        pool[idx] = tmp;
+        runout.add(pool[k]);
+      }
+      final full = [...board, ...runout];
+      final heroValue = HandEvaluator.evaluate([...hole, ...full]);
+      var better = 0;
+      var tied = 0;
+      for (final vh in villains) {
+        final cmp = heroValue.compareTo(
+          HandEvaluator.evaluate([vh.$1, vh.$2, ...full]),
+        );
+        if (cmp < 0) {
+          better++;
+        } else if (cmp == 0) {
+          tied++;
+        }
+      }
+      if (better == 0) score += 1.0 / (tied + 1); // split with any ties
+      valid++;
+    }
+    return valid == 0 ? 0.5 : score / valid;
+  }
 }

@@ -94,7 +94,7 @@ monte/
 │           ├── analytics/{domain,presentation}       VPIP/PFR/AF (AnalyticsViewModel)
 │           ├── coach/{domain,presentation}           in-hand coach: HandCoach (SPR/equity,
 │           │                                          range beat/lose split, polarized reads,
-│           │                                          per-action EV + recommendation) + dialog
+│           │                                          per-action EV + recommendation) + screen
 │           └── eval_history/{domain,data,presentation}  permanent full-info tuning
 │                                                     record (EvalHand, JSONL store, EvalMetrics)
 │                                                     + offline AutoTuner → persisted ProfileOverrides

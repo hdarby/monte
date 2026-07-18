@@ -4,6 +4,7 @@ import 'package:meta/meta.dart';
 
 import 'package:monte/core/domain/ai/hand_range.dart';
 import 'package:monte/core/domain/ai/postflop_equity.dart';
+import 'package:monte/core/domain/engine/actions.dart';
 import 'package:monte/core/domain/engine/card.dart';
 import 'package:monte/core/domain/engine/game.dart';
 import 'package:monte/core/domain/engine/hand_evaluator.dart';
@@ -37,6 +38,17 @@ class ActionEv {
   /// Net-chip EV vs. folding.
   final double ev;
   final String? note;
+
+  /// The concrete engine action this suggestion submits when clicked / played.
+  GameAction toGameAction() => switch (kind) {
+    CoachAction.fold => const GameAction.fold(),
+    CoachAction.check => const GameAction.check(),
+    CoachAction.call => const GameAction.call(),
+    CoachAction.bet =>
+      sizingTag == 'all-in' ? const GameAction.allIn() : GameAction.bet(toAmount!),
+    CoachAction.raise =>
+      sizingTag == 'all-in' ? const GameAction.allIn() : GameAction.raise(toAmount!),
+  };
 }
 
 /// How the opponents' perceived range splits against the hero's current hand.
@@ -64,6 +76,66 @@ class RangeBreakdown {
   final List<String> loseClasses;
 }
 
+/// The status of one starting-hand cell in the 13×13 grid, relative to the
+/// hero's current hand.
+enum CellStatus {
+  /// Not part of the opponents' perceived range.
+  out,
+
+  /// In range, but there's no board yet to compare (preflop).
+  inRange,
+
+  /// In range and the hero currently beats it.
+  ahead,
+
+  /// In range and the hero currently loses to it.
+  behind,
+
+  /// In range with a mix of beat/lose combos (e.g. suit-dependent).
+  split,
+}
+
+/// One cell of the starting-hand grid (e.g. "AKs", "77", "T9o").
+@immutable
+class RangeCell {
+  const RangeCell({
+    required this.label,
+    required this.row,
+    required this.col,
+    required this.inRange,
+    required this.beat,
+    required this.tie,
+    required this.lose,
+  });
+
+  final String label;
+  final int row; // 0..12, ace-high first
+  final int col;
+  final bool inRange;
+  final int beat; // combo counts among this class that are in range
+  final int tie;
+  final int lose;
+
+  CellStatus get status {
+    if (!inRange) return CellStatus.out;
+    if (beat + tie + lose == 0) return CellStatus.inRange; // no board yet
+    if (beat > lose) return CellStatus.ahead;
+    if (lose > beat) return CellStatus.behind;
+    return CellStatus.split;
+  }
+}
+
+/// The 13×13 starting-hand matrix (pairs on the diagonal, suited upper-right,
+/// offsuit lower-left) — the visual of the opponents' range and where the hero
+/// stands against each part of it.
+@immutable
+class HandGrid {
+  const HandGrid(this.cells);
+
+  /// 169 cells in row-major order (row = higher card, ace-first).
+  final List<RangeCell> cells;
+}
+
 /// A full coaching read of the hero's current spot.
 @immutable
 class CoachReport {
@@ -79,6 +151,7 @@ class CoachReport {
     required this.opponents,
     required this.rangeRead,
     required this.breakdown,
+    required this.handGrid,
     required this.polarized,
     required this.polarizedNote,
     required this.actionRead,
@@ -103,6 +176,7 @@ class CoachReport {
   // Range interpretation.
   final String rangeRead;
   final RangeBreakdown? breakdown; // postflop only
+  final HandGrid? handGrid; // 13×13 range chart; null if the hero has no hand
   final bool polarized;
   final String? polarizedNote;
 
@@ -161,7 +235,7 @@ class HandCoachInput {
 /// use ([PostflopEquity], [HandRange]) so its read matches how the table plays,
 /// then layers an EV model + a range breakdown on top. Estimates, not a solver.
 class HandCoach {
-  static const int _iterations = 400;
+  static const int _iterations = 600;
   static const double _rangeTop = 0.40;
 
   static CoachReport analyze(
@@ -181,21 +255,44 @@ class HandCoach {
     // --- Perceived range + equity (matches the bots' villain model) ---
     final dead = {...i.hole, ...i.board};
     final hasHand = i.hole.length == 2;
-    final range = HandRange.top(_rangeTop, dead: dead)
-        .narrowedBy(raiseCount: i.raiseCount, street: i.street);
-    final eqRaw = hasHand
-        ? PostflopEquity.equity(i.hole, i.board, range,
-            iterations: _iterations, random: rng)
-        : 0.5;
-    final equity = pow(eqRaw, opp).toDouble().clamp(0.01, 0.99);
+    final baseRange = HandRange.top(_rangeTop, dead: dead);
+    final range =
+        baseRange.narrowedBy(raiseCount: i.raiseCount, street: i.street);
+    // Honest multiway share: hero must be best of all live opponents (a k-way
+    // tie splits). This is correctly lower than heads-up equity but nothing
+    // like the old equity^opponents, which crushed strong hands to nonsense
+    // (AKo three-way read as ~18% instead of ~40%).
+    double share(HandRange r) => PostflopEquity.equityMultiway(
+          i.hole, i.board, r,
+          opponents: opp, iterations: _iterations, random: rng,
+        ).clamp(0.01, 0.99);
+    final equity = hasHand ? share(range) : 0.5;
+    // Equity against the range that keeps going once the hero puts in *more*
+    // money, as a function of how many "raise steps" of pressure that continuing
+    // range has absorbed. Memoized so each level's Monte-Carlo runs once. The
+    // key correctness point: a bigger bet folds out more, so the *callers* are
+    // stronger — a 100bb shove into a 4-chip pot is called only by the very top
+    // of the range (AJo ~30%), never the whole top-20% (~57%). `_betEv` picks
+    // the level from the bet's pot-fraction (see [_calledLevel]).
+    final calledMemo = <int, double>{};
+    double calledEquity(int level) => !hasHand
+        ? 0.5
+        : calledMemo.putIfAbsent(
+            level,
+            () => share(baseRange.narrowedBy(
+                raiseCount: level, street: i.street)),
+          );
 
     final madeHand = i.board.length >= 3 && hasHand
         ? HandEvaluator.evaluate([...i.hole, ...i.board]).rank.label
         : _preflopLabel(i.hole);
 
-    final breakdown = (i.board.length >= 3 && hasHand)
-        ? _breakdown(i.hole, i.board, range)
-        : null;
+    // One pass over the perceived range builds both the beat/lose split and the
+    // 13×13 chart (postflop grid is coloured by ahead/behind; preflop it just
+    // shades the range).
+    final analysis = hasHand ? _analyzeVsRange(i.hole, i.board, range) : null;
+    final breakdown = analysis?.breakdown;
+    final handGrid = analysis?.grid;
 
     // --- Polarization (facing a big turn/river bet ⇒ value-or-bluff range) ---
     final potBeforeBet = max(1, pot - toCall);
@@ -211,8 +308,9 @@ class HandCoach {
 
     // --- Candidate action EVs ---
     final actions = analysisAvailable
-        ? _actions(i, pot, equity, spr)
+        ? _actions(i, pot, equity, calledEquity, spr)
         : const <ActionEv>[];
+    // (calledEquity is a size-aware function, resolved per bet inside _actions.)
     var best = 0;
     for (var k = 1; k < actions.length; k++) {
       if (actions[k].ev > actions[best].ev) best = k;
@@ -233,6 +331,7 @@ class HandCoach {
       opponents: i.opponents,
       rangeRead: rangeRead,
       breakdown: breakdown,
+      handGrid: handGrid,
       polarized: polarized,
       polarizedNote: polarizedNote,
       actionRead: actionRead,
@@ -244,41 +343,99 @@ class HandCoach {
 
   // ---- Range breakdown: what we beat vs. lose to, right now ----------------
 
-  static RangeBreakdown _breakdown(
+  static ({RangeBreakdown? breakdown, HandGrid grid}) _analyzeVsRange(
     List<Card> hole,
     List<Card> board,
     HandRange range,
   ) {
-    final hero = HandEvaluator.evaluate([...hole, ...board]);
+    final postflop = board.length >= 3;
+    final hero = postflop ? HandEvaluator.evaluate([...hole, ...board]) : null;
     final dead = {...hole, ...board};
-    var beat = 0, tie = 0, lose = 0;
+
+    // Per-cell tallies over the 13×13 grid, plus overall totals.
+    final inR = List<bool>.filled(169, false);
+    final beat = List<int>.filled(169, 0);
+    final tie = List<int>.filled(169, 0);
+    final lose = List<int>.filled(169, 0);
+    var oBeat = 0, oTie = 0, oLose = 0;
     final beatRanks = <String>{};
     final loseRanks = <String>{};
 
     for (final c in range.combos) {
       if (dead.contains(c.$1) || dead.contains(c.$2)) continue;
-      final villain = HandEvaluator.evaluate([c.$1, c.$2, ...board]);
-      final cmp = hero.compareTo(villain);
-      if (cmp > 0) {
-        beat++;
-        beatRanks.add(villain.rank.label);
-      } else if (cmp < 0) {
-        lose++;
-        loseRanks.add(villain.rank.label);
-      } else {
-        tie++;
+      final idx = _cellIndex(c.$1, c.$2);
+      inR[idx] = true;
+      if (hero != null) {
+        final villain = HandEvaluator.evaluate([c.$1, c.$2, ...board]);
+        final cmp = hero.compareTo(villain);
+        if (cmp > 0) {
+          beat[idx]++;
+          oBeat++;
+          beatRanks.add(villain.rank.label);
+        } else if (cmp < 0) {
+          lose[idx]++;
+          oLose++;
+          loseRanks.add(villain.rank.label);
+        } else {
+          tie[idx]++;
+          oTie++;
+        }
       }
     }
-    final total = max(1, beat + tie + lose);
-    return RangeBreakdown(
-      combos: beat + tie + lose,
-      beat: beat / total,
-      tie: tie / total,
-      lose: lose / total,
-      beatClasses: _topClasses(beatRanks, ascending: false),
-      loseClasses: _topClasses(loseRanks, ascending: true),
-    );
+
+    final labels = _gridLabels();
+    final grid = HandGrid([
+      for (var i = 0; i < 169; i++)
+        RangeCell(
+          label: labels[i],
+          row: i ~/ 13,
+          col: i % 13,
+          inRange: inR[i],
+          beat: beat[i],
+          tie: tie[i],
+          lose: lose[i],
+        ),
+    ]);
+
+    RangeBreakdown? breakdown;
+    if (hero != null) {
+      final total = max(1, oBeat + oTie + oLose);
+      breakdown = RangeBreakdown(
+        combos: oBeat + oTie + oLose,
+        beat: oBeat / total,
+        tie: oTie / total,
+        lose: oLose / total,
+        beatClasses: _topClasses(beatRanks, ascending: false),
+        loseClasses: _topClasses(loseRanks, ascending: true),
+      );
+    }
+    return (breakdown: breakdown, grid: grid);
   }
+
+  /// The row-major index (0..168) of the starting-hand cell for two cards:
+  /// pairs on the diagonal, suited upper-right, offsuit lower-left, ace-first.
+  static int _cellIndex(Card a, Card b) {
+    final ia = 14 - a.rank.value;
+    final ib = 14 - b.rank.value;
+    if (a.rank == b.rank) return ia * 13 + ia;
+    final hi = min(ia, ib);
+    final lo = max(ia, ib);
+    final suited = a.suit == b.suit;
+    final r = suited ? hi : lo;
+    final c = suited ? lo : hi;
+    return r * 13 + c;
+  }
+
+  static const _gridRanks = ['A', 'K', 'Q', 'J', 'T', '9', '8', '7', '6', '5', '4', '3', '2'];
+
+  static List<String> _gridLabels() => [
+    for (var r = 0; r < 13; r++)
+      for (var c = 0; c < 13; c++)
+        if (r == c)
+          '${_gridRanks[r]}${_gridRanks[r]}'
+        else
+          '${_gridRanks[min(r, c)]}${_gridRanks[max(r, c)]}${c > r ? 's' : 'o'}',
+  ];
 
   /// Orders hand-class labels by strength; strongest-first for what we lose to,
   /// weakest-first for what we beat. Keeps a readable handful.
@@ -302,10 +459,28 @@ class HandCoach {
 
   // ---- EV model ------------------------------------------------------------
 
+  /// How many "raise steps" of pressure the continuing (calling) range has
+  /// absorbed, given the hero already faces [raiseCount] raises and is now
+  /// betting/raising [betFrac] of the pot. Bigger bets fold out more, so the
+  /// callers left are stronger — this is what stops a huge overbet/shove from
+  /// being scored against a loose range it would never actually get called by.
+  static int _calledLevel(int raiseCount, double betFrac) {
+    var level = raiseCount + 1; // continuing at all means beating our aggression
+    if (betFrac >= 4) {
+      level += 3; // overbet / shove into a small pot — only the nuts call
+    } else if (betFrac >= 2) {
+      level += 2;
+    } else if (betFrac >= 1) {
+      level += 1;
+    }
+    return level;
+  }
+
   static List<ActionEv> _actions(
     HandCoachInput i,
     int pot,
     double equity,
+    double Function(int level) calledEquity,
     double spr,
   ) {
     final out = <ActionEv>[];
@@ -348,22 +523,28 @@ class HandCoach {
             .round()
             .clamp(i.minRaiseTo, i.maxRaiseTo);
         if (!seen.add(to)) continue; // clamped onto an existing size
-        out.add(_betEv(i, pot, equity, to, tag, raising));
+        out.add(_betEv(i, pot, calledEquity, to, tag, raising));
       }
       // Add an explicit all-in when short or when it isn't already the top size.
       if (spr < 1.5 || !seen.contains(i.maxRaiseTo)) {
         if (seen.add(i.maxRaiseTo)) {
-          out.add(_betEv(i, pot, equity, i.maxRaiseTo, 'all-in', raising, allIn: true));
+          out.add(_betEv(i, pot, calledEquity, i.maxRaiseTo, 'all-in', raising,
+              allIn: true));
         }
       }
     }
     return out;
   }
 
+  /// [calledEquity] maps a range-narrowing *level* to the hero's equity against
+  /// the range that continues at that level. `_betEv` derives the level from the
+  /// bet's pot-fraction (bigger bet ⇒ tighter callers ⇒ lower equity), so the
+  /// "when called" branch is scored against the range that would actually call
+  /// *this* size — not the wide pre-bet range.
   static ActionEv _betEv(
     HandCoachInput i,
     int pot,
-    double equity,
+    double Function(int level) calledEquity,
     int to,
     String tag,
     bool raising, {
@@ -372,10 +553,20 @@ class HandCoach {
     final heroAdds = to - i.heroCurrentBet;
     final villainToCall = to - i.currentBet;
     final betFrac = pot <= 0 ? 1.0 : heroAdds / pot;
-    var fEq = (0.15 + 0.45 * betFrac).clamp(0.0, 0.75);
+    // Base fold equity grows with bet size, but is capped by how committed the
+    // opponents already are: each prior raise this street shrinks how often they
+    // fold to more aggression. Betting into no raise can fold up to ~75%, but a
+    // 5-bet shove over a 4-bet almost never gets through — so the ceiling drops
+    // steeply. Without this the model credited a KTo shove vs a 4-bet with ~75%
+    // fold equity and (wrongly) loved it.
+    const foldCeiling = [0.75, 0.55, 0.32, 0.12, 0.08];
+    final ceil = foldCeiling[i.raiseCount.clamp(0, foldCeiling.length - 1)];
+    var fEq = (0.15 + 0.45 * betFrac).clamp(0.0, ceil);
     fEq = pow(fEq, max(1, i.opponents)).toDouble(); // all opponents must fold
+    // Callers of *this* size are stronger the bigger we bet.
+    final eqCalled = calledEquity(_calledLevel(i.raiseCount, betFrac));
     final calledPot = pot + heroAdds + villainToCall;
-    final evCalled = equity * calledPot - heroAdds;
+    final evCalled = eqCalled * calledPot - heroAdds;
     final ev = fEq * pot + (1 - fEq) * evCalled;
     return ActionEv(
       kind: raising ? CoachAction.raise : CoachAction.bet,
@@ -383,7 +574,7 @@ class HandCoach {
       toAmount: to,
       sizingTag: allIn ? 'all-in' : tag,
       ev: ev,
-      note: 'Fold equity ~${_pct(fEq)}; when called, ${_pct(equity)} of a '
+      note: 'Fold equity ~${_pct(fEq)}; when called, ${_pct(eqCalled)} of a '
           '$calledPot pot.',
     );
   }

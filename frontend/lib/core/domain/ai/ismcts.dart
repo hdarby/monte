@@ -19,10 +19,17 @@ class IsmctsConfig {
     this.biasWeight = 2.0,
     this.abstraction = const ActionAbstraction(),
     this.rolloutGuard = 400,
+    this.maxIterations = 20000,
   });
 
   /// Number of determinized playouts per decision. More = stronger but slower.
+  /// This is the deterministic count used by the synchronous [decide]; the
+  /// time-budgeted [IsmctsEngine.decideTimed] uses it only as a floor.
   final int iterations;
+
+  /// Hard cap on playouts when running under a time budget, so a generous pace
+  /// (or a fast machine) can't spin indefinitely.
+  final int maxIterations;
 
   /// UCB1 exploration weight `C`. Rewards are normalized to ~[-1, 1], so the
   /// classic √2 ≈ 1.4 is a sensible default.
@@ -95,7 +102,43 @@ class IsmctsEngine implements DecisionPolicy {
       chooseAction(game, player);
 
   /// Chooses an action for [hero], who must be the player currently to act.
+  /// Synchronous and deterministic under a fixed seed — runs exactly
+  /// [IsmctsConfig.iterations] playouts.
   GameAction chooseAction(PokerGame game, Player hero) {
+    final root = _prepareRoot(game, hero);
+    for (var i = 0; i < _config.iterations; i++) {
+      _descend(root, _determinizer.determinize(game, hero));
+    }
+    return _bestAction(root, game, hero);
+  }
+
+  /// Time-budgeted search: keeps running playouts (in cooperative batches that
+  /// yield to the event loop, so the UI stays responsive) until [budget]
+  /// elapses or [IsmctsConfig.maxIterations] is hit — spending a slower pace on
+  /// a *deeper* search rather than idling. Always runs at least
+  /// [IsmctsConfig.iterations] playouts so it's never weaker than [decide].
+  /// Not seed-deterministic (iteration count depends on wall-clock), so it's
+  /// used only for live play, never in tests or batch simulation.
+  Future<GameAction> decideTimed(PokerGame game, Player hero,
+      {required Duration budget}) async {
+    final root = _prepareRoot(game, hero);
+    final sw = Stopwatch()..start();
+    const batch = 64;
+    var done = 0;
+    while (done < _config.maxIterations) {
+      for (var b = 0; b < batch && done < _config.maxIterations; b++, done++) {
+        _descend(root, _determinizer.determinize(game, hero));
+      }
+      // Stop once we've met the floor AND spent the budget.
+      if (done >= _config.iterations && sw.elapsed >= budget) break;
+      await Future<void>.delayed(Duration.zero); // let the UI breathe
+    }
+    return _bestAction(root, game, hero);
+  }
+
+  /// Captures the per-decision root context (hero index, opponent policies,
+  /// reward-normalizing chip scale) and returns a fresh search root.
+  _Node _prepareRoot(PokerGame game, Player hero) {
     _heroIndex = game.players.indexWhere((p) => p.id == hero.id);
     _heroId = hero.id;
     _opponentPolicies = _buildOpponentPolicies(game, hero);
@@ -105,13 +148,11 @@ class IsmctsEngine implements DecisionPolicy {
     _chipScale = (_rootStacks.fold<int>(0, (s, v) => s + v) + game.pot)
         .toDouble()
         .clamp(1, double.infinity);
+    return _Node();
+  }
 
-    final root = _Node();
-    for (var i = 0; i < _config.iterations; i++) {
-      _descend(root, _determinizer.determinize(game, hero));
-    }
-
-    // Robust choice: the most-visited root action (tie-break by mean reward).
+  /// The robust choice: the most-visited root action (tie-break by mean reward).
+  GameAction _bestAction(_Node root, PokerGame game, Player hero) {
     final actions = _config.abstraction.actionsFor(game, hero);
     var bestKey = 0;
     var bestVisits = -1;

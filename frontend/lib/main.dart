@@ -4,12 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:monte/core/domain/ai/bot_spec.dart';
 import 'package:monte/core/domain/ai/decider_factory.dart';
 import 'package:monte/core/presentation/money_format.dart';
 import 'package:monte/features/coach/domain/hand_coach.dart';
-import 'package:monte/features/coach/presentation/coach_dialog.dart';
+import 'package:monte/features/coach/presentation/coach_screen.dart';
 import 'package:monte/core/theme/app_theme.dart';
 import 'package:monte/features/analytics/presentation/analytics_screen.dart';
 import 'package:monte/features/history/presentation/history_screen.dart';
@@ -24,19 +25,45 @@ import 'package:monte/features/eval_history/data/file_eval_history_store.dart';
 import 'package:monte/features/eval_history/presentation/eval_history_provider.dart';
 import 'package:monte/features/table/presentation/widgets/new_game_dialog.dart';
 
+/// Bumped whenever a change (e.g. a hand-evaluation fix) invalidates
+/// previously-learned tuning. On a mismatch, [_resetStaleTuning] wipes the
+/// persisted overrides and the eval-history sample so tuning starts clean.
+const _tuningVersion = 2;
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // Resolve the permanent tuning-history location once, up front, so the store
   // can append synchronously as hands complete.
   final dir = await getApplicationSupportDirectory();
+  final store = FileEvalHistoryStore(dir);
+  // Discard tuning learned against superseded evaluation logic (one-time, gated
+  // on [_tuningVersion]) so stale overrides can't skew play after an engine fix.
+  await _resetStaleTuning(store);
   runApp(
     ProviderScope(
       overrides: [
-        evalHistoryStoreProvider.overrideWithValue(FileEvalHistoryStore(dir)),
+        evalHistoryStoreProvider.overrideWithValue(store),
       ],
       child: const MonteApp(),
     ),
   );
+}
+
+/// When the stored tuning version differs from [_tuningVersion], clears the
+/// persisted profile overrides and wipes the eval-history file, then records the
+/// new version. A no-op once the versions match.
+Future<void> _resetStaleTuning(FileEvalHistoryStore store) async {
+  const versionKey = 'tuning_version';
+  const overridesKey = 'profile_overrides';
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getInt(versionKey) == _tuningVersion) return;
+    await prefs.remove(overridesKey);
+    await store.wipe();
+    await prefs.setInt(versionKey, _tuningVersion);
+  } catch (_) {
+    // No prefs/store available (e.g. headless) — nothing to reset.
+  }
 }
 
 class MonteApp extends StatelessWidget {
@@ -103,15 +130,53 @@ class _GamePageState extends ConsumerState<GamePage> {
   /// Opens the in-hand coach for the human, computing the read once from the
   /// current [snapshot]. Models only opponents still in the hand who've put
   /// chips in (those "yet to act" reveal no range).
-  void _openCoach(TableSnapshot snapshot, GameSettings settings) {
+  void _openCoach(
+    TableSnapshot snapshot,
+    GameSettings settings,
+    TableViewModel vm,
+  ) {
+    final report = _coachReport(snapshot, settings);
+    if (report == null) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => CoachScreen(
+          report: report,
+          money: MoneyFormat(
+            showBigBlinds: settings.showBigBlinds,
+            bigBlind: settings.bigBlind,
+          ),
+          // On the human's turn, each suggestion is playable: tapping it submits
+          // that action as the human's move and returns to the table.
+          onAction: snapshot.isHumanTurn ? vm.submitAction : null,
+        ),
+      ),
+    );
+  }
+
+  /// Builds the coach read from the current [snapshot], or null if there's no
+  /// human seat. Models only opponents still in the hand who've put chips in
+  /// (those "yet to act" reveal no range).
+  CoachReport? _coachReport(TableSnapshot snapshot, GameSettings settings) {
     final human = snapshot.human;
-    if (human == null) return;
+    if (human == null) return null;
+    final ctx = snapshot.actionContext;
     final live = snapshot.seats
         .where((s) => !s.isHuman && !s.folded)
         .toList();
-    final acted = live.where((s) => s.currentBet > 0).toList();
+    // Who's actually in with a range: opponents who've voluntarily raised or
+    // matched the going bet. This deliberately excludes the blinds when they're
+    // still short of the current bet (posting a blind isn't a range — counting
+    // them as extra opponents wrecks the multiway equity read).
+    final goingBet = ctx?.currentBet ??
+        live.fold<int>(0, (m, s) => math.max(m, s.currentBet));
+    final committed = live
+        .where((s) =>
+            s.raiseLevel > 0 || (goingBet > 0 && s.currentBet >= goingBet))
+        .toList();
+    final acted = committed.isNotEmpty
+        ? committed
+        : live.where((s) => s.currentBet > 0).toList();
     final modeled = acted.isNotEmpty ? acted : live;
-    final ctx = snapshot.actionContext;
     final effStack = live.isEmpty
         ? human.stack
         : math.min(human.stack, live.map((s) => s.stack).reduce(math.max));
@@ -120,7 +185,7 @@ class _GamePageState extends ConsumerState<GamePage> {
     final raiseCount = ctx?.raiseCount ??
         snapshot.seats.fold<int>(0, (m, s) => math.max(m, s.raiseLevel));
 
-    final report = HandCoach.analyze(
+    return HandCoach.analyze(
       HandCoachInput(
         hole: human.holeCards ?? const [],
         board: snapshot.board,
@@ -141,11 +206,6 @@ class _GamePageState extends ConsumerState<GamePage> {
         random: math.Random(),
       ),
       analysisAvailable: snapshot.isHumanTurn,
-    );
-    showCoachDialog(
-      context,
-      report,
-      MoneyFormat(showBigBlinds: settings.showBigBlinds, bigBlind: settings.bigBlind),
     );
   }
 
@@ -206,23 +266,37 @@ class _GamePageState extends ConsumerState<GamePage> {
     vm.startNextHand();
   }
 
-  /// Space or Enter deals the next hand, but only between hands — during play
-  /// these keys fall through to whatever has focus (e.g. action buttons).
+  /// Space or Enter is the "default action" key. Between hands it deals the next
+  /// one; on the human's turn it plays the coach's recommended action; otherwise
+  /// it falls through to whatever has focus (e.g. action buttons).
   KeyEventResult _onKey(
     KeyEvent event,
     TableSnapshot snapshot,
+    GameSettings settings,
     TableViewModel vm,
   ) {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
     final k = event.logicalKey;
-    final isDeal =
+    final isDefault =
         k == LogicalKeyboardKey.space ||
         k == LogicalKeyboardKey.enter ||
         k == LogicalKeyboardKey.numpadEnter;
-    if (!isDeal) return KeyEventResult.ignored;
-    if (!snapshot.isHandOver || _bustDialogOpen) return KeyEventResult.ignored;
-    _dealNext(vm);
-    return KeyEventResult.handled;
+    if (!isDefault) return KeyEventResult.ignored;
+    if (_bustDialogOpen) return KeyEventResult.ignored;
+    if (snapshot.isHandOver) {
+      _dealNext(vm);
+      return KeyEventResult.handled;
+    }
+    // Mid-hand: on the human's turn, play the coach's recommendation.
+    if (snapshot.isHumanTurn) {
+      final report = _coachReport(snapshot, settings);
+      final i = report?.recommendedIndex ?? -1;
+      if (report != null && i >= 0 && i < report.actions.length) {
+        vm.submitAction(report.actions[i].toGameAction());
+        return KeyEventResult.handled;
+      }
+    }
+    return KeyEventResult.ignored;
   }
 
   /// When a hand ends with busted seats, prompt the player to resolve the first
@@ -293,7 +367,7 @@ class _GamePageState extends ConsumerState<GamePage> {
           ),
           child: Focus(
             autofocus: true,
-            onKeyEvent: (_, event) => _onKey(event, snapshot, vm),
+            onKeyEvent: (_, event) => _onKey(event, snapshot, settings, vm),
             child: TableScreen(
               snapshot: snapshot,
               isAllBots: vm.isAllBots,
@@ -305,7 +379,7 @@ class _GamePageState extends ConsumerState<GamePage> {
               onOpenSettings: _openSettings,
               onOpenAnalytics: _openAnalytics,
               onOpenHistory: _openHistory,
-              onCoach: () => _openCoach(snapshot, settings),
+              onCoach: () => _openCoach(snapshot, settings, vm),
               autoDeal: _autoDeal,
               onToggleAutoDeal: (v) => setState(() => _autoDeal = v),
             ),

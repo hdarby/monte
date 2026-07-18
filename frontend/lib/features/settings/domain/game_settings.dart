@@ -1,6 +1,7 @@
 import 'package:monte/core/domain/ai/bot_spec.dart';
 import 'package:monte/core/domain/ai/decider_factory.dart';
 import 'package:monte/core/domain/ai/personality.dart';
+import 'package:monte/features/settings/domain/play_pace.dart';
 
 /// User-configurable, persisted game settings.
 class GameSettings {
@@ -15,6 +16,7 @@ class GameSettings {
     this.bigBlind = 3,
     this.startingStack = 300,
     this.seatBots = const [],
+    this.playPace = PlayPace.normal,
   });
 
   /// Supported table-size bounds (2 = heads-up … 10 = full ring).
@@ -71,6 +73,10 @@ class GameSettings {
   /// table via [seatBotsFor].
   final List<BotSpec> seatBots;
 
+  /// How quickly the computer opponents act. Slower paces spend the extra time
+  /// searching deeper (MCTS), not idling.
+  final PlayPace playPace;
+
   /// How many seats are bots (the human takes one unless [allBots]).
   int get botSeatCount => allBots ? playerCount : playerCount - 1;
 
@@ -94,6 +100,7 @@ class GameSettings {
     int? bigBlind,
     int? startingStack,
     List<BotSpec>? seatBots,
+    PlayPace? playPace,
   }) => GameSettings(
     playerCount: playerCount ?? this.playerCount,
     showBigBlinds: showBigBlinds ?? this.showBigBlinds,
@@ -105,5 +112,6 @@ class GameSettings {
     bigBlind: bigBlind ?? this.bigBlind,
     startingStack: startingStack ?? this.startingStack,
     seatBots: seatBots ?? this.seatBots,
+    playPace: playPace ?? this.playPace,
   );
 }

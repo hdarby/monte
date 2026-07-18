@@ -7,6 +7,7 @@ import 'package:monte/core/domain/ai/decider_factory.dart';
 import 'package:monte/core/presentation/bot_lineup_editor.dart';
 import 'package:monte/core/theme/app_theme.dart';
 import 'package:monte/features/settings/domain/game_settings.dart';
+import 'package:monte/features/settings/domain/play_pace.dart';
 import 'package:monte/features/settings/presentation/settings_controller.dart';
 
 /// Lets the player choose the table size and display units, writing changes
@@ -24,6 +25,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   late bool _showBehavior;
   late bool _allBots;
   late List<BotSpec> _specs;
+  late PlayPace _playPace;
   late GameSettings _initial;
   final _sbController = TextEditingController();
   final _bbController = TextEditingController();
@@ -40,6 +42,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     _showBehavior = settings.showBehavior;
     _allBots = settings.allBots;
     _specs = settings.seatBotsFor(settings.botSeatCount);
+    _playPace = settings.playPace;
     _sbController.text = '${settings.smallBlind}';
     _bbController.text = '${settings.bigBlind}';
     _stackController.text = '${settings.startingStack}';
@@ -220,6 +223,37 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 const Divider(color: Colors.white12),
                 const SizedBox(height: 12),
                 const Text(
+                  'Pace of play',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'How long opponents take to act. Slower settings spend the '
+                  'extra time searching deeper — not idling.',
+                  style: TextStyle(color: Colors.white60),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<PlayPace>(
+                  initialValue: _playPace,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    border: OutlineInputBorder(),
+                  ),
+                  items: [
+                    for (final p in PlayPace.values)
+                      DropdownMenuItem(
+                        value: p,
+                        child: Text('${p.label}  ·  ${_paceHint(p)}'),
+                      ),
+                  ],
+                  onChanged: (v) =>
+                      setState(() => _playPace = v ?? _playPace),
+                ),
+                const SizedBox(height: 20),
+                const Divider(color: Colors.white12),
+                const SizedBox(height: 12),
+                const Text(
                   'Bots',
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                 ),
@@ -272,6 +306,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       ),
     );
   }
+
+  /// A short descriptor of what a pace step means for the player.
+  static String _paceHint(PlayPace p) => switch (p) {
+    PlayPace.instant => 'no delay, engine speed',
+    PlayPace.fast => '~0.4s per decision',
+    PlayPace.normal => '~0.7s (default)',
+    PlayPace.slow => 'up to 3s, deeper search',
+    PlayPace.study => 'up to 10s, deepest search',
+  };
 
   /// A plain numeric text field for a stake amount (blank/invalid falls back to
   /// the loaded value on Apply).
@@ -338,6 +381,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       bigBlind: stake.bigBlind,
                       startingStack: stake.startingStack,
                       seatBots: _specs,
+                      playPace: _playPace,
                     ),
                   );
               Navigator.pop(context);

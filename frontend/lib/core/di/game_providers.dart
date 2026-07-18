@@ -29,6 +29,7 @@ final gameRepositoryProvider = Provider<GameRepository>((ref) {
     bigBlind,
     startingStack,
     seatBotsKey,
+    playPace,
   ) = ref.watch(
     settingsControllerProvider.select((s) {
       final v = s.value ?? const GameSettings();
@@ -42,6 +43,7 @@ final gameRepositoryProvider = Provider<GameRepository>((ref) {
         v.startingStack,
         // Content-based key so a per-seat lineup change triggers a rebuild.
         v.seatBots.map((b) => b.encode()).join(';'),
+        v.playPace,
       );
     }),
   );
@@ -68,9 +70,10 @@ final gameRepositoryProvider = Provider<GameRepository>((ref) {
       smallBlind: smallBlind,
       bigBlind: bigBlind,
       startingStack: startingStack,
-      botThinkTime: allBots
-          ? const Duration(milliseconds: 250)
-          : const Duration(milliseconds: 700),
+      // All-bots evaluation keeps its own fast cadence; interactive play uses
+      // the player's chosen pace (slower = deeper MCTS search, not idling).
+      botThinkTime:
+          allBots ? const Duration(milliseconds: 250) : playPace.budget,
       // Log each interactive hand to the run console (prefixed for grepping) so
       // played hands can be read back for diagnosis.
       onHandRecorded: (hand) {

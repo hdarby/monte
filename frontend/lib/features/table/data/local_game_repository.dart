@@ -4,6 +4,7 @@ import 'package:monte/core/domain/ai/amateur_policy.dart';
 import 'package:monte/core/domain/ai/bot_spec.dart';
 import 'package:monte/core/domain/ai/decider_factory.dart';
 import 'package:monte/core/domain/ai/home_game_profiles.dart';
+import 'package:monte/core/domain/ai/ismcts.dart';
 import 'package:monte/core/domain/ai/opponent_model.dart';
 import 'package:monte/core/domain/ai/personality.dart';
 import 'package:monte/core/domain/ai/player_profile.dart';
@@ -54,6 +55,12 @@ class TableConfig {
   final int startingStack;
   final int smallBlind;
   final int bigBlind;
+
+  /// Target time each bot decision should take (the pace-of-play budget). It's
+  /// not idle waiting: an MCTS seat spends it searching *deeper* (see
+  /// [_runBots] / [IsmctsEngine.decideTimed]); other brains decide instantly and
+  /// then pad to this target so pacing feels uniform. [Duration.zero] = no
+  /// artificial delay and no deepening (pure engine speed).
   final Duration botThinkTime;
 
   /// The default brain the bots use, and the personality shaping it. Used for
@@ -459,14 +466,31 @@ class LocalGameRepository extends GameRepository {
     _botsRunning = true;
     try {
       final game = _game!;
+      final budget = config.botThinkTime;
       while (!game.isHandOver) {
         final current = game.currentPlayer;
         if (current == null) break; // showdown / run-out resolves internally
         if (current.isHuman) break;
 
-        await Future<void>.delayed(config.botThinkTime);
+        final decider = _deciderFor(current);
+        final sw = Stopwatch()..start();
+        // An MCTS seat spends the pace budget on a deeper (cooperative-async)
+        // search; every other brain decides instantly.
+        final GameAction action;
+        if (budget > Duration.zero && decider is IsmctsEngine) {
+          action = await decider.decideTimed(game, current, budget: budget);
+        } else {
+          action = decider.decide(game, current);
+        }
         if (_disposed) return;
-        _applyAndRecord(current, _deciderFor(current).decide(game, current));
+        // Pad instant brains (or a search that finished early) up to the pace so
+        // decisions feel uniformly timed regardless of the seat's brain.
+        final remaining = budget - sw.elapsed;
+        if (remaining > Duration.zero) {
+          await Future<void>.delayed(remaining);
+          if (_disposed) return;
+        }
+        _applyAndRecord(current, action);
         _publish();
       }
     } finally {

@@ -4,6 +4,7 @@ import 'package:monte/core/domain/ai/bot_spec.dart';
 import 'package:monte/core/domain/ai/decider_factory.dart';
 import 'package:monte/core/domain/ai/personality.dart';
 import 'package:monte/features/settings/domain/game_settings.dart';
+import 'package:monte/features/settings/domain/play_pace.dart';
 import 'package:monte/features/settings/domain/settings_repository.dart';
 
 /// Persists [GameSettings] across runs via [SharedPreferences].
@@ -18,6 +19,7 @@ class SharedPrefsSettingsRepository implements SettingsRepository {
   static const _kBigBlind = 'big_blind';
   static const _kStartingStack = 'starting_stack';
   static const _kSeatBots = 'seat_bots';
+  static const _kPlayPace = 'play_pace';
 
   @override
   Future<GameSettings> load() async {
@@ -53,6 +55,11 @@ class SharedPrefsSettingsRepository implements SettingsRepository {
         for (final s in prefs.getStringList(_kSeatBots) ?? const [])
           BotSpec.decode(s),
       ],
+      playPace: _enumByName(
+        PlayPace.values,
+        prefs.getString(_kPlayPace),
+        PlayPace.normal,
+      ),
     );
   }
 
@@ -72,6 +79,7 @@ class SharedPrefsSettingsRepository implements SettingsRepository {
       _kSeatBots,
       [for (final b in settings.seatBots) b.encode()],
     );
+    await prefs.setString(_kPlayPace, settings.playPace.name);
   }
 
   /// Resolves a stored enum name back to its value, falling back to [fallback]

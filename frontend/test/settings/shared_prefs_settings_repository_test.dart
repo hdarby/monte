@@ -5,6 +5,7 @@ import 'package:monte/core/domain/ai/personality.dart';
 import 'package:monte/core/domain/ai/player_profiles.dart';
 import 'package:monte/features/settings/data/shared_prefs_settings_repository.dart';
 import 'package:monte/features/settings/domain/game_settings.dart';
+import 'package:monte/features/settings/domain/play_pace.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -46,6 +47,24 @@ void main() {
       SharedPreferences.setMockInitialValues({'bot_type': 'bogus'});
       final settings = await SharedPrefsSettingsRepository().load();
       expect(settings.botType, BotType.personality);
+    });
+
+    test('defaults play pace to normal and round-trips a chosen pace', () async {
+      SharedPreferences.setMockInitialValues({});
+      final repo = SharedPrefsSettingsRepository();
+      expect((await repo.load()).playPace, PlayPace.normal);
+
+      await repo.save(const GameSettings(playPace: PlayPace.study));
+      expect((await repo.load()).playPace, PlayPace.study);
+    });
+
+    test('play pace falls back to normal on an unrecognized stored value',
+        () async {
+      SharedPreferences.setMockInitialValues({'play_pace': 'bogus'});
+      expect(
+        (await SharedPrefsSettingsRepository().load()).playPace,
+        PlayPace.normal,
+      );
     });
 
     test('load clamps an out-of-range player count', () async {

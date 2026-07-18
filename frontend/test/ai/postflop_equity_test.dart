@@ -110,4 +110,46 @@ void main() {
       expect(a, b); // no runout to sample -> deterministic
     });
   });
+
+  group('PostflopEquity.equityMultiway', () {
+    test('opponents <= 1 matches the heads-up number', () {
+      final range = HandRange.top(0.2);
+      final hu = PostflopEquity.equity(
+        cards('As Kh'), const [], range,
+        iterations: 1500, random: Random(7),
+      );
+      final mw = PostflopEquity.equityMultiway(
+        cards('As Kh'), const [], range,
+        opponents: 1, iterations: 1500, random: Random(7),
+      );
+      expect(mw, closeTo(hu, 0.02));
+    });
+
+    test('AKo three-way keeps a sane share (not equity^opponents)', () {
+      final range = HandRange.top(0.2);
+      final threeWay = PostflopEquity.equityMultiway(
+        cards('As Kh'), const [], range,
+        opponents: 2, iterations: 2500, random: Random(3),
+      );
+      final headsUp = PostflopEquity.equity(
+        cards('As Kh'), const [], range,
+        iterations: 2500, random: Random(3),
+      );
+      // Multiway share is lower than heads-up, but AKo is still a big favourite
+      // relative to its pot odds here — comfortably above the ~18% the old
+      // equity^opponents produced, and above an even three-way split (~33%).
+      expect(threeWay, lessThan(headsUp));
+      expect(threeWay, greaterThan(0.33));
+    });
+
+    test('more opponents monotonically lowers the share', () {
+      final range = HandRange.top(0.3);
+      double share(int opp) => PostflopEquity.equityMultiway(
+            cards('Ah Kh'), cards('Qh 7c 2d'), range,
+            opponents: opp, iterations: 1500, random: Random(11),
+          );
+      expect(share(3), lessThan(share(2)));
+      expect(share(2), lessThan(share(1)));
+    });
+  });
 }

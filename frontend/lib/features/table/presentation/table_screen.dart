@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import 'package:monte/core/domain/engine/actions.dart';
+import 'package:monte/core/presentation/money_format.dart';
 import 'package:monte/core/theme/app_theme.dart';
 import 'package:monte/features/table/domain/table_snapshot.dart';
 import 'package:monte/features/table/presentation/widgets/action_bar.dart';
@@ -67,7 +68,7 @@ class TableScreen extends StatelessWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Expanded(child: _felt(snapshot.seats)),
+                  Expanded(child: _felt(context, snapshot.seats)),
                   _LogPanel(log: snapshot.log),
                 ],
               ),
@@ -141,9 +142,58 @@ class TableScreen extends StatelessWidget {
     ),
   );
 
+  /// A prominent "who won" banner shown above the board once the hand is over,
+  /// so the result reads at a glance without scanning seats or the log. Null
+  /// mid-hand or when there are no recorded winners.
+  Widget? _winnerBanner(BuildContext context) {
+    if (!snapshot.isHandOver) return null;
+    final winners = snapshot.seats.where((s) => s.wonAmount > 0).toList();
+    if (winners.isEmpty) return null;
+    final money = MoneyScope.of(context);
+    final chop = winners.length > 1 || winners.first.wonIsChop;
+    final String text;
+    if (winners.length == 1) {
+      final w = winners.first;
+      text = '${w.name} ${chop ? 'chops' : 'wins'} ${money.format(w.wonAmount)}';
+    } else {
+      final parts =
+          winners.map((w) => '${w.name} ${money.format(w.wonAmount)}').join('  ·  ');
+      text = 'Chop — $parts';
+    }
+    return Align(
+      alignment: const Alignment(0, -0.62),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
+        decoration: BoxDecoration(
+          color: AppTheme.gold,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: const [
+            BoxShadow(color: Colors.black54, blurRadius: 12, offset: Offset(0, 4)),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.emoji_events, color: Colors.black, size: 18),
+            const SizedBox(width: 8),
+            Text(
+              text,
+              style: const TextStyle(
+                color: Colors.black,
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   /// The felt with the community board centred and seats arranged around an
   /// ellipse — the human at the bottom, opponents filling the rest of the ring.
-  Widget _felt(List<SeatView> seats) {
+  Widget _felt(BuildContext context, List<SeatView> seats) {
+    final winner = _winnerBanner(context);
     return Container(
       margin: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -178,6 +228,7 @@ class TableScreen extends StatelessWidget {
                   onCoach: seats[i].isHuman ? onCoach : null,
                 ),
               ),
+            ?winner,
           ],
         ),
       ),
@@ -205,14 +256,34 @@ class TableScreen extends StatelessWidget {
   }
 }
 
-class _LogPanel extends StatelessWidget {
+class _LogPanel extends StatefulWidget {
   const _LogPanel({required this.log});
 
   final List<String> log;
 
   @override
+  State<_LogPanel> createState() => _LogPanelState();
+}
+
+class _LogPanelState extends State<_LogPanel> {
+  final _controller = ScrollController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final recent = log.length > 16 ? log.sublist(log.length - 16) : log;
+    // Show the whole log (no arbitrary cap that leaves the panel half-empty),
+    // and after layout keep it pinned to the newest line at the bottom so the
+    // box fills top-to-bottom with the latest action always in view.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_controller.hasClients) {
+        _controller.jumpTo(_controller.position.maxScrollExtent);
+      }
+    });
     return Container(
       width: 240,
       margin: const EdgeInsets.only(right: 16, top: 16, bottom: 16),
@@ -237,8 +308,9 @@ class _LogPanel extends StatelessWidget {
           const Divider(color: Colors.white12),
           Expanded(
             child: ListView(
+              controller: _controller,
               children: [
-                for (final line in recent)
+                for (final line in widget.log)
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 3),
                     child: Text(

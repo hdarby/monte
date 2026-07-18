@@ -19,6 +19,9 @@ class PlayerProfile {
     required this.behavioralModifiers,
     this.engineTriggers,
     this.skill = 1.0,
+    this.generalTraits = const GeneralTraits(),
+    this.characteristics = const [],
+    this.description,
   }) : assert(skill >= 0 && skill <= 1);
 
   final String id;
@@ -29,6 +32,18 @@ class PlayerProfile {
 
   /// Null when the profile has no situational override.
   final EngineTriggers? engineTriggers;
+
+  /// Broad, human-scored poker skills every player (pro or rec) is rated on.
+  /// Captured data for display and future wiring (see [GeneralTraits]).
+  final GeneralTraits generalTraits;
+
+  /// The special characteristics (from the catalog) this player uses, each with
+  /// a 0–1 proficiency. Empty for players with no bespoke mechanics.
+  final List<PlayerCharacteristic> characteristics;
+
+  /// Free-text prose describing how the player plays (a pro's write-up, or a
+  /// rec's strengths/weaknesses). Null when unset; [archetype] stays the label.
+  final String? description;
 
   /// A copy with [strategicBaseline] replaced — used to apply a tuned baseline
   /// override while keeping the profile's identity, skill, and modifiers.
@@ -41,6 +56,9 @@ class PlayerProfile {
         behavioralModifiers: behavioralModifiers,
         engineTriggers: engineTriggers,
         skill: skill,
+        generalTraits: generalTraits,
+        characteristics: characteristics,
+        description: description,
       );
 
   /// Execution quality in [0, 1]: 1.0 = flawless (pro-tier), lower = noisier
@@ -63,6 +81,15 @@ class PlayerProfile {
         : EngineTriggers.fromJson(_obj(json, 'engine_triggers')),
     // Optional: older profiles predate `skill` and default to pro-tier 1.0.
     skill: _unitOr(json, 'skill', 1.0),
+    // Optional additive blocks — absent in older profiles.
+    generalTraits: json['general_traits'] == null
+        ? const GeneralTraits()
+        : GeneralTraits.fromJson(_obj(json, 'general_traits')),
+    characteristics: [
+      for (final c in (json['characteristics'] as List?) ?? const [])
+        PlayerCharacteristic.fromJson((c as Map).cast<String, dynamic>()),
+    ],
+    description: json['description'] as String?,
   );
 
   Map<String, dynamic> toJson() => {
@@ -73,6 +100,9 @@ class PlayerProfile {
     'behavioral_modifiers': behavioralModifiers.toJson(),
     'engine_triggers': engineTriggers?.toJson(),
     'skill': skill,
+    'general_traits': generalTraits.toJson(),
+    'characteristics': [for (final c in characteristics) c.toJson()],
+    'description': description,
   };
 
   /// Soft, cross-field sanity checks (each entry is a human-readable warning).
@@ -86,8 +116,68 @@ class PlayerProfile {
     if (b.threeBetFrequency > b.pfrTarget) {
       w.add('3-bet frequency (${b.threeBetFrequency}) exceeds PFR (${b.pfrTarget}).');
     }
+    final ids = characteristics.map((c) => c.id).toList();
+    if (ids.toSet().length != ids.length) {
+      w.add('Duplicate characteristic ids: $ids.');
+    }
     return w;
   }
+}
+
+/// Broad poker skills every player is scored on, each a 0–1 proficiency. These
+/// are captured for display and future wiring; tilt control and opponent reading
+/// live on [BehavioralModifiers] (`tiltResistance` / `weightOnOpponentHistory`)
+/// to avoid a second source of truth, so only the genuinely-new dimensions are
+/// here.
+@immutable
+class GeneralTraits {
+  const GeneralTraits({
+    this.positionAwareness = 0.5,
+    this.potOdds = 0.5,
+    this.impliedOdds = 0.5,
+  })  : assert(positionAwareness >= 0 && positionAwareness <= 1),
+        assert(potOdds >= 0 && potOdds <= 1),
+        assert(impliedOdds >= 0 && impliedOdds <= 1);
+
+  /// Awareness of position when choosing hands and lines (0–1).
+  final double positionAwareness;
+
+  /// Grasp of immediate pot odds (0–1).
+  final double potOdds;
+
+  /// Grasp of implied odds — future streets' payoff on draws (0–1).
+  final double impliedOdds;
+
+  factory GeneralTraits.fromJson(Map<String, dynamic> j) => GeneralTraits(
+        positionAwareness: _unitOr(j, 'position_awareness', 0.5),
+        potOdds: _unitOr(j, 'pot_odds', 0.5),
+        impliedOdds: _unitOr(j, 'implied_odds', 0.5),
+      );
+
+  Map<String, dynamic> toJson() => {
+        'position_awareness': positionAwareness,
+        'pot_odds': potOdds,
+        'implied_odds': impliedOdds,
+      };
+}
+
+/// One special characteristic (by catalog [id]) a player uses, and how well
+/// ([proficiency], 0–1). E.g. `GTO_Adherence` at 0.92 = plays GTO 92% cleanly.
+@immutable
+class PlayerCharacteristic {
+  const PlayerCharacteristic({required this.id, this.proficiency = 1.0})
+      : assert(proficiency >= 0 && proficiency <= 1);
+
+  final String id;
+  final double proficiency;
+
+  factory PlayerCharacteristic.fromJson(Map<String, dynamic> j) =>
+      PlayerCharacteristic(
+        id: _str(j, 'id'),
+        proficiency: _unitOr(j, 'proficiency', 1.0),
+      );
+
+  Map<String, dynamic> toJson() => {'id': id, 'proficiency': proficiency};
 }
 
 /// Poker-native *style* targets — what the player tends to do.

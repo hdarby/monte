@@ -134,6 +134,12 @@ class PlayerSeat extends StatelessWidget {
     // The box shrink-wraps its widest child — the two hole cards. Names, badges
     // and status tags are each bounded to [_contentWidth], so none of them can
     // grow the box past the cards and overlap the next seat.
+    final ms = _moneyStatus(money);
+    // A bet/won amount can be far too long for the small compact tag, so on the
+    // bot seats (which only show card backs anyway) we paint it as a banner over
+    // the whole card footprint — maximum room, so it rarely has to shrink. The
+    // human keeps their live cards; their amount renders in the tag below.
+    final overwriteCards = ms != null && !seat.isHuman;
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
       padding: const EdgeInsets.all(8),
@@ -150,21 +156,9 @@ class PlayerSeat extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _cards(),
+          overwriteCards ? _moneyBanner(ms) : _cards(),
           const SizedBox(height: 6),
-          ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: _contentWidth),
-            child: Text(
-              seat.name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: compact ? 13 : 15,
-              ),
-            ),
-          ),
+          _name(),
           if (showBehavior && seat.behavior != null) _behaviorBadge(),
           const SizedBox(height: 2),
           Text(
@@ -175,11 +169,111 @@ class PlayerSeat extends StatelessWidget {
               fontWeight: FontWeight.w500,
             ),
           ),
-          _statusLine(money),
+          _statusLine(money, suppressMoney: overwriteCards),
         ],
       ),
     );
   }
+
+  /// The player's name, scaled to fit the seat width without ellipsis. If the
+  /// full name is too wide even at the base size, it collapses to a first
+  /// initial + last name ("Jonathan Little" → "J. Little"); [FittedBox] then
+  /// shrinks whatever remains just enough to fit, so a name is never truncated.
+  Widget _name() {
+    final base = compact ? 13.0 : 15.0;
+    return SizedBox(
+      width: _contentWidth,
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.center,
+        child: Text(
+          _displayName(base),
+          maxLines: 1,
+          softWrap: false,
+          style: TextStyle(fontWeight: FontWeight.w600, fontSize: base),
+        ),
+      ),
+    );
+  }
+
+  /// Full name if it fits at [fontSize]; otherwise "F. Lastname".
+  String _displayName(double fontSize) {
+    final full = seat.name.trim();
+    if (_fits(full, fontSize)) return full;
+    final parts = full.split(RegExp(r'\s+'));
+    if (parts.length >= 2 && parts.first.isNotEmpty) {
+      return '${parts.first[0]}. ${parts.last}';
+    }
+    return full;
+  }
+
+  /// Whether [text] fits within [_contentWidth] at [fontSize] on one line.
+  bool _fits(String text, double fontSize) {
+    final tp = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: TextStyle(fontSize: fontSize, fontWeight: FontWeight.w600),
+      ),
+      maxLines: 1,
+      textDirection: TextDirection.ltr,
+    )..layout();
+    return tp.width <= _contentWidth;
+  }
+
+  /// The bet / won status as a `(text, bg, fg)` triple, or null when the seat
+  /// has no monetary state to show. Shared by the over-card banner (bots) and
+  /// the tag below (human) so both read the same colours and wording.
+  ({String text, Color bg, Color fg})? _moneyStatus(MoneyFormat money) {
+    if (seat.wonAmount > 0) {
+      return (
+        text: '${seat.wonIsChop ? 'CHOP' : 'WON'} +${money.format(seat.wonAmount)}',
+        bg: AppTheme.gold,
+        fg: Colors.black,
+      );
+    }
+    if (seat.currentBet > 0) {
+      // Escalate the colour with the raise level: blinds/limps stay neutral, the
+      // initial raise is yellow, a 3-bet orange, a 4-bet+ red. A call takes the
+      // colour of the level it called.
+      final bg = switch (seat.raiseLevel) {
+        >= 3 => AppTheme.alarmRed,
+        2 => AppTheme.warnOrange,
+        1 => AppTheme.betYellow,
+        _ => AppTheme.feltEdge,
+      };
+      final fg = seat.raiseLevel == 1 ? Colors.black : Colors.white;
+      final verb = seat.wagerIsCall ? 'CALL' : 'BET';
+      return (text: '$verb ${money.format(seat.currentBet)}', bg: bg, fg: fg);
+    }
+    return null;
+  }
+
+  /// A bet/won amount painted across the whole card footprint, giving even long
+  /// amounts room to render large; [FittedBox] shrinks only if truly necessary.
+  Widget _moneyBanner(({String text, Color bg, Color fg}) ms) => Container(
+    width: _contentWidth,
+    height: _cardWidth * 1.4,
+    alignment: Alignment.center,
+    padding: const EdgeInsets.symmetric(horizontal: 6),
+    decoration: BoxDecoration(
+      color: ms.bg,
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: FittedBox(
+      fit: BoxFit.scaleDown,
+      child: Text(
+        ms.text,
+        maxLines: 1,
+        softWrap: false,
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          color: ms.fg,
+          fontSize: 16,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    ),
+  );
 
   Widget _cards() {
     final faceDown = seat.holeCards == null;
@@ -223,33 +317,19 @@ class PlayerSeat extends StatelessWidget {
     ),
   );
 
-  Widget _statusLine(MoneyFormat money) {
-    if (seat.wonAmount > 0) {
-      return _tag(
-        '${seat.wonIsChop ? 'CHOP' : 'WON'} +${money.format(seat.wonAmount)}',
-        AppTheme.gold,
-        Colors.black,
-      );
-    }
+  /// The tag beneath the stack. When [suppressMoney] is set the bet/won amount
+  /// is already shown as the over-card banner, so this only carries the
+  /// remaining states (folded / all-in / made-hand label).
+  Widget _statusLine(MoneyFormat money, {bool suppressMoney = false}) {
+    final ms = suppressMoney ? null : _moneyStatus(money);
+    // Won takes priority over everything else at showdown.
+    if (ms != null && seat.wonAmount > 0) return _tag(ms.text, ms.bg, ms.fg);
     if (seat.folded) return _tag('FOLDED', Colors.white24, Colors.white);
     if (seat.allIn) return _tag('ALL-IN', AppTheme.chip, Colors.white);
     if (seat.handLabel != null) {
       return _tag(seat.handLabel!.toUpperCase(), Colors.white12, Colors.white);
     }
-    if (seat.currentBet > 0) {
-      // Escalate the colour with the raise level: blinds/limps stay neutral, the
-      // initial raise is yellow, a 3-bet orange, a 4-bet+ red. A call takes the
-      // colour of the level it called.
-      final bg = switch (seat.raiseLevel) {
-        >= 3 => AppTheme.alarmRed,
-        2 => AppTheme.warnOrange,
-        1 => AppTheme.betYellow,
-        _ => AppTheme.feltEdge,
-      };
-      final fg = seat.raiseLevel == 1 ? Colors.black : Colors.white;
-      final verb = seat.wagerIsCall ? 'CALL' : 'BET';
-      return _tag('$verb ${money.format(seat.currentBet)}', bg, fg);
-    }
+    if (ms != null) return _tag(ms.text, ms.bg, ms.fg);
     return const SizedBox(height: 22);
   }
 
@@ -261,11 +341,16 @@ class PlayerSeat extends StatelessWidget {
       color: bg,
       borderRadius: BorderRadius.circular(8),
     ),
-    child: Text(
-      text,
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-      style: TextStyle(color: fg, fontSize: 11, fontWeight: FontWeight.bold),
+    // Scale the text down to fit rather than ellipsising it, so amounts stay
+    // fully legible even in the narrow compact seats.
+    child: FittedBox(
+      fit: BoxFit.scaleDown,
+      child: Text(
+        text,
+        maxLines: 1,
+        softWrap: false,
+        style: TextStyle(color: fg, fontSize: 11, fontWeight: FontWeight.bold),
+      ),
     ),
   );
 }
