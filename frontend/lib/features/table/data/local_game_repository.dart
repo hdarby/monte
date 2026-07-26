@@ -20,6 +20,7 @@ import 'package:monte/core/domain/engine/player.dart';
 import 'package:monte/core/domain/hand_history.dart';
 import 'package:monte/features/eval_history/domain/eval_hand.dart';
 import 'package:monte/features/table/domain/game_repository.dart';
+import 'package:monte/features/table/data/table_snapshot_projection.dart';
 import 'package:monte/features/table/domain/table_snapshot.dart';
 
 /// Static table configuration for a client-only game.
@@ -705,81 +706,14 @@ class LocalGameRepository extends GameRepository {
     if (!_controller.isClosed) _controller.add(_snapshot);
   }
 
-  TableSnapshot _buildSnapshot() {
-    final game = _game!;
-    final showdownHappened = game.results.any((r) => r.handValue != null);
-    // Show only chips genuinely won from opponents (a returned uncalled bet isn't
-    // a win), and flag chops.
-    final wonByPlayer = {for (final r in game.results) r.player: r.netWon};
-    final chopByPlayer = {for (final r in game.results) r.player: r.isSplit};
-    final current = game.currentPlayer;
-
-    final seats = <SeatView>[];
-    for (var i = 0; i < game.players.length; i++) {
-      final p = game.players[i];
-      // In all-bots mode there's no human to protect, so reveal everyone.
-      final reveal =
-          p.isHuman || config.allBots || (showdownHappened && p.inHand);
-      String? label;
-      if (reveal && p.inHand && game.board.length == 5 && p.hole.length == 2) {
-        label = HandEvaluator.evaluate([...p.hole, ...game.board]).rank.label;
-      }
-      seats.add(
-        SeatView(
-          id: p.id,
-          name: p.name,
-          isHuman: p.isHuman,
-          stack: p.stack,
-          currentBet: p.currentBet,
-          folded: p.hasFolded,
-          allIn: p.isAllIn,
-          isButton: i == game.buttonIndex,
-          isCurrent: current != null && current.id == p.id,
-          raiseLevel: p.betLevel,
-          wagerIsCall: p.wagerIsCall,
-          holeCards: reveal ? List.of(p.hole) : null,
-          handLabel: label,
-          wonAmount: wonByPlayer[p] ?? 0,
-          wonIsChop: chopByPlayer[p] ?? false,
-          behavior: _specByPlayer[p.id]?.label,
-        ),
+  TableSnapshot _buildSnapshot() => projectTableSnapshot(
+        _game!,
+        // In all-bots mode there's no human to protect, so reveal everyone.
+        revealAll: config.allBots,
+        behaviorLabels: {
+          for (final e in _specByPlayer.entries) e.key: e.value.label,
+        },
+        // Flag busted seats only in human-vs-bots play (all-bots tops up).
+        flagBusted: !config.allBots,
       );
-    }
-
-    ActionContext? ctx;
-    if (current != null && current.isHuman) {
-      ctx = ActionContext(
-        callAmount: game.callAmount(current),
-        canCheck: game.canCheck(current),
-        minRaiseTo: game.minRaiseTo(current),
-        maxRaiseTo: game.maxRaiseTo(current),
-        bigBlind: game.bigBlind,
-        currentBet: game.currentBet,
-        raiseCount: game.raiseCountThisRound,
-      );
-    }
-
-    // Between hands in human-vs-bots play, flag anyone left with no chips so
-    // the player can reload them or seat a fresh opponent. (All-bots mode tops
-    // stacks up each hand, so no one busts there.)
-    final busted = <String>[];
-    if (!config.allBots && game.isHandOver) {
-      for (final p in game.players) {
-        if (p.stack == 0) busted.add(p.id);
-      }
-    }
-
-    return TableSnapshot(
-      seats: seats,
-      board: List.of(game.board),
-      pot: game.pot,
-      round: game.round,
-      currentPlayerId: current?.id,
-      isHandOver: game.isHandOver,
-      handInProgress: !game.isHandOver,
-      log: List.of(game.log),
-      actionContext: ctx,
-      bustedPlayerIds: busted,
-    );
-  }
 }

@@ -31,6 +31,7 @@ class TableScreen extends StatelessWidget {
     this.autoDeal = false,
     this.onToggleAutoDeal,
     this.onCoach,
+    this.onOpenTournament,
   });
 
   final TableSnapshot snapshot;
@@ -52,6 +53,10 @@ class TableScreen extends StatelessWidget {
 
   /// Opens the in-hand coach for the human seat. Null hides the coach icon.
   final VoidCallback? onCoach;
+
+  /// Opens the tournament lobby. Null hides the trophy button (e.g. when the
+  /// table is itself inside a tournament).
+  final VoidCallback? onOpenTournament;
 
   @override
   Widget build(BuildContext context) {
@@ -123,6 +128,12 @@ class TableScreen extends StatelessWidget {
           ),
         ],
         const SizedBox(width: 8),
+        if (onOpenTournament != null)
+          IconButton(
+            tooltip: 'Play a tournament',
+            icon: const Icon(Icons.emoji_events, color: Colors.white70),
+            onPressed: onOpenTournament,
+          ),
         IconButton(
           tooltip: 'Hand history',
           icon: const Icon(Icons.history, color: Colors.white70),
