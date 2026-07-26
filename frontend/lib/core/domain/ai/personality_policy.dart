@@ -180,9 +180,17 @@ class PersonalityPolicy implements DecisionPolicy {
     // Perceived villain range: a fairly tight default continuing range (a player
     // who put money in isn't playing half the deck), tightened further by shown
     // aggression and street. (Per-opponent reads are a later refinement.)
+    // Bet being faced as a fraction of the pot — big bets shrink the perceived
+    // range (see `HandRange.narrowedBy`), so equity vs an overbet drops and
+    // marginal hands fold on pot odds instead of hero-calling.
+    final potBeforeCall = game.pot - toCall;
+    final betFraction = potBeforeCall > 0 ? toCall / potBeforeCall : 0.0;
     final dead = {...p.hole, ...game.board};
-    final range = HandRange.top(0.40, dead: dead)
-        .narrowedBy(raiseCount: raises, street: game.round);
+    final range = HandRange.top(0.40, dead: dead).narrowedBy(
+      raiseCount: raises,
+      street: game.round,
+      betFraction: betFraction,
+    );
     final eq = PostflopEquity.equity(
       p.hole,
       game.board,

@@ -136,10 +136,18 @@ class PlayerSeat extends StatelessWidget {
     // grow the box past the cards and overlap the next seat.
     final ms = _moneyStatus(money);
     // A bet/won amount can be far too long for the small compact tag, so on the
-    // bot seats (which only show card backs anyway) we paint it as a banner over
-    // the whole card footprint — maximum room, so it rarely has to shrink. The
-    // human keeps their live cards; their amount renders in the tag below.
-    final overwriteCards = ms != null && !seat.isHuman;
+    // bot seats we render it over the card footprint — maximum room, so it rarely
+    // has to shrink. The human keeps their live cards; their amount renders in
+    // the tag below.
+    //
+    // While the cards are face down (backs carry no information) the banner fully
+    // covers them; once they're revealed at showdown it becomes a translucent
+    // strip so the actual hand stays readable underneath.
+    final botMoney = ms != null && !seat.isHuman;
+    final revealed = seat.holeCards != null;
+    final Widget cardsChild = botMoney
+        ? (revealed ? _revealedCardsWithMoney(ms) : _moneyBanner(ms))
+        : _cards();
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
       padding: const EdgeInsets.all(8),
@@ -156,7 +164,7 @@ class PlayerSeat extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          overwriteCards ? _moneyBanner(ms) : _cards(),
+          cardsChild,
           const SizedBox(height: 6),
           _name(),
           if (showBehavior && seat.behavior != null) _behaviorBadge(),
@@ -169,7 +177,7 @@ class PlayerSeat extends StatelessWidget {
               fontWeight: FontWeight.w500,
             ),
           ),
-          _statusLine(money, suppressMoney: overwriteCards),
+          _statusLine(money, suppressMoney: botMoney),
         ],
       ),
     );
@@ -273,6 +281,38 @@ class PlayerSeat extends StatelessWidget {
         ),
       ),
     ),
+  );
+
+  /// Revealed hole cards with the bet/won amount as a translucent strip across
+  /// their lower third, so the hand stays readable underneath at showdown (the
+  /// top corners — where the rank and suit sit — stay clear).
+  Widget _revealedCardsWithMoney(({String text, Color bg, Color fg}) ms) => Stack(
+    alignment: Alignment.bottomCenter,
+    children: [
+      _cards(),
+      Container(
+        width: _contentWidth,
+        alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+        decoration: BoxDecoration(
+          color: ms.bg.withValues(alpha: 0.8),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            ms.text,
+            maxLines: 1,
+            softWrap: false,
+            style: TextStyle(
+              color: ms.fg,
+              fontSize: compact ? 11 : 13,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+      ),
+    ],
   );
 
   Widget _cards() {

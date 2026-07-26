@@ -107,6 +107,36 @@ void main() {
       );
     });
 
+    test('bet size disciplines calls: bluff-catcher calls small, folds overbet', () {
+      // Hero (p1) holds 99 on K-8-3 rainbow — an underpair bluff-catcher. It has
+      // real equity against a normal continuing range but is crushed by the
+      // polarized range behind a huge overbet. The GTO anchor (adherence 1.0)
+      // plays pot odds straight, so this isolates the perceived-range effect.
+      PokerGame spot(double potFraction) => _facingBet(
+            p0: cards('Ah Qd'),
+            p1: cards('9c 9d'),
+            flop: cards('Kh 8s 3c'),
+            potFraction: potFraction,
+          );
+
+      // A modest half-pot bet: continue.
+      final small = spot(0.5);
+      expect(
+        _pol(isaacHaxton).decide(small, _p(small, 'p1')).type,
+        isNot(ActionType.fold),
+        reason: 'should call a normal bet with a bluff-catcher',
+      );
+
+      // A 3x-pot overbet: the perceived range collapses to premiums, equity
+      // craters below pot odds — the "obvious fold" that used to get hero-called.
+      final overbet = spot(3.0);
+      expect(
+        _pol(isaacHaxton).decide(overbet, _p(overbet, 'p1')).type,
+        ActionType.fold,
+        reason: 'should fold the same hand to a 3x-pot overbet',
+      );
+    });
+
     test('an exploitative pro applies more pressure than the GTO anchor (air)', () {
       // No bet to face, hero (p1) has air on a dry board.
       final g = _game(_stack(

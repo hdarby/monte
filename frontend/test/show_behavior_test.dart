@@ -14,6 +14,7 @@ void main() {
       'player_count': 2,
       'bot_type': 'personality',
       'show_behavior': false,
+      'play_pace': 'instant', // no bot think-timers to hang pumpAndSettle
     });
 
     tester.view.physicalSize = const Size(1400, 900);
@@ -24,8 +25,8 @@ void main() {
     await tester.pumpWidget(const ProviderScope(child: MonteApp()));
     await tester.pumpAndSettle(const Duration(seconds: 1));
 
-    // The game starts on the personality chooser; keep the default lineup.
-    await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+    // Each session boots onto the Settings screen; cancel it to reach the table.
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Cancel'));
     await tester.pumpAndSettle(const Duration(seconds: 1));
 
     // Off by default: no badge on the table.

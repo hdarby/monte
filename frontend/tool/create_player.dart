@@ -115,9 +115,22 @@ PlayerProfile _createPro(String name, String id) {
   final archetype = _ask('Short archetype label (e.g. GTO_Wizard)',
       optional: true);
   print('\nPreflop style:');
-  final vpip = _score('VPIP % (how often they enter a pot)');
-  final pfr = _score('PFR % (how often they raise preflop)');
-  final threeBet = _score('3-bet %');
+  print('(the calibrator needs a real open range and a VPIP>PFR gap — e.g. '
+      '24/19/8, 30/24/10)');
+  late double vpip, pfr, threeBet;
+  while (true) {
+    vpip = _score('VPIP % (how often they enter a pot)');
+    pfr = _score('PFR % (how often they raise preflop)');
+    threeBet = _score('3-bet %');
+    final bad = PlayerProfile.preflopFeasibility(
+        vpip: vpip, pfr: pfr, threeBet: threeBet);
+    if (bad.isEmpty) break;
+    print('\n⚠  These targets can’t be realised by the calibrator:');
+    for (final m in bad) {
+      print('   • $m');
+    }
+    print('   Re-enter VPIP / PFR / 3-bet.\n');
+  }
   final tilt = _score('Tilt control (0–100)');
   final opp = _score('Reading opponents / tendencies (0–100)');
 

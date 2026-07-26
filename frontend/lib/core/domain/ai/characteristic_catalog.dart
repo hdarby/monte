@@ -57,6 +57,22 @@ const List<CharacteristicSpec> characteristicCatalog = [
         'Builds the pot with geometric overbets on later streets when holding a '
         'nut advantage. Proficiency scales sizing/consistency.',
   ),
+  CharacteristicSpec(
+    id: 'Positional_Warfare',
+    name: 'Positional warfare',
+    description:
+        'Skews starting-hand selection hard by seat: much tighter in early '
+        'position, much looser near the button. Proficiency scales the skew '
+        '(the average number of hands played is unchanged).',
+  ),
+  CharacteristicSpec(
+    id: 'Leverage_Pressure',
+    name: 'Leverage pressure',
+    description:
+        'Hunts for spots to bully: ramps aggression and bluffs when heads-up, '
+        'or when a bet can set the opponent all-in to continue. Proficiency '
+        'scales how hard and how often the pressure fires.',
+  ),
 ];
 
 /// The catalog entry for [id], or null if unknown.

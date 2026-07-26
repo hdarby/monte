@@ -36,15 +36,32 @@ class HandRange {
     return HandRange(all.sublist(0, n));
   }
 
-  /// A tighter range reflecting shown aggression: each raise this street and
-  /// each street past the flop trims the range toward its strongest hands.
-  /// Assumes a ranked range (built via [top]).
-  HandRange narrowedBy({int raiseCount = 0, BettingRound? street}) {
+  /// A tighter range reflecting shown aggression: each raise this street, each
+  /// street past the flop, and — crucially — the *size* of the bet being faced
+  /// trims the range toward its strongest hands. Assumes a ranked range (built
+  /// via [top]).
+  ///
+  /// [betFraction] is the size of the bet being faced as a fraction of the pot
+  /// (e.g. `1.0` == pot-sized, `3.0` == a 3×-pot overbet). Big bets are
+  /// polarized/value-heavy, so the continuing range collapses toward premiums as
+  /// they grow: a small bet (≤½ pot) is left alone, a pot-sized bet trims the
+  /// range by a third, and overbets shrink it hard (2× ⇒ ×0.40, 3× ⇒ ×0.29).
+  /// This is what stops a bot crediting a 3×-pot jam with the same wide range as
+  /// a min-bet and then hero-calling it — the range (and hence the hero's equity)
+  /// craters, so marginal hands fold on pot odds without any ad-hoc size clamp.
+  HandRange narrowedBy({
+    int raiseCount = 0,
+    BettingRound? street,
+    double betFraction = 0.0,
+  }) {
     // Each bet/raise this street tightens the range hard (a villain who puts in
     // money is far stronger than their preflop continuing range).
     var factor = pow(0.5, max(0, raiseCount)).toDouble();
     if (street == BettingRound.turn) factor *= 0.85;
     if (street == BettingRound.river) factor *= 0.7;
+    // Bet-size discipline: small sizings (≤½ pot) are unchanged, larger bets
+    // reciprocally shrink the range — pot ⇒ ×0.67, 2× pot ⇒ ×0.40, 3× ⇒ ×0.29.
+    if (betFraction > 0.5) factor *= 1.0 / (1.0 + (betFraction - 0.5));
     final n = (combos.length * factor).round().clamp(1, combos.length);
     return HandRange(combos.sublist(0, n));
   }

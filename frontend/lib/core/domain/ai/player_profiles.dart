@@ -53,6 +53,12 @@ const danielNegreanu = PlayerProfile(
       postflopAggressionMultiplierIp: 1.30,
     ),
   ),
+  // Active representation of the trigger above (elite hand reader): drives the
+  // ProfilePostflopPolicy soul-read mechanic — sharper ranging, deeper runouts,
+  // in-position pressure.
+  characteristics: [
+    PlayerCharacteristic(id: 'Soul_Read', proficiency: 0.9),
+  ],
 );
 
 /// Profile B — The Geometric Overbet Maximizer.
@@ -82,6 +88,11 @@ const michaelAddamo = PlayerProfile(
     ),
     actionModifier: ActionModifier(betSizeMultiplierFlopTurnRiver: 2.50),
   ),
+  // Active representation of the trigger above: drives the geometric-overbet
+  // mechanic (overbets later streets with a nut advantage).
+  characteristics: [
+    PlayerCharacteristic(id: 'Geometric_Overbet_Execution', proficiency: 0.9),
+  ],
 );
 
 /// Profile C — The Pure GTO Anchor.
@@ -137,4 +148,9 @@ const bradOwen = PlayerProfile(
       postflopAggressionMultiplierIp: 1.20,
     ),
   ),
+  // Active representation of the trigger above (exploitative reads): drives the
+  // soul-read mechanic at a notch below Negreanu.
+  characteristics: [
+    PlayerCharacteristic(id: 'Soul_Read', proficiency: 0.7),
+  ],
 );

@@ -155,11 +155,19 @@ class AmateurPolicy implements DecisionPolicy {
 
     // Perceived range: a nit imagines nits (narrow → overfolds to aggression), a
     // station imagines bluffers (wide → calls down light). Pro reads top 40%.
+    // Bet being faced as a fraction of the pot — big bets shrink the perceived
+    // range (see `HandRange.narrowedBy`). A read-noisy amateur still trails a
+    // pro here, but even a station stops crediting an overbet with a wide range.
+    final potBeforeCall = game.pot - toCall;
+    final betFraction = potBeforeCall > 0 ? toCall / potBeforeCall : 0.0;
     final dead = {...p.hole, ...game.board};
     final perceivedTop =
         (0.40 - 0.20 * _k * _tight + 0.10 * _k * _loose).clamp(0.15, 0.65);
-    final range = HandRange.top(perceivedTop, dead: dead)
-        .narrowedBy(raiseCount: raises, street: game.round);
+    final range = HandRange.top(perceivedTop, dead: dead).narrowedBy(
+      raiseCount: raises,
+      street: game.round,
+      betFraction: betFraction,
+    );
     final eq = PostflopEquity.equity(
       p.hole,
       game.board,

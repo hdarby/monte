@@ -22,6 +22,7 @@ import 'package:monte/features/table/presentation/table_screen.dart';
 import 'package:monte/features/table/presentation/table_view_model.dart';
 import 'package:monte/features/table/presentation/widgets/bust_out_dialog.dart';
 import 'package:monte/features/eval_history/data/file_eval_history_store.dart';
+import 'package:monte/features/eval_history/presentation/auto_tune_job.dart';
 import 'package:monte/features/eval_history/presentation/eval_history_provider.dart';
 import 'package:monte/features/table/presentation/widgets/new_game_dialog.dart';
 
@@ -39,11 +40,18 @@ Future<void> main() async {
   // Discard tuning learned against superseded evaluation logic (one-time, gated
   // on [_tuningVersion]) so stale overrides can't skew play after an engine fix.
   await _resetStaleTuning(store);
+  // Own the container explicitly so the background auto-tune job can be started
+  // here (in the real entrypoint only — widget tests pump `MonteApp` directly
+  // and never start its timer).
+  final container = ProviderContainer(
+    overrides: [
+      evalHistoryStoreProvider.overrideWithValue(store),
+    ],
+  );
+  container.read(autoTuneJobProvider.notifier).start();
   runApp(
-    ProviderScope(
-      overrides: [
-        evalHistoryStoreProvider.overrideWithValue(store),
-      ],
+    UncontrolledProviderScope(
+      container: container,
       child: const MonteApp(),
     ),
   );

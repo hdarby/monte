@@ -45,6 +45,16 @@ class PlayerProfile {
   /// rec's strengths/weaknesses). Null when unset; [archetype] stays the label.
   final String? description;
 
+  /// Proficiency (0–1) of the characteristic with [id], or 0 if the player
+  /// doesn't have it. Lets a decision policy read a bespoke mechanic's strength
+  /// without hand-rolling the lookup.
+  double proficiencyOf(String id) {
+    for (final c in characteristics) {
+      if (c.id == id) return c.proficiency;
+    }
+    return 0.0;
+  }
+
   /// A copy with [strategicBaseline] replaced — used to apply a tuned baseline
   /// override while keeping the profile's identity, skill, and modifiers.
   PlayerProfile withStrategicBaseline(StrategicBaseline baseline) =>
@@ -104,6 +114,48 @@ class PlayerProfile {
     'characteristics': [for (final c in characteristics) c.toJson()],
     'description': description,
   };
+
+  /// Whether a set of preflop targets is *reachable* by the closed-loop
+  /// calibrator at 6-max, returning human-readable violations (empty = OK). A
+  /// deliberately conservative guide for the creator tool: it steers new pros
+  /// into the safe zone, so it may flag a borderline combo that would just
+  /// squeak through (a very low PFR tolerates a smaller open, for instance).
+  ///
+  /// The envelope is grounded in the built-in pros that pass
+  /// `profile_calibration_test` and in how the no-open-limp policy realises
+  /// frequencies: PFR = opens + 3-bets (so the open range PFR−3-bet must be real
+  /// or PFR undershoots), and VPIP = opens + flats (so the VPIP−PFR gap must be
+  /// real or VPIP overshoots). 3-bets above ~0.14 can't be realised at 6-max.
+  static List<String> preflopFeasibility({
+    required double vpip,
+    required double pfr,
+    required double threeBet,
+  }) {
+    final v = <String>[];
+    if (threeBet > pfr) {
+      v.add('3-bet ($threeBet) exceeds PFR ($pfr).');
+    }
+    if (pfr > vpip) {
+      v.add('PFR ($pfr) exceeds VPIP ($vpip).');
+    }
+    if (threeBet > 0.14) {
+      v.add('3-bet ($threeBet) above 0.14 — not reachable at 6-max; cap ~0.14.');
+    }
+    final open = pfr - threeBet;
+    if (open < 0.08) {
+      v.add('Open range PFR−3-bet (${open.toStringAsFixed(2)}) below 0.08 — PFR '
+          'collapses (too few opens). Raise PFR or lower 3-bet.');
+    }
+    final gap = vpip - pfr;
+    if (gap < 0.06) {
+      v.add('VPIP−PFR gap (${gap.toStringAsFixed(2)}) below 0.06 — VPIP '
+          'overshoots (opens+flats exceed it). Raise VPIP or lower PFR.');
+    }
+    if (vpip < 0.10 || vpip > 0.55) {
+      v.add('VPIP ($vpip) outside the reachable 0.10–0.55 range.');
+    }
+    return v;
+  }
 
   /// Soft, cross-field sanity checks (each entry is a human-readable warning).
   /// Hard range/scale errors are caught at parse time by [fromJson].

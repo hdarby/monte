@@ -61,6 +61,26 @@ class ProfilePolicy implements DecisionPolicy {
     final raises = game.raiseCountThisRound;
     final canRaise = p.stack > toCall;
 
+    // Positional warfare: skew the entry/raise cutoffs by seat — tighter in
+    // early position, looser near the button. The shift is mean-zero across the
+    // rotating button, so the player's *average* VPIP/PFR (and calibration) is
+    // unchanged; only its distribution across positions tilts.
+    var vpipCut = _ranges.vpip;
+    var pfrCut = _ranges.pfr;
+    var threeBetCut = _ranges.threeBet;
+    final posProf = profile.proficiencyOf('Positional_Warfare');
+    if (posProf > 0) {
+      final n = game.players.length;
+      final heroIdx = game.players.indexOf(p);
+      final sbIndex = (game.buttonIndex + 1) % n;
+      // 0.0 = first to act postflop (SB, earliest), 1.0 = button (latest).
+      final rank = n <= 1 ? 0.5 : ((heroIdx - sbIndex + n) % n) / (n - 1);
+      final shift = 0.20 * posProf * (0.5 - rank); // + tighter early, − looser late
+      vpipCut = (vpipCut + shift).clamp(0.0, 1.0);
+      pfrCut = (pfrCut + shift).clamp(0.0, 1.0);
+      threeBetCut = (threeBetCut + shift).clamp(0.0, 1.0);
+    }
+
     GameAction raiseBy(double potFraction) {
       final raw = game.minRaiseTo(p) + (game.pot * potFraction).round();
       final raiseTo =
@@ -81,21 +101,35 @@ class ProfilePolicy implements DecisionPolicy {
     // Facing a single open: 3-bet the top range, flat the rest of the VPIP
     // range, otherwise fold.
     if (raises == 1) {
-      if (s >= _ranges.threeBet && canRaise) return raiseBy(0.6);
-      if (s >= _ranges.vpip) return const GameAction.call();
+      if (s >= threeBetCut && canRaise) return raiseBy(0.6);
+      if (s >= vpipCut) return const GameAction.call();
       return const GameAction.fold();
     }
 
     // Unraised.
     if (toCall == 0) {
       // Big blind option: raise the PFR range, else take the free flop.
-      if (s >= _ranges.pfr && p.stack > bb) return raiseBy(0.5);
+      if (s >= pfrCut && p.stack > bb) return raiseBy(0.5);
       return const GameAction.check();
     }
-    // First in (or over limpers): open-raise the PFR range; the rest of the
-    // VPIP range limps along, everything else folds.
-    if (s >= _ranges.pfr && canRaise) return raiseBy(0.5);
-    if (s >= _ranges.vpip) return const GameAction.call();
+    // Unraised, hero must call the big blind (so hero isn't the BB). Is anyone
+    // already limping? A limper is a live opponent who has *acted* and is sitting
+    // at exactly the big blind (`hasActedThisRound` excludes the BB, whose blind
+    // is forced and whose option is still live).
+    final hasLimper = game.players.any(
+      (x) =>
+          !identical(x, p) &&
+          !x.hasFolded &&
+          x.hasActedThisRound &&
+          x.currentBet == bb,
+    );
+
+    // A disciplined pro never *open*-limps: first-in it's raise (PFR range) or
+    // fold. *Over*-limping — flatting behind an existing limper — is fine, and is
+    // where the VPIP≫PFR gap gets realised, so over-limp the rest of the VPIP
+    // range only when a limper is already in.
+    if (s >= pfrCut && canRaise) return raiseBy(0.5);
+    if (hasLimper && s >= vpipCut) return const GameAction.call();
     return const GameAction.fold();
   }
 }

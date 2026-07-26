@@ -52,17 +52,64 @@ class ProfilePostflopPolicy implements DecisionPolicy {
     final sizeScale =
         profile.behavioralModifiers.riskPremiumCoefficient.clamp(0.6, 1.6);
 
+    // Bet being faced as a fraction of the pot — big bets shrink the perceived
+    // range (see `HandRange.narrowedBy`) so a pot-odds continue vs an overbet
+    // needs genuine strength, not a stale wide-range equity estimate.
+    final potBeforeCall = game.pot - toCall;
+    final betFraction = potBeforeCall > 0 ? toCall / potBeforeCall : 0.0;
+
+    // Soul read also sharpens hand-reading: facing a bet, the pro credits the
+    // bettor with a tighter, more realistic range (closer to their actual
+    // holdings), and spends up to twice the Monte-Carlo runouts resolving the
+    // equity against it — so it ranges opponents better than a baseline pro.
+    final soul = profile.proficiencyOf('Soul_Read');
+    final equityIters = (_equityIterations * (1 + soul)).round();
     final dead = {...p.hole, ...game.board};
-    final range = HandRange.top(0.40, dead: dead)
-        .narrowedBy(raiseCount: raises, street: game.round);
+    final perceivedTop =
+        0.40 * (1 - 0.35 * soul * (betFraction > 0 ? 1.0 : 0.0));
+    final range = HandRange.top(perceivedTop, dead: dead).narrowedBy(
+      raiseCount: raises,
+      street: game.round,
+      betFraction: betFraction,
+    );
     final eq = PostflopEquity.equity(
       p.hole,
       game.board,
       range,
-      iterations: _equityIterations,
+      iterations: equityIters,
       random: _random,
     );
     final isDraw = eq >= 0.32 && eq <= 0.55;
+
+    // Leverage pressure: some pros hunt for spots to apply maximum pressure —
+    // when the pot is heads-up, or when a bet can set an opponent all-in to
+    // continue. It ramps aggression and bluffs and sizes up toward the
+    // opponent's stack (a jam threat), scaled by the characteristic's proficiency.
+    final lev = profile.proficiencyOf('Leverage_Pressure');
+    final liveCount = game.players.where((x) => x.inHand).length;
+    final minOppStack = game.players
+        .where((x) => x.inHand && !identical(x, p))
+        .map((x) => x.stack)
+        .fold<int>(1 << 30, min);
+    final canJam = minOppStack <= game.pot; // a pot-ish bet puts them all-in
+    final pv = (lev > 0 && (liveCount == 2 || canJam)) ? lev : 0.0;
+
+    // Soul read is also an in-position gear shift. When the action is checked to
+    // the pro (a weakness signal) and every live opponent has already acted — so
+    // the pro closes the action in position — they attack harder (thinner value,
+    // more bluffs), scaled by proficiency.
+    final inPosition = game.players
+        .where((x) => x.inHand && !identical(x, p))
+        .every((x) => x.hasActedThisRound);
+    final sr = (soul > 0 && toCall == 0 && inPosition) ? soul : 0.0;
+
+    // Geometric overbet: on a later street (turn/river) with a clear nut
+    // advantage, build the pot with an overbet rather than a standard size,
+    // scaled by proficiency.
+    final geo = profile.proficiencyOf('Geometric_Overbet_Execution');
+    final laterStreet =
+        game.round == BettingRound.turn || game.round == BettingRound.river;
+    final geoBoost = (geo > 0 && laterStreet && eq > 0.80) ? geo : 0.0;
 
     GameAction betBy(double fraction) {
       final raw = p.currentBet + (game.pot * fraction).round();
@@ -81,12 +128,14 @@ class ProfilePostflopPolicy implements DecisionPolicy {
     // No bet to face: value-bet (exploit bets thinner) or bluff (exploit and
     // draws bluff more; GTO still bluffs a small balanced amount).
     if (toCall == 0) {
-      final wantsValue = eq > 0.60 - 0.10 * exploit;
-      final bluffChance =
-          (0.10 + 0.35 * exploit) * ((1 - eq) * 0.6 + (isDraw ? 0.4 : 0.0));
+      final wantsValue = eq > 0.60 - 0.10 * exploit - 0.10 * pv - 0.08 * sr;
+      final bluffChance = (0.10 + 0.35 * exploit + 0.30 * pv + 0.30 * sr) *
+          ((1 - eq) * 0.6 + (isDraw ? 0.4 : 0.0));
       final wantsBluff = _random.nextDouble() < bluffChance;
       if ((wantsValue || wantsBluff) && p.stack > bb) {
-        return betBy((0.55 * sizeScale).clamp(0.33, 1.0));
+        // Pressure (jam threat) and geometric overbets both size up; the overbet
+        // only fires with a nut advantage on a later street.
+        return betBy((0.55 * sizeScale + 0.6 * pv + 0.9 * geoBoost).clamp(0.33, 2.0));
       }
       return const GameAction.check();
     }
@@ -95,11 +144,11 @@ class ProfilePostflopPolicy implements DecisionPolicy {
     // catching stays honest without per-opponent reads). Exploit adds pressure:
     // thinner value-raises and more semibluff-raises.
     final potOdds = toCall / (game.pot + toCall);
-    final wantsValueRaise = eq > 0.74 - 0.08 * exploit;
+    final wantsValueRaise = eq > 0.74 - 0.08 * exploit - 0.10 * pv;
     final wantsBluffRaise =
-        isDraw && _random.nextDouble() < 0.05 + 0.30 * exploit;
+        isDraw && _random.nextDouble() < 0.05 + 0.30 * exploit + 0.30 * pv;
     if (canRaise && (wantsValueRaise || wantsBluffRaise)) {
-      return raiseBy((0.5 * sizeScale).clamp(0.33, 1.2));
+      return raiseBy((0.5 * sizeScale + 0.6 * pv + 0.9 * geoBoost).clamp(0.33, 2.0));
     }
     if (eq >= potOdds) return const GameAction.call();
     return const GameAction.fold();

@@ -5,6 +5,34 @@ import 'package:monte/core/domain/ai/player_profile.dart';
 import 'package:monte/core/domain/ai/player_profiles.dart';
 import 'package:monte/core/domain/engine/game.dart';
 
+void _feasibilityTests() {
+  group('preflopFeasibility (calibrator reach envelope)', () {
+    test('accepts a well-formed pro (real open range + VPIP>PFR gap)', () {
+      expect(
+        PlayerProfile.preflopFeasibility(vpip: 0.30, pfr: 0.20, threeBet: 0.09),
+        isEmpty,
+      );
+    });
+    test('rejects a collapsed open range (PFR almost all 3-bets)', () {
+      // Jamie Gold's original 0.35 / 0.15 / 0.13 — open range 0.02.
+      final v =
+          PlayerProfile.preflopFeasibility(vpip: 0.35, pfr: 0.15, threeBet: 0.13);
+      expect(v, isNotEmpty);
+      expect(v.any((m) => m.contains('Open range')), isTrue);
+    });
+    test('rejects a too-small VPIP-PFR gap (VPIP would overshoot)', () {
+      final v =
+          PlayerProfile.preflopFeasibility(vpip: 0.29, pfr: 0.27, threeBet: 0.05);
+      expect(v.any((m) => m.contains('gap')), isTrue);
+    });
+    test('rejects a 3-bet above the 6-max ceiling', () {
+      final v =
+          PlayerProfile.preflopFeasibility(vpip: 0.40, pfr: 0.30, threeBet: 0.18);
+      expect(v.any((m) => m.contains('3-bet')), isTrue);
+    });
+  });
+}
+
 /// The Daniel Negreanu profile exactly as it appears in docs/personality-model.md,
 /// used to prove the on-disk JSON contract parses into the model.
 const _negreanuJson = {
@@ -33,6 +61,7 @@ const _negreanuJson = {
 };
 
 void main() {
+  _feasibilityTests();
   group('PlayerProfile', () {
     test('built-in profiles round-trip through JSON', () {
       for (final profile in builtInProfiles) {
