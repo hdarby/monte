@@ -98,4 +98,16 @@ class Player {
     if (stack == 0) isAllIn = true;
     return paid;
   }
+
+  /// Posts **dead money** (e.g. a big-blind ante): chips leave the stack but do
+  /// NOT join the live bet ([currentBet]) or this player's [totalContributed], so
+  /// the side-pot layering treats them as dead (funding the main pot, contested
+  /// by everyone) rather than a solo over-bet returned to the poster. Returns the
+  /// chips actually paid (clamped to the stack).
+  int postDead(int amount) {
+    final paid = amount.clamp(0, stack);
+    stack -= paid;
+    if (stack == 0) isAllIn = true;
+    return paid;
+  }
 }

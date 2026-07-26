@@ -58,6 +58,7 @@ class PokerGame {
     required this.players,
     this.smallBlind = 5,
     this.bigBlind = 10,
+    this.ante = 0,
     this.rotateButton = true,
     Deck? deck,
   }) : _deck = deck ?? Deck();
@@ -65,7 +66,18 @@ class PokerGame {
   final List<Player> players;
   final int smallBlind;
   final int bigBlind;
+
+  /// Big-blind ante for the table (0 = none). Posted by the big blind as dead
+  /// money — it funds the main pot but isn't part of anyone's live bet. Blinds
+  /// stay `final`; rising tournament levels are realised by reconstructing the
+  /// game between hands, so `clone()`/determinism is unaffected.
+  final int ante;
+
   final Deck _deck;
+
+  /// Dead money in the pot this hand (antes) — not attributed to any player's
+  /// [Player.totalContributed], so it can't form a solo side-pot layer.
+  int _deadMoney = 0;
 
   /// Whether the dealer button advances each hand. Normally true; an evaluation
   /// run can pin it to one seat to isolate positional effects.
@@ -101,8 +113,10 @@ class PokerGame {
 
   bool get isHandOver => _handOver;
 
-  /// Total chips in the pot across all contributions this hand.
-  int get pot => players.fold(0, (sum, p) => sum + p.totalContributed);
+  /// Total chips in the pot across all contributions this hand, including dead
+  /// money (antes).
+  int get pot =>
+      players.fold(0, (sum, p) => sum + p.totalContributed) + _deadMoney;
 
   /// The player whose turn it is, or null when no action is pending.
   Player? get currentPlayer {
@@ -142,9 +156,11 @@ class PokerGame {
             players: clonedPlayers,
             smallBlind: smallBlind,
             bigBlind: bigBlind,
+            ante: ante,
             rotateButton: rotateButton,
             deck: _deck.copy(),
           )
+          .._deadMoney = _deadMoney
           ..board.addAll(board)
           ..log.addAll(log)
           ..buttonIndex = buttonIndex
@@ -179,6 +195,7 @@ class PokerGame {
     _handOver = false;
     round = BettingRound.preflop;
     raiseCountThisRound = 0;
+    _deadMoney = 0;
     log.clear();
 
     _deck
@@ -211,6 +228,11 @@ class PokerGame {
 
     players[sbIndex].commit(smallBlind);
     players[bbIndex].commit(bigBlind);
+    // Big-blind ante: posted from whatever the big blind has left after its
+    // blind, as dead money (funds the main pot, not the BB's live bet).
+    if (ante > 0) {
+      _deadMoney += players[bbIndex].postDead(ante);
+    }
     currentBet = bigBlind;
     minRaise = bigBlind;
 
@@ -439,13 +461,20 @@ class PokerGame {
           ..sort();
 
     var previous = 0;
+    var deadRemaining = _deadMoney; // dead money (antes) funds the main pot
     for (final level in levels) {
       final layer = level - previous;
       // Chips in this layer: one `layer` slice from every player who reached it.
       final contributors = players
           .where((p) => p.totalContributed >= level)
           .toList();
-      final potChunk = layer * contributors.length;
+      var potChunk = layer * contributors.length;
+      // Fold antes into the lowest (main) layer, contested by all who reached it,
+      // so the best hand wins them rather than the big blind getting them back.
+      if (deadRemaining > 0) {
+        potChunk += deadRemaining;
+        deadRemaining = 0;
+      }
 
       // Eligible winners: still in the hand and reached this level.
       final eligible = contenders
