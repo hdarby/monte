@@ -20,6 +20,10 @@ class SeatView {
     required this.isCurrent,
     this.raiseLevel = 0,
     this.wagerIsCall = false,
+    this.vpip = false,
+    this.raisedPreflop = false,
+    this.preflopRaiseLevel = 0,
+    this.raisedPostflop = false,
     this.holeCards,
     this.handLabel,
     this.wonAmount = 0,
@@ -45,6 +49,15 @@ class SeatView {
   /// Whether the current wager came from a call (vs a bet/raise) — picks the
   /// "CALL" vs "BET" label on the indicator.
   final bool wagerIsCall;
+
+  /// This-hand action summary, for reading the seat's likely range: voluntarily
+  /// entered the pot preflop, made a preflop raise, and made a postflop raise.
+  final bool vpip;
+  final bool raisedPreflop;
+
+  /// Preflop raise escalation: 0 none, 1 open, 2 3-bet, 3+ 4-bet.
+  final int preflopRaiseLevel;
+  final bool raisedPostflop;
 
   /// Visible only for the local player, or for everyone at showdown.
   final List<Card>? holeCards;

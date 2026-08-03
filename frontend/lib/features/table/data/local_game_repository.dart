@@ -1,16 +1,12 @@
 import 'dart:async';
 
-import 'package:monte/core/domain/ai/amateur_policy.dart';
 import 'package:monte/core/domain/ai/bot_spec.dart';
 import 'package:monte/core/domain/ai/decider_factory.dart';
-import 'package:monte/core/domain/ai/home_game_profiles.dart';
 import 'package:monte/core/domain/ai/ismcts.dart';
 import 'package:monte/core/domain/ai/opponent_model.dart';
 import 'package:monte/core/domain/ai/personality.dart';
 import 'package:monte/core/domain/ai/player_profile.dart';
-import 'package:monte/core/domain/ai/profile_calibrator.dart';
-import 'package:monte/core/domain/ai/profile_policy.dart';
-import 'package:monte/core/domain/ai/profile_postflop_policy.dart';
+import 'package:monte/core/domain/ai/profile_decider.dart';
 import 'package:monte/core/domain/engine/actions.dart';
 import 'package:monte/core/domain/engine/deck.dart';
 import 'package:monte/core/domain/engine/decision_policy.dart';
@@ -293,25 +289,10 @@ class LocalGameRepository extends GameRepository {
       // never in the override map, so they keep their cached calibration).
       final pro = base == null ? null : (config.overrideProfile?.call(base) ?? base);
       if (pro != null) {
-        // Amateur (home-game) profile: the degraded `AmateurPolicy` brain, which
-        // builds its own intentionally-off ranges — so it bypasses the pro
-        // calibrator (calibrating would erase the leaks) and reliably loses to
-        // the pros.
-        if (pro.skill < 1.0 || homeGameProfiles.any((a) => a.id == pro.id)) {
-          return AmateurPolicy(pro);
-        }
-        // Named pro: calibrated preflop frequencies (style) + a fast, range-aware
-        // postflop brain that expresses the GTO↔exploit dial
-        // (`ProfilePostflopPolicy`). A disciplined (high-adherence) pro plays
-        // equity/pot-odds straight; a lower-adherence, exploit-leaning pro
-        // applies pressure. Ranges are baked for the built-in pros, so this is
-        // instant. (The search-based MCTS brain remains available via the MCTS
-        // bot type; per-opponent reads are a later refinement here.)
-        return ProfilePolicy(
-          pro,
-          ranges: const ProfileCalibrator().rangesFor(pro),
-          postflop: ProfilePostflopPolicy(pro),
-        );
+        // Amateurs get the degraded AmateurPolicy; pros get calibrated preflop
+        // frequencies + the range-aware postflop brain. Shared with tournaments
+        // via [deciderForProfile] so a personality plays identically everywhere.
+        return deciderForProfile(pro);
       }
       return buildDecider(
         spec.brain,

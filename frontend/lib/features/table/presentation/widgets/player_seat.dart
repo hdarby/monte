@@ -19,6 +19,7 @@ class PlayerSeat extends StatelessWidget {
     this.buttonPlacement = ButtonPlacement.none,
     this.showBehavior = false,
     this.onCoach,
+    this.onTap,
   });
 
   final SeatView seat;
@@ -26,6 +27,10 @@ class PlayerSeat extends StatelessWidget {
 
   /// Tapped to open the in-hand coach. Only shown on the human seat.
   final VoidCallback? onCoach;
+
+  /// Tapped anywhere on the seat box (used for the opponent range read). Null
+  /// disables the tap (e.g. the human's own seat, or in tournaments).
+  final VoidCallback? onTap;
 
   /// Which edge of this box the dealer button hugs. Only honoured when this
   /// seat actually has the button ([SeatView.isButton]).
@@ -49,11 +54,18 @@ class PlayerSeat extends StatelessWidget {
     final money = MoneyScope.of(context);
 
     // A dead (folded) hand fades back so it's obviously out of play.
-    final box = AnimatedOpacity(
+    Widget box = AnimatedOpacity(
       duration: const Duration(milliseconds: 250),
       opacity: seat.folded ? 0.4 : 1,
       child: _seat(highlight, money),
     );
+    if (onTap != null) {
+      box = GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: box,
+      );
+    }
 
     final showButton = seat.isButton && buttonPlacement != ButtonPlacement.none;
     final showCoach = seat.isHuman && onCoach != null;

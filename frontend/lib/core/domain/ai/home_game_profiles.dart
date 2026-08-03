@@ -17,7 +17,7 @@ final List<PlayerProfile> homeGameProfiles = [
   jasonDouglas,
   mattRosen,
   frankDouglas,
-  mitch,
+  mitchGray,
   patWray,
   philDiPinto,
   robGustine,
@@ -141,7 +141,8 @@ final PlayerProfile mattRosen = buildAmateur(
   vpip: 0.29,
   pfr: 0.19, // thinking TAG — disciplined, not spewy
   threeBet: 0.05,
-  exploitativeWeight: 0.35, // plays draws / selective hero-calls, but folds well
+  exploitativeWeight:
+      0.35, // plays draws / selective hero-calls, but folds well
   tiltResistance: 0.75,
 );
 
@@ -161,9 +162,9 @@ final PlayerProfile frankDouglas = buildAmateur(
 
 /// Loose-aggressive, experienced; bluffs when he senses weakness, limps
 /// regularly, ignores position preflop, river-bluffs scare cards. Tricky.
-final PlayerProfile mitch = buildAmateur(
+final PlayerProfile mitchGray = buildAmateur(
   id: 'H006',
-  name: 'Mitch',
+  name: 'Mitch Gray',
   strength: 5,
   vpip: 0.40,
   pfr: 0.22,

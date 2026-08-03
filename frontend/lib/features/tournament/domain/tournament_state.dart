@@ -69,7 +69,8 @@ class TournamentState {
     int? prizePool,
     this.status = TournamentStatus.running,
   })  : finishOrder = finishOrder ?? [],
-        prizePool = prizePool ?? buyIn * players.length;
+        prizePool = prizePool ?? buyIn * players.length,
+        _activeCount = players.values.where((p) => p.isActive).length;
 
   final TournamentStructure structure;
   final PayoutStructure payouts;
@@ -90,9 +91,14 @@ class TournamentState {
 
   // ---- Derived views -------------------------------------------------------
 
+  /// Live count of active players, maintained incrementally (bustouts/rebuys) so
+  /// [playersRemaining] is O(1) — it's read once per bot decision in huge fields,
+  /// where an O(entrants) scan would dominate the whole simulation.
+  int _activeCount;
+
   Iterable<TournamentPlayer> get activePlayers =>
       players.values.where((p) => p.isActive);
-  int get playersRemaining => activePlayers.length;
+  int get playersRemaining => _activeCount;
   int get entrants => players.length;
   int get totalChips => activePlayers.fold(0, (s, p) => s + p.chips);
   int get averageStack =>
@@ -117,18 +123,25 @@ class TournamentState {
   /// worst-to-best (fewest chips at the start of the hand first), so the first
   /// id takes the lowest (worst) open place. Assigns finish place + any prize,
   /// marks them busted, and removes them from their table's seat list.
-  void recordBustouts(List<String> idsWorstFirst) {
+  ///
+  /// [removeFromTables] scans every table to drop the seat; set it false during
+  /// large-field attrition, where tables are abstract and rebuilt at the reseat
+  /// (the O(tables) scan per bust is the cost that made huge fields crawl).
+  void recordBustouts(List<String> idsWorstFirst, {bool removeFromTables = true}) {
     var place = playersRemaining;
     for (final id in idsWorstFirst) {
       final p = players[id];
       if (p == null || !p.isActive) continue;
       p.status = PlayerStatus.busted;
+      _activeCount--;
       p.chips = 0;
       p.finishPlace = place;
       p.prizeWon = payouts.payoutForPlace(place, prizePool);
       finishOrder.add(id);
-      for (final t in tables) {
-        t.playerIds.remove(id);
+      if (removeFromTables) {
+        for (final t in tables) {
+          t.playerIds.remove(id);
+        }
       }
       place--;
     }
@@ -154,6 +167,7 @@ class TournamentState {
     if (!structure.allowsRebuys) return false;
     if (currentLevel.level > structure.reentryLevelCutoff) return false;
     if (p.rebuysUsed >= structure.maxRebuys) return false;
+    if (!p.isActive) _activeCount++;
     p.chips = chips;
     p.rebuysUsed++;
     p.status = PlayerStatus.active;

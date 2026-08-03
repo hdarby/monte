@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:monte/core/domain/ai/famous_pros.dart';
 import 'package:monte/core/domain/ai/player_profile.dart';
 import 'package:monte/core/domain/ai/player_profiles.dart';
 import 'package:monte/core/domain/ai/preflop_ranges.dart';
@@ -69,11 +70,17 @@ double _threeBetPctFor(List<HandHistory> hs, String id) {
   );
 }
 
+// The reference pros whose calibration we verify precisely (they have baked
+// ranges and hand-tuned targets). The wider roster — the owner's custom pros and
+// the famous-pro pack — is validated cheaply via [PlayerProfile.preflopFeasibility]
+// (below), so adding hundreds of personalities doesn't blow up this slow test.
+final _referenceProfiles = [danielNegreanu, michaelAddamo, isaacHaxton, bradOwen];
+
 void main() {
   group('profile calibration (Phase 1b)', () {
     test('calibrated profiles hit VPIP/PFR/3-bet targets vs a realistic field', () {
       final calibrator = const ProfileCalibrator();
-      for (final p in builtInProfiles) {
+      for (final p in _referenceProfiles) {
         final ranges = calibrator.rangesFor(p);
         final m = _heroStats(p, ranges, 15000);
         final b = p.strategicBaseline;
@@ -106,6 +113,21 @@ void main() {
       final r = const ProfileCalibrator().rangesFor(isaacHaxton);
       expect(r.threeBet, greaterThanOrEqualTo(r.pfr));
       expect(r.pfr, greaterThanOrEqualTo(r.vpip));
+    });
+
+    test('every famous-pack pro is calibrator-feasible', () {
+      // The owner's hand-made custom pros predate the feasibility rule and are
+      // grandfathered (they calibrate acceptably via low targets); the create
+      // tool enforces the rule on new ones. This guards the bulk famous pack.
+      for (final p in famousPros) {
+        final b = p.strategicBaseline;
+        final v = PlayerProfile.preflopFeasibility(
+          vpip: b.vpipTarget,
+          pfr: b.pfrTarget,
+          threeBet: b.threeBetFrequency,
+        );
+        expect(v, isEmpty, reason: '${p.name}: ${v.join("; ")}');
+      }
     });
   });
 }

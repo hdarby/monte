@@ -187,11 +187,83 @@ class TournamentStructure {
         startingStack: startingStack,
       );
 
+  /// The real WSOP Main Event structure: a 60k starting stack and a long, slow
+  /// blind ladder (2-hour levels; ~25 hands in hands mode), antes from level 5.
+  /// Designed for the big-field 8,000-runner event.
+  factory TournamentStructure.wsopMainEvent({
+    LevelClockMode clockMode = LevelClockMode.hands,
+  }) {
+    const rungs = <List<int>>[
+      [100, 100, 0], [100, 200, 0], [200, 300, 0], [200, 400, 0],
+      [300, 500, 500], [300, 600, 600], [400, 800, 800], [500, 1000, 1000],
+      [600, 1200, 1200], [800, 1600, 1600], [1000, 2000, 2000],
+      [1500, 2500, 2500], [1500, 3000, 3000], [2000, 4000, 4000],
+      [2500, 5000, 5000], [3000, 6000, 6000], [4000, 8000, 8000],
+      [5000, 10000, 10000], [6000, 12000, 12000], [8000, 16000, 16000],
+      [10000, 20000, 20000], [15000, 30000, 30000], [20000, 40000, 40000],
+      [25000, 50000, 50000], [30000, 60000, 60000], [40000, 80000, 80000],
+      [50000, 100000, 100000], [60000, 120000, 120000],
+      [80000, 160000, 160000], [100000, 200000, 200000],
+    ];
+    return TournamentStructure(
+      name: 'WSOP Main Event',
+      levels: [
+        for (var i = 0; i < rungs.length; i++)
+          BlindLevel(
+            level: i + 1,
+            smallBlind: rungs[i][0],
+            bigBlind: rungs[i][1],
+            ante: rungs[i][2],
+            durationMinutes: 120,
+            durationHands: 25,
+          ),
+      ],
+      clockMode: clockMode,
+      startingStack: 60000,
+    );
+  }
+
+  /// The WSOP Circuit ring-event structure: a 25k starting stack and a brisker
+  /// ladder than the Main Event (40-minute / ~18-hand levels), antes from level
+  /// 4. Sized for the ~1,000-runner circuit fields.
+  factory TournamentStructure.wsopCircuit({
+    LevelClockMode clockMode = LevelClockMode.hands,
+  }) {
+    const rungs = <List<int>>[
+      [100, 100, 0], [100, 200, 0], [200, 300, 0], [200, 400, 400],
+      [300, 500, 500], [300, 600, 600], [400, 800, 800], [500, 1000, 1000],
+      [600, 1200, 1200], [800, 1600, 1600], [1000, 2000, 2000],
+      [1500, 3000, 3000], [2000, 4000, 4000], [3000, 5000, 5000],
+      [3000, 6000, 6000], [4000, 8000, 8000], [5000, 10000, 10000],
+      [6000, 12000, 12000], [8000, 16000, 16000], [10000, 20000, 20000],
+      [15000, 30000, 30000], [20000, 40000, 40000], [30000, 60000, 60000],
+      [40000, 80000, 80000], [50000, 100000, 100000],
+    ];
+    return TournamentStructure(
+      name: 'WSOP Circuit',
+      levels: [
+        for (var i = 0; i < rungs.length; i++)
+          BlindLevel(
+            level: i + 1,
+            smallBlind: rungs[i][0],
+            bigBlind: rungs[i][1],
+            ante: rungs[i][2],
+            durationMinutes: 40,
+            durationHands: 18,
+          ),
+      ],
+      clockMode: clockMode,
+      startingStack: 25000,
+    );
+  }
+
   /// The built-in presets by id (lowercase name).
   static TournamentStructure? presetByName(String name) => switch (name) {
         'turbo' => TournamentStructure.turbo(),
         'standard' => TournamentStructure.standard(),
         'deep' => TournamentStructure.deep(),
+        'circuit' => TournamentStructure.wsopCircuit(),
+        'wsop' => TournamentStructure.wsopMainEvent(),
         _ => null,
       };
 }

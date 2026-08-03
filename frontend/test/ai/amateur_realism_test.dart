@@ -16,10 +16,16 @@ import 'package:monte/features/table/data/local_game_repository.dart';
 void main() {
   // Guards that amateurs stay believable: no calling off the river with air, and
   // no epidemic of light 100bb stack-offs. Seeded, so the numbers are stable.
-  test('amateurs play a believable game (no river air-calls, bounded stack-offs)',
-      () {
+  test('amateurs play a believable game (no river air-calls, bounded stack-offs)', () {
     // A deliberately spicy home-game table: LAGs, stations, and TAGs.
-    final table = [mitch, justinVidovitch, frankDouglas, patWray, philDiPinto, dougNiemec];
+    final table = [
+      mitchGray,
+      justinVidovitch,
+      frankDouglas,
+      patWray,
+      philDiPinto,
+      dougNiemec,
+    ];
 
     final repo = LocalGameRepository(
       config: TableConfig(
@@ -54,9 +60,14 @@ void main() {
         stackOffHands++;
         for (final e in busted) {
           final p = byId[e.key];
-          if (p != null && p.revealed && p.holeCards.length == 2 && board.length >= 3) {
-            final hv = HandEvaluator.evaluate(
-                [...p.holeCards.map(Card.fromCode), ...board]);
+          if (p != null &&
+              p.revealed &&
+              p.holeCards.length == 2 &&
+              board.length >= 3) {
+            final hv = HandEvaluator.evaluate([
+              ...p.holeCards.map(Card.fromCode),
+              ...board,
+            ]);
             if (hv.rank.index <= HandRank.pair.index) weakStackOffs++;
           }
         }
@@ -71,9 +82,14 @@ void main() {
           if (a.amount >= 0.75 * potBefore || a.amount >= 0.6 * stack) {
             bigBets++;
             final p = byId[a.playerId];
-            if (p != null && p.revealed && p.holeCards.length == 2 && board.length >= 3) {
-              final hv = HandEvaluator.evaluate(
-                  [...p.holeCards.map(Card.fromCode), ...board]);
+            if (p != null &&
+                p.revealed &&
+                p.holeCards.length == 2 &&
+                board.length >= 3) {
+              final hv = HandEvaluator.evaluate([
+                ...p.holeCards.map(Card.fromCode),
+                ...board,
+              ]);
               if (hv.rank.index <= HandRank.pair.index) weakBigBets++;
             }
           }
@@ -84,8 +100,10 @@ void main() {
           riverCalls++;
           final p = byId[a.playerId];
           if (p != null && p.revealed && p.holeCards.length == 2) {
-            final hv = HandEvaluator.evaluate(
-                [...p.holeCards.map(Card.fromCode), ...board]);
+            final hv = HandEvaluator.evaluate([
+              ...p.holeCards.map(Card.fromCode),
+              ...board,
+            ]);
             if (hv.rank == HandRank.highCard) {
               riverAirCalls++;
               if (a.amount >= 5 * bb) riverBigAirCalls++;
@@ -98,32 +116,50 @@ void main() {
     // ignore: avoid_print
     print('=== amateur realism probe over $hands hands ===');
     // ignore: avoid_print
-    print('stack-off hands: $stackOffHands '
-        '(${(stackOffHands / hands * 100).toStringAsFixed(1)}%); '
-        'weak (<=pair) stack-offs shown: $weakStackOffs');
+    print(
+      'stack-off hands: $stackOffHands '
+      '(${(stackOffHands / hands * 100).toStringAsFixed(1)}%); '
+      'weak (<=pair) stack-offs shown: $weakStackOffs',
+    );
     // ignore: avoid_print
-    print('big postflop bets/raises: $bigBets; '
-        'of shown, weak (<=pair): $weakBigBets '
-        '(${bigBets == 0 ? 0 : (weakBigBets / bigBets * 100).toStringAsFixed(1)}%)');
+    print(
+      'big postflop bets/raises: $bigBets; '
+      'of shown, weak (<=pair): $weakBigBets '
+      '(${bigBets == 0 ? 0 : (weakBigBets / bigBets * 100).toStringAsFixed(1)}%)',
+    );
     // ignore: avoid_print
-    print('river calls: $riverCalls; '
-        'air calls (high card at showdown): $riverAirCalls '
-        '(${riverCalls == 0 ? 0 : (riverAirCalls / riverCalls * 100).toStringAsFixed(1)}%); '
-        'BIG air calls (>=5bb): $riverBigAirCalls');
+    print(
+      'river calls: $riverCalls; '
+      'air calls (high card at showdown): $riverAirCalls '
+      '(${riverCalls == 0 ? 0 : (riverAirCalls / riverCalls * 100).toStringAsFixed(1)}%); '
+      'BIG air calls (>=5bb): $riverBigAirCalls',
+    );
 
     // No calling off a real river bet with a hand that can't beat a pair — the
     // core unrealistic behavior the owner flagged. Structurally guaranteed by
     // AmateurPolicy's river made-hand floor.
-    expect(riverBigAirCalls, 0,
-        reason: 'no amateur should call off a big river bet with air');
-    expect(riverAirCalls, lessThanOrEqualTo((riverCalls * 0.02).ceil()),
-        reason: 'river air-calls should be negligible');
+    expect(
+      riverBigAirCalls,
+      0,
+      reason: 'no amateur should call off a big river bet with air',
+    );
+    expect(
+      riverAirCalls,
+      lessThanOrEqualTo((riverCalls * 0.02).ceil()),
+      reason: 'river air-calls should be negligible',
+    );
 
     // Aggression stays believable: even this spicy table shouldn't stack off
     // 100bb in a large share of hands, nor mostly with weak holdings.
-    expect(stackOffHands, lessThan((hands * 0.15).round()),
-        reason: 'too many full-stack all-ins for 100bb play');
-    expect(weakStackOffs, lessThan((hands * 0.06).round()),
-        reason: 'too many all-ins unsupported by holdings');
+    expect(
+      stackOffHands,
+      lessThan((hands * 0.15).round()),
+      reason: 'too many full-stack all-ins for 100bb play',
+    );
+    expect(
+      weakStackOffs,
+      lessThan((hands * 0.06).round()),
+      reason: 'too many all-ins unsupported by holdings',
+    );
   });
 }

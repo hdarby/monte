@@ -47,6 +47,26 @@ class Player {
   /// Reset each round; drives the "CALL" vs "BET" label on the seat indicator.
   bool wagerIsCall = false;
 
+  // ---- This-hand action summary (persists across rounds; reset per hand) -----
+  // Used to condition an opponent's likely hand range on how they've played.
+
+  /// Voluntarily put chips in preflop (called or raised — not just a posted
+  /// blind or a free BB check). The classic VPIP signal.
+  bool vpip = false;
+
+  /// Made a voluntary bet/raise preflop (as opposed to limping/calling). Its
+  /// absence is what makes super-premium holdings unlikely.
+  bool raisedPreflop = false;
+
+  /// The escalation of this player's preflop raise: 0 = none (limp/call/blind),
+  /// 1 = open, 2 = 3-bet, 3+ = 4-bet or higher. A 3-bet+ collapses the range to
+  /// premiums (and makes super-premiums likely rather than unlikely).
+  int preflopRaiseLevel = 0;
+
+  /// Made a bet or raise on any postflop street (aggression that polarises the
+  /// range toward value + bluffs).
+  bool raisedPostflop = false;
+
   /// Eligible to act: still in the hand and has chips behind.
   bool get canAct => !hasFolded && !isAllIn && stack > 0;
 
@@ -63,7 +83,11 @@ class Player {
       ..isAllIn = isAllIn
       ..hasActedThisRound = hasActedThisRound
       ..betLevel = betLevel
-      ..wagerIsCall = wagerIsCall;
+      ..wagerIsCall = wagerIsCall
+      ..vpip = vpip
+      ..raisedPreflop = raisedPreflop
+      ..preflopRaiseLevel = preflopRaiseLevel
+      ..raisedPostflop = raisedPostflop;
     p.hole.addAll(hole);
     return p;
   }
@@ -78,6 +102,10 @@ class Player {
     hasActedThisRound = false;
     betLevel = 0;
     wagerIsCall = false;
+    vpip = false;
+    raisedPreflop = false;
+    preflopRaiseLevel = 0;
+    raisedPostflop = false;
   }
 
   /// Resets per-round state (called at the start of flop/turn/river).

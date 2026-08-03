@@ -5,7 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:monte/core/domain/engine/actions.dart';
 import 'package:monte/core/presentation/money_format.dart';
 import 'package:monte/core/theme/app_theme.dart';
+import 'package:monte/core/domain/ai/opponent_range_read.dart';
 import 'package:monte/features/table/domain/table_snapshot.dart';
+import 'package:monte/features/table/presentation/widgets/opponent_range_dialog.dart';
 import 'package:monte/features/table/presentation/widgets/action_bar.dart';
 import 'package:monte/features/table/presentation/widgets/community_board.dart';
 import 'package:monte/features/table/presentation/widgets/player_seat.dart';
@@ -32,6 +34,8 @@ class TableScreen extends StatelessWidget {
     this.onToggleAutoDeal,
     this.onCoach,
     this.onOpenTournament,
+    this.sidePanel,
+    this.showOpponentRanges = false,
   });
 
   final TableSnapshot snapshot;
@@ -50,6 +54,13 @@ class TableScreen extends StatelessWidget {
   /// All-bots only: whether hands deal continuously until toggled off.
   final bool autoDeal;
   final ValueChanged<bool>? onToggleAutoDeal;
+
+  /// Replaces the hand-log panel with a custom panel (tournament standings).
+  /// Null keeps the default hand log.
+  final Widget? sidePanel;
+
+  /// Cash games only: tapping an opponent opens a read of their likely range.
+  final bool showOpponentRanges;
 
   /// Opens the in-hand coach for the human seat. Null hides the coach icon.
   final VoidCallback? onCoach;
@@ -74,7 +85,7 @@ class TableScreen extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Expanded(child: _felt(context, snapshot.seats)),
-                  _LogPanel(log: snapshot.log),
+                  sidePanel ?? _LogPanel(log: snapshot.log),
                 ],
               ),
             ),
@@ -203,6 +214,42 @@ class TableScreen extends StatelessWidget {
 
   /// The felt with the community board centred and seats arranged around an
   /// ellipse — the human at the bottom, opponents filling the rest of the ring.
+  /// Opens the likely-range read for a tapped opponent, built from the hero's
+  /// cards, the board, and the opponent's this-hand action (see
+  /// [OpponentRangeDialog]). No-op if the hero isn't holding cards.
+  void _showOpponentRange(BuildContext context, SeatView seat) {
+    final hero = snapshot.human?.holeCards;
+    if (hero == null || hero.length < 2) return;
+    showDialog<void>(
+      context: context,
+      builder: (_) => OpponentRangeDialog(
+        opponentName: seat.name,
+        heroHole: hero,
+        board: snapshot.board,
+        vpip: seat.vpip,
+        preflopRaiseLevel: seat.preflopRaiseLevel,
+        raisedPostflop: seat.raisedPostflop,
+        position: _positionOf(seat),
+      ),
+    );
+  }
+
+  /// Classifies a seat's position from the dealer button, to tighten an
+  /// unraised/opening range (early is tightest, the blinds play wide + capped).
+  RangePosition _positionOf(SeatView seat) {
+    final seats = snapshot.seats;
+    final n = seats.length;
+    final btn = seats.indexWhere((s) => s.isButton);
+    final idx = seats.indexWhere((s) => s.id == seat.id);
+    if (n <= 3 || btn < 0 || idx < 0) return RangePosition.unknown;
+    final afterBtn = (idx - btn) % n; // 1 = SB, 2 = BB, ...
+    if (afterBtn == 1 || afterBtn == 2) return RangePosition.blinds;
+    final beforeBtn = (btn - idx) % n; // 0 = button, 1 = cutoff, ...
+    if (beforeBtn <= 1) return RangePosition.late;
+    if (beforeBtn <= 3) return RangePosition.middle;
+    return RangePosition.early;
+  }
+
   Widget _felt(BuildContext context, List<SeatView> seats) {
     final winner = _winnerBanner(context);
     return Container(
@@ -237,6 +284,11 @@ class TableScreen extends StatelessWidget {
                   buttonPlacement: _buttonPlacement(i, seats.length),
                   showBehavior: showBehavior,
                   onCoach: seats[i].isHuman ? onCoach : null,
+                  onTap: (showOpponentRanges &&
+                          !seats[i].isHuman &&
+                          !seats[i].folded)
+                      ? () => _showOpponentRange(context, seats[i])
+                      : null,
                 ),
               ),
             ?winner,

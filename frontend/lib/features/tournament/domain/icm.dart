@@ -1,22 +1,27 @@
+import 'dart:typed_data';
+
 /// The Independent Chip Model: converts chip stacks into **tournament-dollar
 /// equity** given the remaining payouts. This is what makes chips non-linear —
 /// doubling your stack less than doubles your equity, which is why good players
 /// tighten near the money.
 ///
-/// [equities] uses the standard **Malmuth-Harville** finish-order recursion:
+/// [equities] uses the standard **Malmuth-Harville** finish-order model:
 /// P(player i finishes first) = stack_i / total; condition on each possible
-/// first-place finisher and recurse over the rest for the next payout. Recursion
-/// depth is the number of paid places, so it's exact and cheap at the final-table
-/// scale where ICM actually bites. For fields larger than [_exactLimit] players
-/// it falls back to a chip-proportional approximation — early in a big MTT the
-/// money is far away and ICM ≈ chip-EV anyway, so the error is negligible where
-/// it doesn't matter and exact where it does.
+/// first-place finisher and continue for the next payout. It's computed with a
+/// subset DP over eliminated-sets (O(n·2^n), exact) rather than the naive O(n!)
+/// order recursion, so it stays fast even at a full 9-handed final table where
+/// ICM actually bites. For fields larger than [exactLimit] players it falls back
+/// to a chip-proportional approximation — early in a big MTT the money is far
+/// away and ICM ≈ chip-EV anyway, so the error is negligible where it doesn't
+/// matter and exact where it does.
 class Icm {
   const Icm._();
 
   /// Above this many live players, use the chip-proportional approximation
-  /// instead of the exact (factorial-in-depth) recursion.
-  static const int _exactLimit = 10;
+  /// instead of the exact (factorial-in-depth) recursion. Also the point below
+  /// which [bubbleFactor] differs meaningfully from chip-neutral (1.0), so
+  /// callers can skip the per-decision ICM work entirely above it.
+  static const int exactLimit = 10;
 
   /// Tournament-dollar equity for each stack in [stacks], given the place-indexed
   /// [payouts] (index 0 = 1st). Result is parallel to [stacks].
@@ -28,45 +33,52 @@ class Icm {
     if (payouts.isEmpty) return List<double>.filled(n, 0);
 
     // Large field: chip-proportional share of the whole remaining prize pool.
-    if (n > _exactLimit) {
+    if (n > exactLimit) {
       final pool = payouts.fold<int>(0, (a, b) => a + b);
       return [for (final s in stacks) (s / total) * pool];
     }
 
+    // Exact Malmuth-Harville via subset DP: `f[mask]` is the probability that
+    // exactly the players in `mask` have taken the top places (in any order).
+    // Collapsing the n! finish orderings into 2^n eliminated-sets turns the
+    // recursion from O(n!) into O(n·2^n) — the difference between a 9-handed
+    // final table grinding for minutes per decision and finishing in microseconds.
+    final depth = payouts.length < n ? payouts.length : n;
+    final size = 1 << n;
+    final f = Float64List(size);
+    f[0] = 1.0;
     final out = List<double>.filled(n, 0);
-    _accumulate(stacks, payouts, out, 1.0, <int>{});
+    for (var mask = 0; mask < size; mask++) {
+      final p = f[mask];
+      if (p == 0) continue;
+      final placeIndex = _popcount(mask);
+      if (placeIndex >= depth) continue;
+      var sumMask = 0;
+      for (var i = 0; i < n; i++) {
+        if ((mask & (1 << i)) != 0) sumMask += stacks[i];
+      }
+      final remaining = total - sumMask;
+      if (remaining <= 0) continue;
+      final pay = payouts[placeIndex];
+      final expand = placeIndex + 1 < depth;
+      for (var i = 0; i < n; i++) {
+        if ((mask & (1 << i)) != 0 || stacks[i] <= 0) continue;
+        final branch = p * (stacks[i] / remaining);
+        out[i] += branch * pay;
+        if (expand) f[mask | (1 << i)] += branch;
+      }
+    }
     return out;
   }
 
-  /// Recursively assigns the current top payout to each still-standing candidate
-  /// weighted by their conditional P(finish next), accumulating into [out].
-  /// [eliminated] holds indices already assigned a (better) place this branch;
-  /// [prob] is the probability of reaching this branch.
-  static void _accumulate(
-    List<int> stacks,
-    List<int> payouts,
-    List<double> out,
-    double prob,
-    Set<int> eliminated,
-  ) {
-    final placeIndex = eliminated.length;
-    if (placeIndex >= payouts.length) return; // no more paid places to assign
-
-    var remainingChips = 0;
-    for (var i = 0; i < stacks.length; i++) {
-      if (!eliminated.contains(i)) remainingChips += stacks[i];
+  static int _popcount(int x) {
+    var c = 0;
+    var v = x;
+    while (v != 0) {
+      v &= v - 1;
+      c++;
     }
-    if (remainingChips <= 0) return;
-
-    for (var i = 0; i < stacks.length; i++) {
-      if (eliminated.contains(i) || stacks[i] <= 0) continue;
-      final pNext = stacks[i] / remainingChips;
-      final branch = prob * pNext;
-      out[i] += branch * payouts[placeIndex];
-      if (placeIndex + 1 < payouts.length) {
-        _accumulate(stacks, payouts, out, branch, {...eliminated, i});
-      }
-    }
+    return c;
   }
 
   /// The **bubble factor** for [hero]: how many dollars are at risk per dollar to

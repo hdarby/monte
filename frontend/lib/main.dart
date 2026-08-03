@@ -398,6 +398,8 @@ class _GamePageState extends ConsumerState<GamePage> {
               onCoach: () => _openCoach(snapshot, settings, vm),
               autoDeal: _autoDeal,
               onToggleAutoDeal: (v) => setState(() => _autoDeal = v),
+              // Cash game with a human seat: tap an opponent to read their range.
+              showOpponentRanges: !vm.isAllBots,
             ),
           ),
         );

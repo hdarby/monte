@@ -55,6 +55,22 @@ class PlayerProfile {
     return 0.0;
   }
 
+  /// A copy with a different display [name] — used to seat a personality under a
+  /// fictitious identity (e.g. an auto-filled tournament entrant) while keeping
+  /// its id, skill and every stat, so it plays identically.
+  PlayerProfile renamed(String name) => PlayerProfile(
+        id: id,
+        name: name,
+        archetype: archetype,
+        strategicBaseline: strategicBaseline,
+        behavioralModifiers: behavioralModifiers,
+        engineTriggers: engineTriggers,
+        skill: skill,
+        generalTraits: generalTraits,
+        characteristics: characteristics,
+        description: description,
+      );
+
   /// A copy with [strategicBaseline] replaced — used to apply a tuned baseline
   /// override while keeping the profile's identity, skill, and modifiers.
   PlayerProfile withStrategicBaseline(StrategicBaseline baseline) =>
@@ -138,20 +154,21 @@ class PlayerProfile {
     if (pfr > vpip) {
       v.add('PFR ($pfr) exceeds VPIP ($vpip).');
     }
-    if (threeBet > 0.14) {
+    const eps = 1e-9; // tolerate float boundaries (0.18-0.10 != exactly 0.08)
+    if (threeBet > 0.14 + eps) {
       v.add('3-bet ($threeBet) above 0.14 — not reachable at 6-max; cap ~0.14.');
     }
     final open = pfr - threeBet;
-    if (open < 0.08) {
+    if (open < 0.08 - eps) {
       v.add('Open range PFR−3-bet (${open.toStringAsFixed(2)}) below 0.08 — PFR '
           'collapses (too few opens). Raise PFR or lower 3-bet.');
     }
     final gap = vpip - pfr;
-    if (gap < 0.06) {
+    if (gap < 0.06 - eps) {
       v.add('VPIP−PFR gap (${gap.toStringAsFixed(2)}) below 0.06 — VPIP '
           'overshoots (opens+flats exceed it). Raise VPIP or lower PFR.');
     }
-    if (vpip < 0.10 || vpip > 0.55) {
+    if (vpip < 0.10 - eps || vpip > 0.55 + eps) {
       v.add('VPIP ($vpip) outside the reachable 0.10–0.55 range.');
     }
     return v;

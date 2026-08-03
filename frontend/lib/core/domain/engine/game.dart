@@ -59,9 +59,11 @@ class PokerGame {
     this.smallBlind = 5,
     this.bigBlind = 10,
     this.ante = 0,
+    this.chipUnit = 1,
     this.rotateButton = true,
     Deck? deck,
-  }) : _deck = deck ?? Deck();
+  })  : assert(chipUnit >= 1),
+        _deck = deck ?? Deck();
 
   final List<Player> players;
   final int smallBlind;
@@ -72,6 +74,12 @@ class PokerGame {
   /// stay `final`; rising tournament levels are realised by reconstructing the
   /// game between hands, so `clone()`/determinism is unaffected.
   final int ante;
+
+  /// The smallest chip denomination in play: every voluntary bet/raise is
+  /// rounded to a multiple of this (1 = no constraint, the cash-game default).
+  /// In tournaments the controller sets it from the level's color-up state, so
+  /// bots and the human can't wager an amount no chip stack could actually make.
+  final int chipUnit;
 
   final Deck _deck;
 
@@ -157,6 +165,7 @@ class PokerGame {
             smallBlind: smallBlind,
             bigBlind: bigBlind,
             ante: ante,
+            chipUnit: chipUnit,
             rotateButton: rotateButton,
             deck: _deck.copy(),
           )
@@ -267,6 +276,9 @@ class PokerGame {
         p.betLevel = raiseCountThisRound;
         p.wagerIsCall = true;
         p.hasActedThisRound = true;
+        // Voluntarily putting chips in preflop (a limp or a cold/flat call) is
+        // VPIP; it does NOT set raisedPreflop, which is the whole point.
+        if (paid > 0 && round == BettingRound.preflop) p.vpip = true;
         log.add('${p.name} calls $paid.');
       case ActionType.bet:
         _applyRaiseTo(p, action.amount, isBet: true);
@@ -280,7 +292,12 @@ class PokerGame {
   }
 
   void _applyRaiseTo(Player p, int to, {required bool isBet}) {
-    final target = to.clamp(minRaiseTo(p), maxRaiseTo(p));
+    // Snap the requested "to" to a whole number of the smallest chip in play
+    // before clamping. The bounds themselves derive from blinds/antes (already
+    // chip-aligned), and going all-in (target == maxRaiseTo) stays exact even
+    // if a stack isn't a clean multiple.
+    final snapped = chipUnit <= 1 ? to : (to ~/ chipUnit) * chipUnit;
+    final target = snapped.clamp(minRaiseTo(p), maxRaiseTo(p));
     final increment = target - currentBet;
     p.commit(target - p.currentBet);
     if (increment >= minRaise) minRaise = increment;
@@ -289,7 +306,21 @@ class PokerGame {
     p.betLevel = raiseCountThisRound;
     p.wagerIsCall = false;
     p.hasActedThisRound = true;
+    _recordAggression(p);
     log.add('${p.name} ${isBet ? 'bets' : 'raises to'} $target.');
+  }
+
+  /// Notes a voluntary bet/raise for the range-read action summary. Called after
+  /// [raiseCountThisRound] has been incremented, so it captures the escalation
+  /// (1 = open, 2 = 3-bet, 3+ = 4-bet).
+  void _recordAggression(Player p) {
+    if (round == BettingRound.preflop) {
+      p.vpip = true;
+      p.raisedPreflop = true;
+      p.preflopRaiseLevel = raiseCountThisRound;
+    } else {
+      p.raisedPostflop = true;
+    }
   }
 
   void _applyAllIn(Player p) {
@@ -303,11 +334,13 @@ class PokerGame {
       raiseCountThisRound++;
       p.betLevel = raiseCountThisRound;
       p.wagerIsCall = false;
+      _recordAggression(p);
       log.add('${p.name} is all-in for ${p.currentBet}.');
     } else {
       // A non-aggressive (calling) all-in matches the current level.
       p.betLevel = raiseCountThisRound;
       p.wagerIsCall = true;
+      if (p.currentBet > before && round == BettingRound.preflop) p.vpip = true;
       log.add('${p.name} is all-in for ${p.currentBet - before} (call).');
     }
     p.hasActedThisRound = true;
@@ -489,12 +522,20 @@ class PokerGame {
             .toList();
         if (winners.length > 1) chopped.addAll(winners);
 
-        final share = potChunk ~/ winners.length;
-        var remainder = potChunk - share * winners.length;
-        // Award even share, then remainder chips by seat order left of button.
+        // Split in whole chips of the smallest denomination in play, so no
+        // stack can ever hold a fraction of a chip (e.g. at 25/50 every award
+        // is a multiple of 25). potChunk is always a whole number of chips
+        // because every contribution — blinds, antes, snapped bets — is.
+        final unit = chipUnit <= 1 ? 1 : chipUnit;
+        final units = potChunk ~/ unit;
+        final shareUnits = units ~/ winners.length;
+        var extraUnits = units - shareUnits * winners.length;
+        final share = shareUnits * unit;
+        // Award the even share, then the odd chip(s) by seat order left of the
+        // button — the standard rule for who receives the indivisible remainder.
         final ordered = _orderFromButton(winners);
         for (final w in ordered) {
-          winnings[w] = winnings[w]! + share + (remainder-- > 0 ? 1 : 0);
+          winnings[w] = winnings[w]! + share + (extraUnits-- > 0 ? unit : 0);
         }
 
         // A layer only one player funded is uncalled — they simply get their own
