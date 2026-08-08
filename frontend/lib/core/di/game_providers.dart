@@ -5,8 +5,14 @@ import 'package:monte/core/domain/ai/decider_factory.dart';
 import 'package:monte/features/eval_history/presentation/eval_history_provider.dart';
 import 'package:monte/features/settings/domain/game_settings.dart';
 import 'package:monte/features/settings/presentation/settings_controller.dart';
+import 'package:monte/features/reads/data/player_stats_store.dart';
 import 'package:monte/features/table/data/local_game_repository.dart';
 import 'package:monte/features/table/domain/game_repository.dart';
+
+/// The persistent per-opponent reads model, or null (no accumulation) in tests
+/// and headless runs. `main` overrides it with a file-backed, loaded service.
+final opponentStatsServiceProvider =
+    Provider<OpponentStatsService?>((ref) => null);
 
 /// Composition root for the game.
 ///
@@ -60,6 +66,7 @@ final gameRepositoryProvider = Provider<GameRepository>((ref) {
           : const BotSpec(brain: BotType.personality),
   ];
   final repo = LocalGameRepository(
+    statsService: ref.watch(opponentStatsServiceProvider),
     config: TableConfig(
       playerCount: playerCount,
       allBots: allBots,

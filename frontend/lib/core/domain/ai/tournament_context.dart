@@ -12,6 +12,7 @@ class TournamentContext {
     required this.playersLeft,
     required this.paidPlaces,
     required this.inMoney,
+    this.ladderPressure = 0,
   });
 
   /// The acting player's stack in big blinds (drives short-stack push/fold).
@@ -24,6 +25,12 @@ class TournamentContext {
   final int playersLeft;
   final int paidPlaces;
   final bool inMoney;
+
+  /// Stack-scaled survival premium in [0,1] from laddering: rises near the money
+  /// bubble and as the field shrinks toward the final table, and is felt most by
+  /// short/medium stacks (big stacks, which accumulate rather than ladder, feel
+  /// little). Drives extra fold discipline on marginal stack-offs.
+  final double ladderPressure;
 
   /// Not yet in the money and within ~2× the paid places — the pressure zone.
   bool get nearBubble => !inMoney && playersLeft <= paidPlaces * 2;

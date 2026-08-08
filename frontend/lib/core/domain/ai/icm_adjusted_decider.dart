@@ -40,7 +40,43 @@ class IcmAdjustedDecider implements DecisionPolicy {
     }
     final action = _inner.decide(game, p);
     if (ctx.bubbleFactor >= _tightenAt) return _bubbleTighten(game, p, action, ctx);
+    // Large-field bubble / in-the-money laddering, where exact ICM isn't run:
+    // a stack-scaled survival premium demotes marginal stack-offs so a short/mid
+    // stack doesn't bust when there's pay-jump value in simply surviving.
+    if (ctx.ladderPressure >= 0.15) return _ladderTighten(game, p, action, ctx);
     return action;
+  }
+
+  /// Refuses to commit a large chunk of a laddering stack without a real hand:
+  /// folds big calls, and abandons weak jams/raises (check if possible, else
+  /// fold). Bar and trigger scale with [TournamentContext.ladderPressure].
+  GameAction _ladderTighten(
+      PokerGame game, Player p, GameAction action, TournamentContext ctx) {
+    final toCall = game.callAmount(p);
+    final int risked;
+    switch (action.type) {
+      case ActionType.call:
+        if (toCall == 0) return action;
+        risked = toCall;
+      case ActionType.allIn:
+        risked = p.stack;
+      case ActionType.bet:
+      case ActionType.raise:
+        risked = (action.amount - p.currentBet).clamp(0, p.stack);
+      case ActionType.fold:
+      case ActionType.check:
+        return action;
+    }
+    final commitFrac = risked / (p.stack + p.currentBet).clamp(1, 1 << 30);
+    final trigger = (0.35 - 0.20 * ctx.ladderPressure).clamp(0.15, 0.35);
+    if (commitFrac < trigger) return action; // a small commitment is fine
+    final bar = (0.58 + 0.30 * ctx.ladderPressure).clamp(0.5, 0.90);
+    final strength = game.board.isEmpty
+        ? HandStrength.preflop(p)
+        : HandStrength.estimate(game, p);
+    if (strength >= bar) return action;
+    if (toCall > 0) return const GameAction.fold();
+    return game.canCheck(p) ? const GameAction.check() : const GameAction.fold();
   }
 
   /// Near the bubble, refuse to call off a large chunk of stack without a strong

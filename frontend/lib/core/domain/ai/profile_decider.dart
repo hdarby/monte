@@ -2,6 +2,7 @@ import 'dart:math';
 
 import 'package:monte/core/domain/ai/amateur_policy.dart';
 import 'package:monte/core/domain/ai/home_game_profiles.dart';
+import 'package:monte/core/domain/ai/opponent_reads.dart';
 import 'package:monte/core/domain/ai/player_profile.dart';
 import 'package:monte/core/domain/ai/profile_calibrator.dart';
 import 'package:monte/core/domain/ai/profile_policy.dart';
@@ -22,7 +23,11 @@ import 'package:monte/core/domain/engine/decision_policy.dart';
 bool isAmateurProfile(PlayerProfile p) =>
     p.skill < 1.0 || homeGameProfiles.any((a) => a.id == p.id);
 
-DecisionPolicy deciderForProfile(PlayerProfile profile, {Random? random}) {
+DecisionPolicy deciderForProfile(
+  PlayerProfile profile, {
+  Random? random,
+  OpponentReads? reads,
+}) {
   if (isAmateurProfile(profile)) {
     return AmateurPolicy(profile, random: random);
   }
@@ -30,6 +35,7 @@ DecisionPolicy deciderForProfile(PlayerProfile profile, {Random? random}) {
     profile,
     random: random,
     ranges: const ProfileCalibrator().rangesFor(profile),
-    postflop: ProfilePostflopPolicy(profile, random: random),
+    postflop: ProfilePostflopPolicy(profile, random: random, reads: reads),
+    reads: reads,
   );
 }

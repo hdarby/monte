@@ -16,6 +16,7 @@ TableSnapshot projectTableSnapshot(
   bool revealAll = false,
   Map<String, String?> behaviorLabels = const {},
   bool flagBusted = false,
+  String? frontPlayerId,
 }) {
   final showdownHappened = game.results.any((r) => r.handValue != null);
   final wonByPlayer = {for (final r in game.results) r.player: r.netWon};
@@ -54,6 +55,20 @@ TableSnapshot projectTableSnapshot(
         behavior: behaviorLabels[p.id],
       ),
     );
+  }
+
+  // Rotate the seat ring so [frontPlayerId] sits first — the UI renders index 0
+  // at bottom-centre, so this keeps the human (in a tournament, wherever they've
+  // been reseated) anchored at the bottom with the rest fanned around them. The
+  // dealer button travels with its seat, so it simply moves as expected.
+  if (frontPlayerId != null) {
+    final k = seats.indexWhere((s) => s.id == frontPlayerId);
+    if (k > 0) {
+      final rotated = [...seats.sublist(k), ...seats.sublist(0, k)];
+      seats
+        ..clear()
+        ..addAll(rotated);
+    }
   }
 
   ActionContext? ctx;

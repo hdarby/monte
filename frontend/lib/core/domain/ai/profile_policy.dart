@@ -1,6 +1,8 @@
 import 'dart:math';
 
+import 'package:monte/core/domain/ai/opponent_reads.dart';
 import 'package:monte/core/domain/ai/player_profile.dart';
+import 'package:monte/core/domain/ai/player_stats.dart';
 import 'package:monte/core/domain/ai/preflop_ranges.dart';
 import 'package:monte/core/domain/engine/actions.dart';
 import 'package:monte/core/domain/engine/bet_snap.dart';
@@ -28,6 +30,7 @@ class ProfilePolicy implements DecisionPolicy {
     Random? random,
     PreflopRanges? ranges,
     DecisionPolicy? postflop,
+    OpponentReads? reads,
   }) : _random = random ?? Random(),
        _ranges =
            ranges ??
@@ -36,12 +39,14 @@ class ProfilePolicy implements DecisionPolicy {
              pfrTarget: profile.strategicBaseline.pfrTarget,
              threeBetTarget: profile.strategicBaseline.threeBetFrequency,
            ) {
+    _reads = reads;
     _postflop = postflop ?? BotStrategy(random: _random);
   }
 
   final PlayerProfile profile;
   final Random _random;
   final PreflopRanges _ranges;
+  late final OpponentReads? _reads;
   late final DecisionPolicy _postflop;
 
   /// Strength cutoffs for escalated preflop pots. Facing a 3-bet you continue
@@ -81,6 +86,33 @@ class ProfilePolicy implements DecisionPolicy {
       threeBetCut = (threeBetCut + shift).clamp(0.0, 1.0);
     }
 
+    // Data-driven exploit (scaled by exploit dial × read confidence): 3-bet
+    // lighter against an opener who folds to 3-bets too much, and open wider
+    // when the blinds behind fold to steals too much. No read ⇒ no change, so a
+    // read-less exploiter plays its calibrated baseline rather than a bad prior.
+    if (_reads != null) {
+      final exploit = ((1 - profile.strategicBaseline.gtoAdherenceWeight) *
+              profile.behavioralModifiers.exploitativeWeight)
+          .clamp(0.0, 1.0);
+      if (exploit > 0) {
+        if (raises == 1) {
+          final st = _readOfBiggestBettor(game, p);
+          if (st != null) {
+            final w = (exploit * st.confidence).clamp(0.0, 1.0);
+            final foldy = st.foldTo3betRate - 0.55; // + folds too much
+            threeBetCut = (threeBetCut - foldy * 0.12 * w).clamp(0.0, 1.0);
+          }
+        } else if (raises == 0) {
+          final blind = _blindStealRead(game, p);
+          if (blind != null) {
+            final w = (exploit * blind.confidence).clamp(0.0, 1.0);
+            final foldy = blind.foldBlindStealRate - 0.55;
+            pfrCut = (pfrCut - foldy * 0.10 * w).clamp(0.0, 1.0);
+          }
+        }
+      }
+    }
+
     GameAction raiseBy(double potFraction) {
       final raw = game.minRaiseTo(p) + (game.pot * potFraction).round();
       final raiseTo =
@@ -89,12 +121,25 @@ class ProfilePolicy implements DecisionPolicy {
       return GameAction.raise(raiseTo);
     }
 
+    // Deep-stack discipline: the deeper the effective stack, the tighter the
+    // range willing to put it in preflop. At ~100 BB it's the baseline; by a few
+    // hundred BB (early in a tournament) only the very top continues a raise war
+    // to stacks — nobody ships 600 BB in the first orbit with AK/QQ. 0 at
+    // ≤100 BB (normal play, and every existing test, is unchanged).
+    final liveOpps = game.players.where((x) => x.inHand && !identical(x, p));
+    final deepestOpp =
+        liveOpps.isEmpty ? 0 : liveOpps.map((x) => x.stack).reduce(max);
+    final effBb = bb > 0 ? min(p.stack, deepestOpp) / bb : 100.0;
+    final deepFactor = ((effBb - 100.0) / 200.0).clamp(0.0, 1.0);
+    final stackOff = (_stackOff + 0.12 * deepFactor).clamp(0.0, 1.0);
+    final vs3betCall = (_vs3betCall + 0.08 * deepFactor).clamp(0.0, 1.0);
+
     // Facing a 3-bet or more: only premiums keep raising; a strong-but-not-
     // premium hand flats once; everything else folds. This is what stops the
-    // all-in raise wars.
+    // all-in raise wars (and, deep, the first-orbit stack-offs).
     if (raises >= 2) {
-      if (s >= _stackOff && canRaise) return raiseBy(0.6);
-      if (s >= _vs3betCall) return const GameAction.call();
+      if (s >= stackOff && canRaise) return raiseBy(0.6);
+      if (s >= vs3betCall) return const GameAction.call();
       return const GameAction.fold();
     }
 
@@ -131,5 +176,28 @@ class ProfilePolicy implements DecisionPolicy {
     if (s >= pfrCut && canRaise) return raiseBy(0.5);
     if (hasLimper && s >= vpipCut) return const GameAction.call();
     return const GameAction.fold();
+  }
+
+  /// The read on the opponent who has put the most chips in this round (the
+  /// preflop opener/raiser we'd be 3-betting), or null.
+  PlayerStats? _readOfBiggestBettor(PokerGame game, Player p) {
+    if (_reads == null) return null;
+    final opps =
+        game.players.where((x) => x.inHand && !identical(x, p)).toList();
+    if (opps.isEmpty) return null;
+    opps.sort((a, b) => b.currentBet.compareTo(a.currentBet));
+    return _reads.forSeat(opps.first.id);
+  }
+
+  /// The read on the blind seat behind us most likely to fold to a steal — the
+  /// big blind (or small blind if we're the button), used to size opens wider.
+  PlayerStats? _blindStealRead(PokerGame game, Player p) {
+    if (_reads == null) return null;
+    final n = game.players.length;
+    if (n < 2) return null;
+    final bbIndex = (game.buttonIndex + 2) % n;
+    final bb = game.players[bbIndex];
+    if (identical(bb, p) || bb.hasFolded) return null;
+    return _reads.forSeat(bb.id);
   }
 }

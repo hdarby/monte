@@ -6,8 +6,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:monte/core/di/game_providers.dart';
 import 'package:monte/core/domain/ai/bot_spec.dart';
 import 'package:monte/core/domain/ai/decider_factory.dart';
+import 'package:monte/features/reads/data/player_stats_store.dart';
 import 'package:monte/core/presentation/money_format.dart';
 import 'package:monte/features/coach/domain/hand_coach.dart';
 import 'package:monte/features/coach/presentation/coach_screen.dart';
@@ -41,12 +43,17 @@ Future<void> main() async {
   // Discard tuning learned against superseded evaluation logic (one-time, gated
   // on [_tuningVersion]) so stale overrides can't skew play after an engine fix.
   await _resetStaleTuning(store);
+  // Persistent per-opponent reads (VPIP/PFR/3-bet/steal/etc.), loaded once so
+  // exploitative pros carry their reads across sessions and events.
+  final statsService =
+      await OpponentStatsService.load(FilePlayerStatsStore(dir));
   // Own the container explicitly so the background auto-tune job can be started
   // here (in the real entrypoint only — widget tests pump `MonteApp` directly
   // and never start its timer).
   final container = ProviderContainer(
     overrides: [
       evalHistoryStoreProvider.overrideWithValue(store),
+      opponentStatsServiceProvider.overrideWithValue(statsService),
     ],
   );
   container.read(autoTuneJobProvider.notifier).start();

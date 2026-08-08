@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:monte/core/di/game_providers.dart';
 import 'package:monte/core/domain/ai/player_profile.dart';
 import 'package:monte/features/table/domain/table_snapshot.dart';
 import 'package:monte/features/table/presentation/table_screen.dart';
@@ -9,7 +11,7 @@ import 'package:monte/features/tournament/domain/tournament_structure.dart';
 /// The interactive tournament: the human plays their table live (via the reused
 /// [TableScreen]) with a tournament HUD overlaid; other tables simulate between
 /// hands. Owns the [TournamentController] lifecycle for the screen.
-class TournamentScreen extends StatefulWidget {
+class TournamentScreen extends ConsumerStatefulWidget {
   const TournamentScreen({
     super.key,
     required this.structure,
@@ -29,10 +31,10 @@ class TournamentScreen extends StatefulWidget {
   final String humanName;
 
   @override
-  State<TournamentScreen> createState() => _TournamentScreenState();
+  ConsumerState<TournamentScreen> createState() => _TournamentScreenState();
 }
 
-class _TournamentScreenState extends State<TournamentScreen> {
+class _TournamentScreenState extends ConsumerState<TournamentScreen> {
   late final TournamentController _c;
   TableSnapshot? _table;
   TournamentSnapshot? _tour;
@@ -51,6 +53,7 @@ class _TournamentScreenState extends State<TournamentScreen> {
       humanSeat: true,
       names: names,
       botProfiles: widget.field,
+      statsService: ref.read(opponentStatsServiceProvider),
     );
     _c.tableStream.listen((s) {
       if (mounted) setState(() => _table = s);

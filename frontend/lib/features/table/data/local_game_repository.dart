@@ -4,6 +4,7 @@ import 'package:monte/core/domain/ai/bot_spec.dart';
 import 'package:monte/core/domain/ai/decider_factory.dart';
 import 'package:monte/core/domain/ai/ismcts.dart';
 import 'package:monte/core/domain/ai/opponent_model.dart';
+import 'package:monte/core/domain/ai/opponent_reads.dart';
 import 'package:monte/core/domain/ai/personality.dart';
 import 'package:monte/core/domain/ai/player_profile.dart';
 import 'package:monte/core/domain/ai/profile_decider.dart';
@@ -14,6 +15,7 @@ import 'package:monte/core/domain/engine/game.dart';
 import 'package:monte/core/domain/engine/hand_evaluator.dart';
 import 'package:monte/core/domain/engine/player.dart';
 import 'package:monte/core/domain/hand_history.dart';
+import 'package:monte/features/reads/data/player_stats_store.dart';
 import 'package:monte/features/eval_history/domain/eval_hand.dart';
 import 'package:monte/features/table/domain/game_repository.dart';
 import 'package:monte/features/table/data/table_snapshot_projection.dart';
@@ -130,9 +132,23 @@ class TableConfig {
 /// automatically with a short delay so the table feels alive. In all-bots mode
 /// the engine plays itself, recording every hand for analysis.
 class LocalGameRepository extends GameRepository {
-  LocalGameRepository({this.config = const TableConfig()});
+  LocalGameRepository({this.config = const TableConfig(), this.statsService});
 
   final TableConfig config;
+
+  /// Persistent per-opponent reads (by `profile.id` / `'human'`). When present,
+  /// exploitative pros consult it and each finished hand is folded back in.
+  final OpponentStatsService? statsService;
+
+  /// Maps a seat player id (`'human'`, `'bot_2'`) to the stable identity stats
+  /// are accumulated under: `'human'` for the human, the personality's
+  /// `profile.id` for a profiled bot, or null (untracked heuristic seat).
+  String? _identityOf(String seatId) {
+    if (seatId == 'human') return 'human';
+    return _specByPlayer[seatId]?.profile?.id;
+  }
+
+  late final OpponentReads? _reads = statsService?.readsFor(_identityOf);
 
   /// One decider per bot seat (keyed by player id), so seats can hold distinct
   /// personalities and a busted seat can be replaced independently.
@@ -292,7 +308,7 @@ class LocalGameRepository extends GameRepository {
         // Amateurs get the degraded AmateurPolicy; pros get calibrated preflop
         // frequencies + the range-aware postflop brain. Shared with tournaments
         // via [deciderForProfile] so a personality plays identically everywhere.
-        return deciderForProfile(pro);
+        return deciderForProfile(pro, reads: _reads);
       }
       return buildDecider(
         spec.brain,
@@ -584,7 +600,10 @@ class LocalGameRepository extends GameRepository {
       finalStacks: {for (final p in _recPlayers) p.id: _stackOf(p.id)},
     );
     _history.add(hand);
-    _opponentModel.observe(hand); // accumulate reads for exploitative bots
+    _opponentModel.observe(hand); // legacy in-session model (ISMCTS path)
+    // Persistent per-opponent reads, keyed by stable identity (profile.id /
+    // 'human'), for the exploitative pros — accumulated across sessions.
+    if (!_evaluating) statsService?.record(hand, _identityOf);
     // Log interactive hands for diagnosis, but never the batch-sim flood.
     if (!_evaluating) config.onHandRecorded?.call(hand);
     _recPlayers = [];

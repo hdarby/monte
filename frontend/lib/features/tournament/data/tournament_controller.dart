@@ -5,6 +5,8 @@ import 'package:monte/core/domain/ai/decider_factory.dart';
 import 'package:monte/core/domain/ai/icm_adjusted_decider.dart';
 import 'package:monte/core/domain/ai/player_profile.dart';
 import 'package:monte/core/domain/ai/profile_decider.dart';
+import 'package:monte/core/domain/hand_history.dart';
+import 'package:monte/features/reads/data/player_stats_store.dart';
 import 'package:monte/core/domain/ai/tournament_context.dart';
 import 'package:monte/core/domain/engine/actions.dart';
 import 'package:monte/core/domain/engine/decision_policy.dart';
@@ -39,6 +41,8 @@ class TournamentController {
     required this.humanId,
     required Map<String, DecisionPolicy> deciders,
     required Map<String, Player> enginePlayers,
+    this.statsService,
+    this._identityBySeat = const {},
   })  : _deciders = Map.of(deciders),
         _enginePlayers = Map.of(enginePlayers);
 
@@ -49,6 +53,15 @@ class TournamentController {
 
   /// The human entrant's id, or null for an all-bots (headless) tournament.
   final String? humanId;
+
+  /// Persistent per-opponent reads (present only in interactive play). Fed the
+  /// human's-table hands and consulted by the exploitative pros.
+  final OpponentStatsService? statsService;
+
+  /// Seat id (`e0`, `e3`, …) → the stable identity its stats accumulate under:
+  /// `'human'` for the human, else the personality's `profile.id`.
+  final Map<String, String> _identityBySeat;
+  String? _identityOf(String seatId) => _identityBySeat[seatId];
 
   final Map<String, DecisionPolicy> _deciders;
   final Map<String, Player> _enginePlayers;
@@ -98,6 +111,7 @@ class TournamentController {
     bool humanSeat = false,
     bool icmAware = true,
     DecisionPolicy Function(String id, int index)? deciderBuilder,
+    OpponentStatsService? statsService,
   }) {
     final players = <String, TournamentPlayer>{};
     final engine = <String, Player>{};
@@ -117,6 +131,20 @@ class TournamentController {
       players: players,
       tables: const [],
     );
+    // Stable identity per seat (for accumulating/reading opponent stats): the
+    // human is 'human'; a profiled bot is its personality's profile.id (so the
+    // same personality pools reads across seats and events).
+    final identityBySeat = <String, String>{};
+    for (var i = 0; i < entrants; i++) {
+      final id = 'e$i';
+      if (humanSeat && i == 0) {
+        identityBySeat[id] = 'human';
+      } else if (botProfiles != null) {
+        identityBySeat[id] = botProfiles[humanSeat ? i - 1 : i].id;
+      }
+    }
+    final reads = statsService?.readsFor((seat) => identityBySeat[seat]);
+
     // Deciders are built after the state so each can be wrapped with tournament
     // awareness (ICM/bubble discipline + short-stack push-fold), reading the live
     // state at decision time.
@@ -127,7 +155,7 @@ class TournamentController {
       final profile =
           (!isHuman && botProfiles != null) ? botProfiles[humanSeat ? i - 1 : i] : null;
       final base = profile != null
-          ? deciderForProfile(profile, random: Random(seed * 1000 + i))
+          ? deciderForProfile(profile, random: Random(seed * 1000 + i), reads: reads)
           : (deciderBuilder?.call(id, i) ??
               buildDecider(BotType.heuristic, random: Random(seed * 1000 + i)));
       // ICM discipline (short-stack push/fold + bubble caution) is a *skill*:
@@ -149,6 +177,8 @@ class TournamentController {
       humanId: humanSeat ? 'e0' : null,
       deciders: deciders,
       enginePlayers: engine,
+      statsService: statsService,
+      identityBySeat: identityBySeat,
     );
   }
 
@@ -173,13 +203,40 @@ class TournamentController {
         bubbleFactor = Icm.bubbleFactor(stacks, state.payoutTable, idx);
       }
     }
+    final stackInBb = bb > 0 ? stack / bb : 100.0;
     return TournamentContext(
-      stackInBb: bb > 0 ? stack / bb : 100,
+      stackInBb: stackInBb,
       bubbleFactor: bubbleFactor,
       playersLeft: state.playersRemaining,
       paidPlaces: state.paidPlaces,
       inMoney: state.inMoney,
+      ladderPressure: _ladderPressure(state, stackInBb),
     );
+  }
+
+  /// A stack-scaled survival premium in [0,1] for laddering, computed cheaply
+  /// (no full-field ICM): it ramps up approaching the money bubble and as the
+  /// field shrinks toward the final table, and is muted for comfortable stacks.
+  static double _ladderPressure(TournamentState state, double stackInBb) {
+    final left = state.playersRemaining;
+    final paid = state.paidPlaces;
+    if (left <= 1 || paid <= 0) return 0;
+
+    var zone = 0.0;
+    if (!state.inMoney) {
+      // Pre-money: ramps to 1 right at the bubble (within a ~20% / ≥10 window).
+      final toMoney = (left - paid).toDouble();
+      final window = (paid * 0.2).clamp(10.0, 1e9);
+      zone = (1 - toMoney / window).clamp(0.0, 1.0);
+    } else {
+      // In the money: mild premium that grows as the final table nears (steep
+      // pay jumps at the end), from ~0 at 3 tables out to ~0.6 heads-up.
+      zone = (1 - (left - 1) / 26).clamp(0.0, 1.0) * 0.6;
+    }
+    if (zone <= 0) return 0;
+    // Short/medium stacks ladder; deep stacks (~40BB+) accumulate, not ladder.
+    final vulnerability = (1 - stackInBb / 40).clamp(0.0, 1.0);
+    return zone * vulnerability;
   }
 
   /// Runs the tournament to a champion (bounded by [maxHands] as a safety net).
@@ -341,7 +398,7 @@ class TournamentController {
   Future<void> submitLiveAction(GameAction action) async {
     if (!_awaitingHuman || _liveGame == null) return;
     _awaitingHuman = false;
-    _liveGame!.applyAction(action);
+    _applyLive(_liveGame!, humanId ?? 'e0', action);
     _publishTable();
     await _runLiveBots();
   }
@@ -380,11 +437,72 @@ class TournamentController {
     )..buttonIndex = (_button[tableId] ?? 0) % enginePlayers.length;
     _preChipsLive = {for (final p in enginePlayers) p.id: p.stack};
     _liveGame!.startHand();
+    // Snapshot the seats/blinds for the hand's stats record (masked cards — the
+    // read model only needs actions + positions, never hole cards).
+    if (statsService != null) {
+      final btn = _liveGame!.buttonIndex;
+      _liveHandNumber = _handCounter;
+      _livePlayers = [
+        for (var i = 0; i < enginePlayers.length; i++)
+          HandPlayer(
+            id: enginePlayers[i].id,
+            name: enginePlayers[i].name,
+            startingStack: _preChipsLive[enginePlayers[i].id] ?? 0,
+            holeCards: const [],
+            isButton: i == btn,
+            revealed: false,
+          ),
+      ];
+      _liveActions = [];
+    }
     _publishTable();
     await _runLiveBots();
   }
 
   Map<String, int> _preChipsLive = const {};
+  List<HandPlayer> _livePlayers = [];
+  List<ActionRecord> _liveActions = [];
+  int _liveHandNumber = 0;
+
+  /// Folds the just-finished human-table hand into the persistent opponent-stats
+  /// model, keyed by each seat's stable identity. Your-table-only (per config).
+  void _recordLiveHand(PokerGame game) {
+    final svc = statsService;
+    if (svc == null || _livePlayers.isEmpty) return;
+    final level = state.currentLevel;
+    final hand = HandHistory(
+      handNumber: _liveHandNumber,
+      smallBlind: level.smallBlind,
+      bigBlind: level.bigBlind,
+      players: _livePlayers,
+      actions: _liveActions,
+      board: [for (final c in game.board) c.code],
+      results: [
+        for (final r in game.results)
+          HandResultRecord(playerId: r.player.id, amountWon: r.amountWon),
+      ],
+      finalStacks: {for (final p in game.players) p.id: p.stack},
+    );
+    svc.record(hand, _identityOf);
+    _livePlayers = [];
+    _liveActions = [];
+  }
+
+  /// Applies [action] for [actorId] at the human table, recording it for the
+  /// opponent-stats replay (street captured before the engine advances it).
+  void _applyLive(PokerGame game, String actorId, GameAction action) {
+    final street = game.round;
+    game.applyAction(action);
+    if (statsService != null) {
+      _liveActions.add(ActionRecord(
+        playerId: actorId,
+        street: street,
+        type: action.type,
+        amount: action.amount,
+        potAfter: game.pot,
+      ));
+    }
+  }
 
   Future<void> _runLiveBots() async {
     final game = _liveGame!;
@@ -398,7 +516,7 @@ class TournamentController {
       }
       await Future<void>.delayed(_botDelay);
       if (_tableCtrl.isClosed) return;
-      game.applyAction(_deciders[cur.id]!.decide(game, cur));
+      _applyLive(game, cur.id, _deciders[cur.id]!.decide(game, cur));
       _publishTable();
     }
     await _endHumanHand();
@@ -408,6 +526,7 @@ class TournamentController {
     final game = _liveGame!;
     final humanTableId = _humanTableId ?? 0;
     _button[humanTableId] = game.buttonIndex;
+    _recordLiveHand(game); // fold this table's hand into the opponent reads
     // Sync chips + record this table's bustouts.
     final busts = <String, int>{};
     for (final p in game.players) {
@@ -529,7 +648,8 @@ class TournamentController {
 
   void _publishTable() {
     if (_liveGame == null || _tableCtrl.isClosed) return;
-    _tableCtrl.add(projectTableSnapshot(_liveGame!));
+    // Anchor the human at the bottom-centre seat wherever they've been reseated.
+    _tableCtrl.add(projectTableSnapshot(_liveGame!, frontPlayerId: humanId));
   }
 
   void _publishTournament() {

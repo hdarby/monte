@@ -111,11 +111,22 @@ class AmateurPolicy implements DecisionPolicy {
       return GameAction.raise(raiseTo);
     }
 
+    // Deep-stack discipline (dormant at ≤100 BB): even a loose amateur doesn't
+    // ship hundreds of BB in preflop — the deeper the stack, the tighter the
+    // range that keeps raising toward a stack-off.
+    final liveOpps = game.players.where((x) => x.inHand && !identical(x, p));
+    final deepestOpp =
+        liveOpps.isEmpty ? 0 : liveOpps.map((x) => x.stack).reduce(max);
+    final effBb = bb > 0 ? min(p.stack, deepestOpp) / bb : 100.0;
+    final deepFactor = ((effBb - 100.0) / 200.0).clamp(0.0, 1.0);
+
     // Facing a 3-bet+: only premiums keep raising; loose amateurs cold-call a
     // touch wider than a pro, but nobody raise-wars junk to all-in.
     if (raises >= 2) {
-      if (s >= _stackOff && canRaise) return raiseBy(0.6);
-      final vs3Call = _vs3betCall - 0.02 * _k * _loose;
+      final stackOff = (_stackOff + 0.12 * deepFactor).clamp(0.0, 1.0);
+      if (s >= stackOff && canRaise) return raiseBy(0.6);
+      final vs3Call =
+          (_vs3betCall - 0.02 * _k * _loose + 0.08 * deepFactor).clamp(0.0, 1.0);
       if (s >= vs3Call) return const GameAction.call();
       return const GameAction.fold();
     }
@@ -146,6 +157,17 @@ class AmateurPolicy implements DecisionPolicy {
     final canRaise = p.stack > toCall;
     final onRiver = game.round == BettingRound.river;
 
+    // Deep-stack commitment discipline (dormant ≤100 BB): even a rec doesn't get
+    // hundreds of BB in with a marginal hand. deepFactor 0 at ≤100 BB → normal
+    // (leaky) play; ramps by ~300 BB. Kept lighter than the pro gate so recs
+    // still stack off a touch lighter (they remain the losers).
+    final effBb = bb > 0 ? (p.totalContributed + p.stack) / bb : 100.0;
+    final deepFactor = ((effBb - 100.0) / 200.0).clamp(0.0, 1.0);
+
+    // NB: recreational players are deliberately left overvaluing hands multiway
+    // and splashing in deep pots — that's a realistic leak and a big part of why
+    // they lose to pros (patching it makes them beat a pro field). Only the pro
+    // brain (ProfilePostflopPolicy) gets the multiway/deep-stack discipline.
     final adherence = profile.strategicBaseline.gtoAdherenceWeight;
     final exploit =
         ((1 - adherence) * profile.behavioralModifiers.exploitativeWeight)
@@ -252,7 +274,9 @@ class AmateurPolicy implements DecisionPolicy {
     // so a noisy read can't ship air), and prefer shoving for the fold equity.
     if (commit > 0.4) {
       final strongEnough = noisy >= 0.45 && eq >= 0.42;
-      if (!strongEnough) return const GameAction.fold();
+      if (!strongEnough || !_deepCommitOk(p, toCall, eq, deepFactor)) {
+        return const GameAction.fold();
+      }
       return canRaise
           ? GameAction.raise(game.maxRaiseTo(p)) // jam
           : const GameAction.call(); // already facing a (near) all-in
@@ -271,7 +295,8 @@ class AmateurPolicy implements DecisionPolicy {
         _random.nextDouble() < 0.04 + 0.20 * exploit + 0.06 * _k * _loose;
     final mayRaise = canRaise && (raises == 0 || eq > 0.80);
     if (mayRaise && (wantsValueRaise || wantsBluffRaise)) {
-      return raiseBy((0.5 * sizeScale).clamp(0.33, 0.9));
+      final r = raiseBy((0.5 * sizeScale).clamp(0.33, 0.9));
+      if (_deepCommitOk(p, r.amount - p.currentBet, eq, deepFactor)) return r;
     }
 
     // Discipline leak: stations call a bit below pot odds, nits overfold above —
@@ -280,5 +305,18 @@ class AmateurPolicy implements DecisionPolicy {
         (potOdds + 0.10 * _k * _tight - 0.10 * _k * _loose).clamp(0.0, 1.0);
     if (noisy >= callThreshold) return const GameAction.call();
     return const GameAction.fold();
+  }
+
+  /// Deep-stack commitment gate: the larger the fraction of a deep stack an
+  /// action commits, the stronger the hand must be. Lighter than the pro gate
+  /// (recs stack off a bit looser, staying net losers), dormant at ≤100 BB.
+  bool _deepCommitOk(Player p, int risked, double equity, double deepFactor) {
+    if (deepFactor <= 0 || risked <= 0) return true;
+    final effTotal = p.totalContributed + p.stack;
+    if (effTotal <= 0) return true;
+    final commitFrac = ((p.totalContributed + risked) / effTotal).clamp(0.0, 1.0);
+    if (commitFrac < 0.32) return true;
+    final bar = (0.49 + 0.44 * commitFrac * deepFactor).clamp(0.0, 0.92);
+    return equity >= bar;
   }
 }
