@@ -82,6 +82,12 @@ class PlayerStats {
   /// scale an exploit adjustment so a thin sample barely moves play.
   double get confidence => hands / (hands + _priorHands);
 
+  /// The minimum observed hands before a read is trusted at all — you can't read
+  /// a player off one or two hands, so below this the exploit stays dormant and
+  /// the HUD shows "still building a read".
+  static const double baselineHands = 20;
+  bool get established => hands >= baselineHands;
+
   Map<String, dynamic> toJson() => {
         'hands': hands,
         'vpip': vpip,
@@ -129,17 +135,46 @@ class PlayerStats {
   }
 }
 
-/// A book of [PlayerStats] keyed by a stable identity (a personality's
-/// `profile.id`, or `'human'`), accumulated across hands and persisted across
-/// sessions. Pure/serializable; the persistence layer just stores the JSON.
+/// A book of [PlayerStats] keyed by a stable identity, accumulated across hands.
+///
+/// Keys come in three shapes:
+///  * `<identity>` — a player's own observed play (a personality's `profile.id`,
+///    or an ephemeral `gen:<seat>` for an anonymous field-filler). This is what
+///    an observer who has seen them reads.
+///  * `me@<observerId>` — the human as seen *by that one observer*, built only
+///    from the hands that observer actually shared with the human. Each opponent
+///    forms its own impression, so a freshly-met player knows only what it saw.
+///  * `human` is **not** used as a read target — reads of the human are always
+///    per-observer (`me@…`), honouring "no free information".
+///
+/// Keys prefixed `gen:` / `me@gen:` are **ephemeral**: a generated player is a
+/// unique instance that won't exist next session, so its reads (and others'
+/// reads of it) are dropped on persist ([persistable]). Everything else — real
+/// personalities and their impressions of the human — persists across sessions.
 class PlayerStatsBook {
   PlayerStatsBook([Map<String, PlayerStats>? byId]) : _byId = byId ?? {};
 
   final Map<String, PlayerStats> _byId;
 
+  /// The identity key under which observer [observerId] stores its private read
+  /// of the human.
+  static String meKey(String observerId) => 'me@$observerId';
+
+  /// Whether [key] belongs to an anonymous generated player (either their own
+  /// play or an impression involving them) and so must not be persisted.
+  static bool isEphemeral(String key) =>
+      key.startsWith('gen:') || key.startsWith('me@gen:');
+
   Iterable<String> get ids => _byId.keys;
   PlayerStats? read(String id) => _byId[id];
   PlayerStats _of(String id) => _byId.putIfAbsent(id, PlayerStats.new);
+
+  /// A copy with ephemeral (generated-player) entries removed — what gets
+  /// written to disk so a unique instance never leaks into a future session.
+  PlayerStatsBook persistable() => PlayerStatsBook({
+        for (final e in _byId.entries)
+          if (!isEphemeral(e.key)) e.key: e.value,
+      });
 
   Map<String, dynamic> toJson() =>
       {for (final e in _byId.entries) e.key: e.value.toJson()};
@@ -155,52 +190,86 @@ class PlayerStatsBook {
     return fromJson(jsonDecode(s) as Map<String, dynamic>);
   }
 
+  /// The identity used for the human seat; reads of it are kept per-observer.
+  static const String humanIdentity = 'human';
+
   /// Folds one completed hand into the book. [identityOf] maps a seat player id
-  /// (e.g. `bot_2`) to its stable identity (`profile.id` / `'human'`); seats
-  /// with no mapping are skipped. Only observed action is used.
+  /// (e.g. `bot_2`) to its stable identity (`profile.id`, `gen:<seat>`, or
+  /// `'human'`); seats with no mapping are skipped. Only observed action is used.
+  ///
+  /// Each non-human seat's own play accrues to `<identity>`. The human's play is
+  /// folded separately into `me@<observer>` for every *other* seat in the hand,
+  /// so each opponent builds its own read of the human from only the hands it
+  /// actually shared with them.
   void observe(HandHistory hand, String? Function(String seatId) identityOf) {
     final replay = _HandReplay(hand);
+    final seatIdentity = <String, String>{}; // seat playerId → identity
+    String? humanSeatId;
     for (final p in hand.players) {
       final id = identityOf(p.id);
       if (id == null) continue;
-      final r = replay.forSeat(p.id);
-      if (r == null) continue;
-      final s = _of(id);
-      s.decay(); // fade prior totals so recent hands dominate the read
-      s.hands++;
-      if (r.vpip) s.vpip++;
-      if (r.pfr) s.pfr++;
-      if (r.threeBetOpp) {
-        s.threeBetOpp++;
-        if (r.threeBet) s.threeBet++;
-      }
-      if (r.faced3bet) {
-        s.faced3bet++;
-        if (r.foldTo3bet) s.foldTo3bet++;
-      }
-      if (r.squeezeOpp) {
-        s.squeezeOpp++;
-        if (r.squeeze) s.squeeze++;
-      }
-      if (r.stealOpp) {
-        s.stealOpp++;
-        if (r.steal) s.steal++;
-      }
-      if (r.blindStealFaced) {
-        s.blindStealFaced++;
-        if (r.foldBlindSteal) s.foldBlindSteal++;
-      }
-      if (r.cbetOpp) {
-        s.cbetOpp++;
-        if (r.cbet) s.cbet++;
-      }
-      if (r.cbetFaced) {
-        s.cbetFaced++;
-        if (r.foldToCbet) s.foldToCbet++;
-      }
-      s.postAggr += r.postAggr;
-      s.postCalls += r.postCalls;
+      seatIdentity[p.id] = id;
+      if (id == humanIdentity) humanSeatId = p.id;
     }
+
+    // Each non-human seat's own observed play.
+    for (final entry in seatIdentity.entries) {
+      if (entry.value == humanIdentity) continue;
+      final r = replay.forSeat(entry.key);
+      if (r != null) _apply(r, _of(entry.value));
+    }
+
+    // The human's play, recorded once per observer that shared this hand, plus
+    // once under `human` as the human's own self-view (their HUD stats — never
+    // read by a bot, which always consults its private `me@…` impression).
+    if (humanSeatId != null) {
+      final hr = replay.forSeat(humanSeatId);
+      if (hr != null) {
+        _apply(hr, _of(humanIdentity));
+        for (final entry in seatIdentity.entries) {
+          if (entry.key == humanSeatId) continue;
+          _apply(hr, _of(meKey(entry.value)));
+        }
+      }
+    }
+  }
+
+  /// Folds one hand's observed flags [r] into a running [s].
+  static void _apply(_SeatFlags r, PlayerStats s) {
+    s.decay(); // fade prior totals so recent hands dominate the read
+    s.hands++;
+    if (r.vpip) s.vpip++;
+    if (r.pfr) s.pfr++;
+    if (r.threeBetOpp) {
+      s.threeBetOpp++;
+      if (r.threeBet) s.threeBet++;
+    }
+    if (r.faced3bet) {
+      s.faced3bet++;
+      if (r.foldTo3bet) s.foldTo3bet++;
+    }
+    if (r.squeezeOpp) {
+      s.squeezeOpp++;
+      if (r.squeeze) s.squeeze++;
+    }
+    if (r.stealOpp) {
+      s.stealOpp++;
+      if (r.steal) s.steal++;
+    }
+    if (r.blindStealFaced) {
+      s.blindStealFaced++;
+      if (r.foldBlindSteal) s.foldBlindSteal++;
+    }
+    if (r.cbetOpp) {
+      s.cbetOpp++;
+      if (r.cbet) s.cbet++;
+    }
+    if (r.cbetFaced) {
+      s.cbetFaced++;
+      if (r.foldToCbet) s.foldToCbet++;
+    }
+    s.postAggr += r.postAggr;
+    s.postCalls += r.postCalls;
   }
 }
 

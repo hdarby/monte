@@ -145,6 +145,47 @@ void main() {
     expect(co.hands, lessThan(20));
   });
 
+  test('the human is read per-observer, not as a shared global', () {
+    // btn is the human and opens (steal); co is a real personality, bb a
+    // generated filler; both observe the human this hand.
+    final h = _hand([
+      _a('utg', ActionType.fold),
+      _a('mp', ActionType.fold),
+      _a('co', ActionType.fold),
+      _a('btn', ActionType.raise, amount: 300),
+      _a('sb', ActionType.fold),
+      _a('bb', ActionType.fold),
+    ]);
+    final book = PlayerStatsBook();
+    book.observe(h, (seat) {
+      switch (seat) {
+        case 'btn':
+          return PlayerStatsBook.humanIdentity;
+        case 'co':
+          return 'proX';
+        case 'bb':
+          return 'gen:seat3';
+        default:
+          return null;
+      }
+    });
+    // The `human` key is the human's own self-view (their HUD stats)...
+    expect(book.read(PlayerStatsBook.humanIdentity)!.pfr, 1);
+    // ...and each observer separately holds its own impression of the open.
+    expect(book.read(PlayerStatsBook.meKey('proX'))!.pfr, 1);
+    expect(book.read(PlayerStatsBook.meKey('gen:seat3'))!.pfr, 1);
+    // A seat that folded pre and never shared a decision still counts the hand.
+    expect(book.read(PlayerStatsBook.meKey('proX'))!.hands, 1);
+
+    // Persistence keeps the durable personality + its read of the human, and
+    // drops everything about the generated filler.
+    final persist = book.persistable();
+    expect(persist.read('proX'), isNotNull);
+    expect(persist.read(PlayerStatsBook.meKey('proX')), isNotNull);
+    expect(persist.read('gen:seat3'), isNull);
+    expect(persist.read(PlayerStatsBook.meKey('gen:seat3')), isNull);
+  });
+
   test('json round-trips the book', () {
     final book = PlayerStatsBook();
     book.observe(

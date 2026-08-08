@@ -155,8 +155,10 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
         TableScreen(
           snapshot: table,
           isAllBots: false,
+          humanName: widget.humanName,
           playerCount: playerCount,
           sidePanel: _StandingsPanel(rows: _c.standings()),
+          readForSeat: _c.readForSeat,
           onAction: _c.submitLiveAction,
           onNewGame: _noop,
           onNextHand: _noop, // hands auto-advance in a tournament
@@ -169,7 +171,10 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
           left: 0,
           right: 0,
           child: SafeArea(
-              child: _TournamentHud(tour: tour, standings: _c.standings)),
+              child: _TournamentHud(
+                  tour: tour,
+                  standings: _c.standings,
+                  humanName: widget.humanName)),
         ),
         if (_sim != null && !tour.finished)
           Positioned(
@@ -227,8 +232,10 @@ class _SimProgressBar extends StatelessWidget {
 /// opens a popup with more detail (e.g. the level chip shows the full blind
 /// ladder with the active level highlighted).
 class _TournamentHud extends StatelessWidget {
-  const _TournamentHud({required this.tour, required this.standings});
+  const _TournamentHud(
+      {required this.tour, required this.standings, required this.humanName});
   final TournamentSnapshot tour;
+  final String humanName;
 
   /// Builds the full live standings on demand (see [TournamentController.standings]).
   final List<StandingRow> Function() standings;
@@ -256,8 +263,8 @@ class _TournamentHud extends StatelessWidget {
               _chip(context, 'Left', '${tour.playersLeft}/${tour.entrants}',
                   _fieldDetails),
               _chip(context, 'Avg', '${tour.averageStack}', _stackDetails),
-              _chip(context, 'You', '${tour.yourChips} · ${_ord(tour.yourPlace)}',
-                  _youDetails),
+              _chip(context, humanName,
+                  '${tour.yourChips} · ${_ord(tour.yourPlace)}', _youDetails),
               _chip(context, 'Pool', '\$${tour.prizePool}', _payoutDetails),
               _chip(context, tour.inMoney ? 'ITM' : 'Next', nextPay,
                   _payoutDetails),
@@ -590,7 +597,7 @@ class _StandingsList extends StatefulWidget {
 }
 
 class _StandingsListState extends State<_StandingsList> {
-  static const double _itemExtent = 44;
+  static const double _itemExtent = 24;
   late final ScrollController _controller;
   int _lastCenteredIndex = -1;
 
@@ -645,35 +652,71 @@ class _StandingsListState extends State<_StandingsList> {
       itemBuilder: (context, i) {
         final r = widget.rows[i];
         final trailing = r.busted
-            ? (r.prize > 0 ? 'out · \$${r.prize}' : 'out')
+            ? (r.prize > 0 ? 'out·\$${r.prize}' : 'out')
             : _chips(r.chips);
+        // Subtle brain tint: blue behind amateurs, red behind pros, amber for
+        // the human. Busted rows fade. The human's tint wins over the kind tint.
+        // Real, explicitly-chosen personalities get a stronger tint than the
+        // anonymous generated fillers of the same kind, so they stand out.
+        final amateurA = r.generated ? 0.10 : 0.24;
+        final proA = r.generated ? 0.09 : 0.22;
+        final Color? tint = r.busted
+            ? Colors.black.withValues(alpha: 0.03)
+            : r.isHuman
+                ? Colors.amber.withValues(alpha: 0.22)
+                : switch (r.kind) {
+                    StandingKind.amateur =>
+                      Colors.blue.withValues(alpha: amateurA),
+                    StandingKind.pro => Colors.red.withValues(alpha: proA),
+                    StandingKind.human => null,
+                  };
+        final weight = r.isHuman ? FontWeight.bold : FontWeight.w400;
+        final color = r.busted ? Colors.grey : Colors.white;
         return Container(
-          color: r.isHuman
-              ? Colors.amber.withValues(alpha: 0.22)
-              : (r.busted ? Colors.black.withValues(alpha: 0.03) : null),
-          child: ListTile(
-            dense: true,
-            visualDensity: VisualDensity.compact,
-            leading: SizedBox(
-              width: 44,
-              child: Text(_ord(r.place),
+          color: tint,
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          alignment: Alignment.centerLeft,
+          child: Row(
+            children: [
+              SizedBox(
+                width: 30,
+                child: Text('${r.place}',
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.visible,
+                    style: TextStyle(
+                        fontSize: 9, fontWeight: weight, color: color)),
+              ),
+              Expanded(
+                child: Text(
+                  r.isHuman ? '${_shortName(r.name)} (you)' : _shortName(r.name),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
                   style: TextStyle(
-                      fontWeight:
-                          r.isHuman ? FontWeight.bold : FontWeight.normal,
-                      color: r.busted ? Colors.grey : null)),
-            ),
-            title: Text(
-              r.isHuman ? '${_shortName(r.name)} (you)' : _shortName(r.name),
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                  fontWeight: r.isHuman ? FontWeight.bold : FontWeight.normal,
-                  color: r.busted ? Colors.grey : null,
-                  decoration: r.busted ? TextDecoration.lineThrough : null),
-            ),
-            trailing: Text(trailing,
-                style: TextStyle(
-                    fontWeight: r.isHuman ? FontWeight.bold : FontWeight.normal,
-                    color: r.busted ? Colors.grey : null)),
+                      fontSize: 11,
+                      fontWeight: weight,
+                      color: color,
+                      decoration:
+                          r.busted ? TextDecoration.lineThrough : null),
+                ),
+              ),
+              const SizedBox(width: 4),
+              // The chip stack can be large; let it take the room it needs and
+              // shrink only if it truly must, so it never clips.
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 84),
+                child: Text(trailing,
+                    textAlign: TextAlign.right,
+                    overflow: TextOverflow.visible,
+                    maxLines: 1,
+                    softWrap: false,
+                    style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: weight,
+                        color: color,
+                        fontFeatures: const [FontFeature.tabularFigures()])),
+              ),
+            ],
           ),
         );
       },

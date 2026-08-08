@@ -6,10 +6,12 @@ import 'package:monte/core/domain/engine/actions.dart';
 import 'package:monte/core/presentation/money_format.dart';
 import 'package:monte/core/theme/app_theme.dart';
 import 'package:monte/core/domain/ai/opponent_range_read.dart';
+import 'package:monte/core/domain/ai/player_read.dart';
 import 'package:monte/features/table/domain/table_snapshot.dart';
 import 'package:monte/features/table/presentation/widgets/opponent_range_dialog.dart';
 import 'package:monte/features/table/presentation/widgets/action_bar.dart';
 import 'package:monte/features/table/presentation/widgets/community_board.dart';
+import 'package:monte/features/table/presentation/widgets/player_read_card.dart';
 import 'package:monte/features/table/presentation/widgets/player_seat.dart';
 
 /// The main game screen: felt table, seats, board, event log and controls.
@@ -17,7 +19,7 @@ import 'package:monte/features/table/presentation/widgets/player_seat.dart';
 /// A presentational View — it renders a [TableSnapshot] and reports intents via
 /// callbacks. The [TableViewModel] supplies the snapshot and handles the
 /// callbacks; this widget never touches a repository or provider.
-class TableScreen extends StatelessWidget {
+class TableScreen extends StatefulWidget {
   const TableScreen({
     super.key,
     required this.snapshot,
@@ -36,11 +38,17 @@ class TableScreen extends StatelessWidget {
     this.onOpenTournament,
     this.sidePanel,
     this.showOpponentRanges = false,
+    this.readForSeat,
+    this.humanName = 'You',
   });
 
   final TableSnapshot snapshot;
   final bool isAllBots;
   final int playerCount;
+
+  /// The human's display name, used where a read refers back to the hero (e.g.
+  /// "⟨opponent⟩'s read of ⟨humanName⟩") instead of a bare "you".
+  final String humanName;
 
   /// Whether to show each bot's behavior model (brain + style) on its seat.
   final bool showBehavior;
@@ -62,12 +70,55 @@ class TableScreen extends StatelessWidget {
   /// Cash games only: tapping an opponent opens a read of their likely range.
   final bool showOpponentRanges;
 
+  /// Returns the two-way read on a seat (by player id) for the hover HUD, or
+  /// null when reads aren't kept / the seat is untracked.
+  final SeatRead? Function(String seatId)? readForSeat;
+
   /// Opens the in-hand coach for the human seat. Null hides the coach icon.
   final VoidCallback? onCoach;
 
   /// Opens the tournament lobby. Null hides the trophy button (e.g. when the
   /// table is itself inside a tournament).
   final VoidCallback? onOpenTournament;
+
+  @override
+  State<TableScreen> createState() => _TableScreenState();
+}
+
+class _TableScreenState extends State<TableScreen> {
+  /// The read currently hovered (rendered centered on the felt), or null.
+  SeatRead? _hoverRead;
+  String _hoverName = '';
+  bool _hoverIsSelf = false;
+
+  TableSnapshot get snapshot => widget.snapshot;
+  bool get isAllBots => widget.isAllBots;
+  int get playerCount => widget.playerCount;
+  bool get showBehavior => widget.showBehavior;
+  bool get autoDeal => widget.autoDeal;
+  ValueChanged<bool>? get onToggleAutoDeal => widget.onToggleAutoDeal;
+  Widget? get sidePanel => widget.sidePanel;
+  bool get showOpponentRanges => widget.showOpponentRanges;
+  SeatRead? Function(String seatId)? get readForSeat => widget.readForSeat;
+  String get humanName => widget.humanName;
+  VoidCallback? get onCoach => widget.onCoach;
+  VoidCallback? get onOpenTournament => widget.onOpenTournament;
+  ValueChanged<GameAction> get onAction => widget.onAction;
+  VoidCallback get onNewGame => widget.onNewGame;
+  VoidCallback get onNextHand => widget.onNextHand;
+  VoidCallback get onOpenSettings => widget.onOpenSettings;
+  VoidCallback get onOpenAnalytics => widget.onOpenAnalytics;
+  VoidCallback get onOpenHistory => widget.onOpenHistory;
+
+  void _onReadHover(SeatRead? read, String name, bool isSelf) {
+    setState(() {
+      _hoverRead = read;
+      if (read != null) {
+        _hoverName = name;
+        _hoverIsSelf = isSelf;
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -289,6 +340,24 @@ class TableScreen extends StatelessWidget {
                           !seats[i].folded)
                       ? () => _showOpponentRange(context, seats[i])
                       : null,
+                  read: readForSeat == null
+                      ? null
+                      : () => readForSeat!(seats[i].id),
+                  onReadHover: readForSeat == null ? null : _onReadHover,
+                ),
+              ),
+            // One reads card, centered on the felt, for the hovered seat — no
+            // per-seat floating that clips against the table edges.
+            if (_hoverRead != null)
+              Align(
+                alignment: const Alignment(0, 0.05),
+                child: IgnorePointer(
+                  child: PlayerReadCard(
+                    name: _hoverName,
+                    seatRead: _hoverRead!,
+                    humanName: humanName,
+                    selfView: _hoverIsSelf,
+                  ),
                 ),
               ),
             ?winner,

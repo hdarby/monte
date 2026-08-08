@@ -7,6 +7,8 @@ import 'package:monte/core/domain/ai/player_stats.dart';
 import 'package:monte/core/domain/ai/postflop_equity.dart';
 import 'package:monte/core/domain/engine/actions.dart';
 import 'package:monte/core/domain/engine/bet_snap.dart';
+import 'package:monte/core/domain/engine/card.dart';
+import 'package:monte/core/domain/engine/hand_evaluator.dart';
 import 'package:monte/core/domain/engine/decision_policy.dart';
 import 'package:monte/core/domain/engine/game.dart';
 import 'package:monte/core/domain/engine/player.dart';
@@ -86,7 +88,7 @@ class ProfilePostflopPolicy implements DecisionPolicy {
     var rValueThin = 0.0; // thin value vs a station who won't fold
     var rRespect = 0.0; // fold more to a passive player's bet
     final st = _representativeOpponent(game, p, toCall);
-    if (st != null) {
+    if (st != null && st.established) {
       final w = (exploit * st.confidence).clamp(0.0, 1.0);
       final foldy = st.foldToCbetRate - 0.45; // + overfolds, − calls too much
       rBluffMore = (foldy * 2.0 * w).clamp(-0.30, 0.30);
@@ -188,7 +190,11 @@ class ProfilePostflopPolicy implements DecisionPolicy {
         // Pressure (jam threat) and geometric overbets both size up; the overbet
         // only fires with a nut advantage on a later street.
         final b = betBy((0.55 * sizeScale + 0.6 * pv + 0.9 * geoBoost).clamp(0.33, 2.0));
-        if (_deepCommitOk(p, b.amount - p.currentBet, eq, deepFactor)) return b;
+        final risked = b.amount - p.currentBet;
+        if (_deepCommitOk(p, risked, eq, deepFactor) &&
+            _flushCommitOk(game, p, risked, eq)) {
+          return b;
+        }
       }
       return const GameAction.check();
     }
@@ -205,7 +211,11 @@ class ProfilePostflopPolicy implements DecisionPolicy {
         _random.nextDouble() < 0.05 + 0.30 * exploit + 0.30 * pv - 0.03 * deepFactor;
     if (canRaise && (wantsValueRaise || wantsBluffRaise)) {
       final r = raiseBy((0.5 * sizeScale + 0.6 * pv + 0.9 * geoBoost).clamp(0.33, 2.0));
-      if (_deepCommitOk(p, r.amount - p.currentBet, eq, deepFactor)) return r;
+      final risked = r.amount - p.currentBet;
+      if (_deepCommitOk(p, risked, eq, deepFactor) &&
+          _flushCommitOk(game, p, risked, eq)) {
+        return r;
+      }
       // Too committing to raise deep without the goods — just continue if priced.
     }
     // Facing a big bet deep, a marginal made hand shouldn't call off into likely
@@ -214,7 +224,9 @@ class ProfilePostflopPolicy implements DecisionPolicy {
     // so it's usually value).
     final callBar =
         potOdds + 0.06 * deepFactor * betFraction.clamp(0.0, 1.5) + rRespect;
-    if (eq >= callBar && _deepCommitOk(p, toCall, eq, deepFactor)) {
+    if (eq >= callBar &&
+        _deepCommitOk(p, toCall, eq, deepFactor) &&
+        _flushCommitOk(game, p, toCall, eq)) {
       return const GameAction.call();
     }
     return const GameAction.fold();
@@ -234,6 +246,59 @@ class ProfilePostflopPolicy implements DecisionPolicy {
     if (commitFrac < 0.30) return true; // a modest commitment is always fine
     final bar = (0.53 + 0.50 * commitFrac * deepFactor).clamp(0.0, 0.98);
     return equity >= bar;
+  }
+
+  /// A disciplined player won't stack off with a **non-nut flush** into a big
+  /// pot: on a flushing board a higher flush is exactly what heavy multiway
+  /// action represents. Returns false to veto a large commit unless the hero's
+  /// equity clears a bar that climbs with how dominated the flush could be (how
+  /// many higher cards of the suit are still live) and with each extra opponent.
+  /// A no-op for small commitments (peeling one card is fine) and for the nut
+  /// flush (or non-flush hands). Pros only — amateurs keep the leak.
+  bool _flushCommitOk(PokerGame game, Player p, int risked, double equity) {
+    final sev = _overflushRisk(p.hole, game.board);
+    if (sev <= 0) return true;
+    final total = p.stack + p.currentBet;
+    final commitFrac = total <= 0 ? 1.0 : risked / total;
+    if (commitFrac < 0.35) return true; // small commit: a cheap peel is fine
+    final mw = game.players.where((x) => x.inHand && !identical(x, p)).length;
+    // Heads-up, a made flush is genuinely strong (it beats every non-flush), so
+    // only the very worst holdings get braked. The domination risk really bites
+    // **multiway**, where heavy action means someone very likely holds a higher
+    // flush — which is exactly the spot a pro must not stack off a low flush.
+    if (mw < 2 && sev < 0.75) return true;
+    final bar = (0.60 + 0.22 * sev + 0.10 * (mw - 1)).clamp(0.0, 0.985);
+    return equity >= bar;
+  }
+
+  /// How dominated the hero's made flush could be, in [0,1]: 0 = not a (plain)
+  /// flush or already the nut flush; higher = more live higher cards of the
+  /// flush suit a villain could be holding. Straight flushes and non-flush hands
+  /// return 0 (they aren't out-flushed).
+  static double _overflushRisk(List<Card> hole, List<Card> board) {
+    if (hole.length < 2 || board.length < 3) return 0;
+    final all = [...hole, ...board];
+    if (HandEvaluator.evaluate(all).rank != HandRank.flush) return 0;
+    final counts = <Suit, int>{};
+    for (final c in all) {
+      counts[c.suit] = (counts[c.suit] ?? 0) + 1;
+    }
+    final suit = counts.entries.firstWhere((e) => e.value >= 5).key;
+    final seen = all
+        .where((c) => c.suit == suit)
+        .map((c) => c.rank.value)
+        .toSet();
+    final heroTop = hole
+        .where((c) => c.suit == suit)
+        .map((c) => c.rank.value)
+        .fold(0, max);
+    // Ranks of the suit above the hero's best, not visible to the hero: a
+    // villain could hold any of them for a better flush.
+    var higherLive = 0;
+    for (var r = 14; r > heroTop; r--) {
+      if (!seen.contains(r)) higherLive++;
+    }
+    return (higherLive / 4).clamp(0.0, 1.0);
   }
 
   /// The single opponent this decision is most about: the bettor when facing a

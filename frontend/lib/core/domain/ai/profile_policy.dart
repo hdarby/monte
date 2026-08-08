@@ -97,14 +97,14 @@ class ProfilePolicy implements DecisionPolicy {
       if (exploit > 0) {
         if (raises == 1) {
           final st = _readOfBiggestBettor(game, p);
-          if (st != null) {
+          if (st != null && st.established) {
             final w = (exploit * st.confidence).clamp(0.0, 1.0);
             final foldy = st.foldTo3betRate - 0.55; // + folds too much
             threeBetCut = (threeBetCut - foldy * 0.12 * w).clamp(0.0, 1.0);
           }
         } else if (raises == 0) {
           final blind = _blindStealRead(game, p);
-          if (blind != null) {
+          if (blind != null && blind.established) {
             final w = (exploit * blind.confidence).clamp(0.0, 1.0);
             final foldy = blind.foldBlindStealRate - 0.55;
             pfrCut = (pfrCut - foldy * 0.10 * w).clamp(0.0, 1.0);

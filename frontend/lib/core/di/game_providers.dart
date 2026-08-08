@@ -14,6 +14,18 @@ import 'package:monte/features/table/domain/game_repository.dart';
 final opponentStatsServiceProvider =
     Provider<OpponentStatsService?>((ref) => null);
 
+/// The human player's chosen display name. `main` seeds it with the value
+/// persisted from the last session; changing it (a different player) is the
+/// trigger to wipe the accumulated reads. Defaults to a neutral placeholder.
+class PlayerName extends Notifier<String> {
+  @override
+  String build() => 'Player';
+  void set(String name) => state = name;
+}
+
+final playerNameProvider =
+    NotifierProvider<PlayerName, String>(PlayerName.new);
+
 /// Composition root for the game.
 ///
 /// Binds [GameRepository] to a concrete implementation, built from the current
@@ -68,6 +80,7 @@ final gameRepositoryProvider = Provider<GameRepository>((ref) {
   final repo = LocalGameRepository(
     statsService: ref.watch(opponentStatsServiceProvider),
     config: TableConfig(
+      humanName: ref.watch(playerNameProvider),
       playerCount: playerCount,
       allBots: allBots,
       botType: botType,

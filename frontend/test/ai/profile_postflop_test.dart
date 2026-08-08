@@ -154,6 +154,62 @@ void main() {
       expect(exploiter, greaterThan(gto));
     });
 
+    test('a pro folds a low flush into a bloated multiway pot', () {
+      // 3-handed on a three-heart board. Hero (p2) makes a low flush; two other
+      // players jam a bloated pot ahead of them — in multiway heavy action a
+      // higher flush is very likely, so the pro lets the dominated hand go.
+      // Deal order (3 players): holes 0,1,2 then 3,4,5; burn 6; flop 7,8,9.
+      List<Card> stack3({required List<Card> hero}) {
+        final placed = <int, Card>{
+          0: cards('As Ks')[0], 3: cards('As Ks')[1], // p0
+          1: cards('Ad Kd')[0], 4: cards('Ad Kd')[1], // p1
+          2: hero[0], 5: hero[1], // p2 (hero)
+          7: cards('Qh 9h 2h')[0],
+          8: cards('Qh 9h 2h')[1],
+          9: cards('Qh 9h 2h')[2],
+        };
+        final used = placed.values.toSet();
+        final rest = [
+          for (final suit in Suit.values)
+            for (final rank in Rank.values)
+              if (!used.contains(Card(rank, suit))) Card(rank, suit),
+        ];
+        var r = 0;
+        return [for (var i = 0; i < 52; i++) placed[i] ?? rest[r++]];
+      }
+
+      PokerGame spot(List<Card> heroHole) {
+        final g = PokerGame(
+          players: [
+            Player(id: 'p0', name: 'P0', stack: 120),
+            Player(id: 'p1', name: 'P1', stack: 120),
+            Player(id: 'p2', name: 'P2', stack: 120, isHuman: true),
+          ],
+          deck: Deck.stacked(stack3(hero: heroHole)),
+        )..startHand();
+        _toFlop(g);
+        // Two opponents build a bloated pot ahead of the hero (a near stack-off).
+        while (g.currentPlayer!.id != 'p2') {
+          final a = g.currentPlayer!;
+          g.applyAction(g.callAmount(a) == 0
+              ? GameAction.bet(a.currentBet + (g.pot * 3.0).round())
+              : const GameAction.call());
+        }
+        return g;
+      }
+
+      // 5h4h → a Q-9-5-4-2 flush, dominated by every higher live heart. Two
+      // opponents live in a bloated pot: fold.
+      final low = spot(cards('5h 4h'));
+      final hero = _p(low, 'p2');
+      expect(low.players.where((x) => x.inHand && x.id != 'p2').length, 2);
+      expect(
+        _pol(isaacHaxton).decide(low, hero).type,
+        ActionType.fold,
+        reason: 'a low flush multiway into heavy action should fold',
+      );
+    });
+
     test('an exploitative pro semibluff-raises a draw more than the GTO anchor', () {
       // Hero (p1) holds a flush draw (two hearts) on a two-heart board, facing a
       // half-pot bet.

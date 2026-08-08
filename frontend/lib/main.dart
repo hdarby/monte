@@ -10,6 +10,7 @@ import 'package:monte/core/di/game_providers.dart';
 import 'package:monte/core/domain/ai/bot_spec.dart';
 import 'package:monte/core/domain/ai/decider_factory.dart';
 import 'package:monte/features/reads/data/player_stats_store.dart';
+import 'package:monte/features/table/data/local_game_repository.dart';
 import 'package:monte/core/presentation/money_format.dart';
 import 'package:monte/features/coach/domain/hand_coach.dart';
 import 'package:monte/features/coach/presentation/coach_screen.dart';
@@ -56,6 +57,12 @@ Future<void> main() async {
       opponentStatsServiceProvider.overrideWithValue(statsService),
     ],
   );
+  // Seed the human's name from the last session so the UI can address them by
+  // name (and so a changed name can trigger a reads wipe on first prompt).
+  final savedName = (await SharedPreferences.getInstance()).getString('player_name');
+  if (savedName != null && savedName.trim().isNotEmpty) {
+    container.read(playerNameProvider.notifier).set(savedName);
+  }
   container.read(autoTuneJobProvider.notifier).start();
   runApp(
     UncontrolledProviderScope(
@@ -125,6 +132,56 @@ class _GamePageState extends ConsumerState<GamePage> {
   /// used to pre-fill it next time. Null until the player customizes once.
   List<BotSpec>? _seatBots;
 
+  /// Guards the once-per-launch name prompt.
+  bool _namePrompted = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _promptForName());
+  }
+
+  /// Asks the human for their display name, prefilled with the name carried over
+  /// from the last session. If they enter a *different* name we treat it as a
+  /// different player and wipe the accumulated reads (their old book was built
+  /// against someone else). Runs once per launch.
+  Future<void> _promptForName() async {
+    if (_namePrompted || !mounted) return;
+    _namePrompted = true;
+    final current = ref.read(playerNameProvider);
+    final controller = TextEditingController(
+        text: (current == 'Player' || current == 'You') ? '' : current);
+    final entered = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('What should we call you?'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.words,
+          decoration: const InputDecoration(
+            labelText: 'Your name',
+            hintText: 'e.g. Alex',
+          ),
+          onSubmitted: (v) => Navigator.of(ctx).pop(v),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(controller.text),
+            child: const Text('Play'),
+          ),
+        ],
+      ),
+    );
+    final name = (entered ?? '').trim();
+    if (name.isEmpty || name == current) return;
+    // Different player → their reads don't apply. Clear and start fresh.
+    await ref.read(opponentStatsServiceProvider)?.wipe();
+    ref.read(playerNameProvider.notifier).set(name);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('player_name', name);
+  }
+
   void _openSettings() {
     Navigator.of(
       context,
@@ -144,8 +201,9 @@ class _GamePageState extends ConsumerState<GamePage> {
   }
 
   void _openTournament() {
+    final name = ref.read(playerNameProvider);
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const LobbyScreen()),
+      MaterialPageRoute(builder: (_) => LobbyScreen(humanName: name)),
     );
   }
 
@@ -393,6 +451,7 @@ class _GamePageState extends ConsumerState<GamePage> {
             child: TableScreen(
               snapshot: snapshot,
               isAllBots: vm.isAllBots,
+              humanName: ref.watch(playerNameProvider),
               playerCount: settings.playerCount,
               showBehavior: settings.showBehavior,
               onAction: vm.submitAction,
@@ -407,6 +466,15 @@ class _GamePageState extends ConsumerState<GamePage> {
               onToggleAutoDeal: (v) => setState(() => _autoDeal = v),
               // Cash game with a human seat: tap an opponent to read their range.
               showOpponentRanges: !vm.isAllBots,
+              // Hover any seat to see the accumulated read on that player.
+              readForSeat: vm.isAllBots
+                  ? null
+                  : (id) {
+                      final repo = ref.read(gameRepositoryProvider);
+                      return repo is LocalGameRepository
+                          ? repo.readForSeat(id)
+                          : null;
+                    },
             ),
           ),
         );

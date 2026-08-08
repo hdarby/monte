@@ -22,10 +22,18 @@ class PlayerProfile {
     this.generalTraits = const GeneralTraits(),
     this.characteristics = const [],
     this.description,
+    this.generated = false,
   }) : assert(skill >= 0 && skill <= 1);
 
   final String id;
   final String name;
+
+  /// True for an anonymous auto-filled field seat (a personality's *style* worn
+  /// under a fictitious name to complete a tournament). Generated players are
+  /// ephemeral — they build no persistent read and hold no read of anyone, so
+  /// they're excluded from the reads book. Only real, named personalities (and
+  /// the human) accumulate reads that persist across sessions.
+  final bool generated;
   final String archetype;
   final StrategicBaseline strategicBaseline;
   final BehavioralModifiers behavioralModifiers;
@@ -57,8 +65,9 @@ class PlayerProfile {
 
   /// A copy with a different display [name] — used to seat a personality under a
   /// fictitious identity (e.g. an auto-filled tournament entrant) while keeping
-  /// its id, skill and every stat, so it plays identically.
-  PlayerProfile renamed(String name) => PlayerProfile(
+  /// its id, skill and every stat, so it plays identically. Pass
+  /// [generated] = true for an anonymous field-filler (see [generated]).
+  PlayerProfile renamed(String name, {bool generated = false}) => PlayerProfile(
         id: id,
         name: name,
         archetype: archetype,
@@ -69,6 +78,7 @@ class PlayerProfile {
         generalTraits: generalTraits,
         characteristics: characteristics,
         description: description,
+        generated: generated,
       );
 
   /// A copy with [strategicBaseline] replaced — used to apply a tuned baseline

@@ -37,6 +37,9 @@ class ColorUpDisplay {
 
 /// One line of the live standings list: every player ordered by place —
 /// still-active players first (ranked by chips), then busted players by finish.
+/// Which brain a standings entry is playing, for at-a-glance colour-coding.
+enum StandingKind { human, pro, amateur }
+
 class StandingRow {
   const StandingRow({
     required this.place,
@@ -45,10 +48,19 @@ class StandingRow {
     required this.chips,
     required this.busted,
     required this.prize,
+    this.kind = StandingKind.pro,
+    this.generated = false,
   });
   final int place;
   final String name;
   final bool isHuman;
+
+  /// The player's brain class (human / pro / amateur), for the standings tint.
+  final StandingKind kind;
+
+  /// True for an anonymous auto-filled field seat (vs an explicitly-chosen, real
+  /// personality). Real personalities get a stronger tint so they stand out.
+  final bool generated;
 
   /// Live chip count (0 once busted).
   final int chips;

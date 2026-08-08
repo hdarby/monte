@@ -89,9 +89,14 @@ class OpponentStatsService {
     _scheduleSave();
   }
 
-  /// A read view bound to a seat→identity resolver for one game/table.
-  OpponentReads readsFor(String? Function(String seatId) identityOf) =>
-      _BookReads(_book, identityOf);
+  /// A read view bound to a seat→identity resolver for one game/table, as seen
+  /// by [observerId] (the player doing the reading). Reads of the human are
+  /// remapped to that observer's private impression, so a player never uses
+  /// hands it didn't observe. Pass null for [observerId] for a neutral view
+  /// (used for the human's own perspective / display of a seat's own play).
+  OpponentReads readsFor(String? Function(String seatId) identityOf,
+          {String? observerId}) =>
+      _BookReads(_book, identityOf, observerId);
 
   Future<void> wipe() async {
     _book = PlayerStatsBook();
@@ -101,23 +106,37 @@ class OpponentStatsService {
 
   Future<void> flush() async {
     _saveTimer?.cancel();
-    await _store.save(_book);
+    await _store.save(_book.persistable());
   }
 
   void _scheduleSave() {
     _saveTimer?.cancel();
-    _saveTimer = Timer(const Duration(seconds: 3), () => _store.save(_book));
+    // Persist only durable identities; a generated player's reads die with the
+    // session (see [PlayerStatsBook.persistable]).
+    _saveTimer =
+        Timer(const Duration(seconds: 3), () => _store.save(_book.persistable()));
   }
 }
 
 class _BookReads implements OpponentReads {
-  _BookReads(this._book, this._identityOf);
+  _BookReads(this._book, this._identityOf, this._observerId);
   final PlayerStatsBook _book;
   final String? Function(String seatId) _identityOf;
+
+  /// The reader's own identity; when set, a read of the human resolves to this
+  /// observer's private impression instead of a shared/global one.
+  final String? _observerId;
 
   @override
   PlayerStats? forSeat(String seatPlayerId) {
     final id = _identityOf(seatPlayerId);
-    return id == null ? null : _book.read(id);
+    if (id == null) return null;
+    // Reads of the human are always per-observer: use only what this reader saw.
+    if (id == PlayerStatsBook.humanIdentity) {
+      return _observerId == null
+          ? null
+          : _book.read(PlayerStatsBook.meKey(_observerId));
+    }
+    return _book.read(id);
   }
 }

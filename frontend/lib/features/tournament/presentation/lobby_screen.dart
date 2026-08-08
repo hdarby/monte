@@ -77,7 +77,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
       final src = pool.isNotEmpty ? pool : (_regs.isNotEmpty ? _regs : _pros);
       if (src.isEmpty) break;
       final profile = src[rng.nextInt(src.length)];
-      field.add(profile.renamed(_uniqueName(used, rng)));
+      field.add(profile.renamed(_uniqueName(used, rng), generated: true));
     }
     return field.take(botsNeeded).toList()..shuffle(rng);
   }

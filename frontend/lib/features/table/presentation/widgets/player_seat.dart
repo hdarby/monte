@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:monte/core/domain/ai/player_read.dart';
 import 'package:monte/features/table/domain/table_snapshot.dart';
 import 'package:monte/core/theme/app_theme.dart';
 import 'package:monte/core/presentation/money_format.dart';
@@ -11,7 +12,7 @@ import 'package:monte/features/table/presentation/widgets/playing_card_widget.da
 enum ButtonPlacement { none, above, below, left, right }
 
 /// One player's seat: name, stack, hole cards and live status.
-class PlayerSeat extends StatelessWidget {
+class PlayerSeat extends StatefulWidget {
   const PlayerSeat({
     super.key,
     required this.seat,
@@ -20,6 +21,8 @@ class PlayerSeat extends StatelessWidget {
     this.showBehavior = false,
     this.onCoach,
     this.onTap,
+    this.read,
+    this.onReadHover,
   });
 
   final SeatView seat;
@@ -32,12 +35,33 @@ class PlayerSeat extends StatelessWidget {
   /// disables the tap (e.g. the human's own seat, or in tournaments).
   final VoidCallback? onTap;
 
+  /// Supplies the two-way read on this seat's player (for the centered HUD), or
+  /// null to disable hover reads on this seat.
+  final SeatRead? Function()? read;
+
+  /// Called when the pointer enters this seat with its read (the player's name
+  /// and whether it's the human's own seat), and with null on exit. The parent
+  /// renders the single centered card.
+  final void Function(SeatRead? read, String name, bool isSelf)? onReadHover;
+
   /// Which edge of this box the dealer button hugs. Only honoured when this
   /// seat actually has the button ([SeatView.isButton]).
   final ButtonPlacement buttonPlacement;
 
   /// Whether to show this seat's behavior model badge ([SeatView.behavior]).
   final bool showBehavior;
+
+  @override
+  State<PlayerSeat> createState() => _PlayerSeatState();
+}
+
+class _PlayerSeatState extends State<PlayerSeat> {
+  SeatView get seat => widget.seat;
+  bool get compact => widget.compact;
+  VoidCallback? get onCoach => widget.onCoach;
+  VoidCallback? get onTap => widget.onTap;
+  ButtonPlacement get buttonPlacement => widget.buttonPlacement;
+  bool get showBehavior => widget.showBehavior;
 
   /// One hole-card's width; the seat's whole footprint is derived from this so
   /// the box stays a fixed size regardless of name/badge/status text length.
@@ -69,16 +93,29 @@ class PlayerSeat extends StatelessWidget {
 
     final showButton = seat.isButton && buttonPlacement != ButtonPlacement.none;
     final showCoach = seat.isHuman && onCoach != null;
-    if (!showButton && !showCoach) return box;
+    final content = (!showButton && !showCoach)
+        ? box
+        // Overlays straddle the box edges (clipped none) so they read as attached.
+        : Stack(
+            clipBehavior: Clip.none,
+            children: [
+              box,
+              if (showButton) _button(),
+              if (showCoach) _coachIcon(),
+            ],
+          );
+    return _withReadHover(content);
+  }
 
-    // Overlays straddle the box edges (clipped none) so they read as attached.
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        box,
-        if (showButton) _button(),
-        if (showCoach) _coachIcon(),
-      ],
+  /// Wraps the seat so hovering reports this seat's read (and name) up to the
+  /// parent, which renders one centered reads card on the felt. No-op when no
+  /// read is available. Centering avoids the per-seat clipping at the table edge.
+  Widget _withReadHover(Widget content) {
+    if (widget.read == null || widget.onReadHover == null) return content;
+    return MouseRegion(
+      onEnter: (_) => widget.onReadHover!(widget.read!(), seat.name, seat.isHuman),
+      onExit: (_) => widget.onReadHover!(null, seat.name, seat.isHuman),
+      child: content,
     );
   }
 

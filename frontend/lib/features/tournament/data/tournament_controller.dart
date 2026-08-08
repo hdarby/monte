@@ -4,6 +4,8 @@ import 'dart:math';
 import 'package:monte/core/domain/ai/decider_factory.dart';
 import 'package:monte/core/domain/ai/icm_adjusted_decider.dart';
 import 'package:monte/core/domain/ai/player_profile.dart';
+import 'package:monte/core/domain/ai/player_read.dart';
+import 'package:monte/core/domain/ai/player_stats.dart';
 import 'package:monte/core/domain/ai/profile_decider.dart';
 import 'package:monte/core/domain/hand_history.dart';
 import 'package:monte/features/reads/data/player_stats_store.dart';
@@ -43,6 +45,7 @@ class TournamentController {
     required Map<String, Player> enginePlayers,
     this.statsService,
     this._identityBySeat = const {},
+    this._profileBySeat = const {},
   })  : _deciders = Map.of(deciders),
         _enginePlayers = Map.of(enginePlayers);
 
@@ -62,6 +65,29 @@ class TournamentController {
   /// `'human'` for the human, else the personality's `profile.id`.
   final Map<String, String> _identityBySeat;
   String? _identityOf(String seatId) => _identityBySeat[seatId];
+
+  /// Seat id → its personality, for computing how that opponent (through their
+  /// own style bias) reads the human.
+  final Map<String, PlayerProfile> _profileBySeat;
+
+  /// The two-way read on a seat for the HUD, or null when untracked.
+  SeatRead? readForSeat(String seatId) {
+    final svc = statsService;
+    if (svc == null) return null;
+    final id = _identityOf(seatId);
+    if (id == null) return null;
+    // Tracked seats always show a card (a "building a read" state before the
+    // baseline), so the model is visibly watching from the first hand.
+    final mine = PlayerRead.of(svc.book.read(id) ?? PlayerStats());
+    PlayerRead? ofMe;
+    final observer = _profileBySeat[seatId];
+    if (observer != null && id != PlayerStatsBook.humanIdentity) {
+      // This opponent's own impression of the human — only the hands it saw.
+      final me = svc.book.read(PlayerStatsBook.meKey(id)) ?? PlayerStats();
+      ofMe = PlayerRead.perceivedBy(me, observer);
+    }
+    return SeatRead(mine: mine, ofMe: ofMe);
+  }
 
   final Map<String, DecisionPolicy> _deciders;
   final Map<String, Player> _enginePlayers;
@@ -135,15 +161,22 @@ class TournamentController {
     // human is 'human'; a profiled bot is its personality's profile.id (so the
     // same personality pools reads across seats and events).
     final identityBySeat = <String, String>{};
+    final profileBySeat = <String, PlayerProfile>{};
     for (var i = 0; i < entrants; i++) {
       final id = 'e$i';
       if (humanSeat && i == 0) {
         identityBySeat[id] = 'human';
       } else if (botProfiles != null) {
-        identityBySeat[id] = botProfiles[humanSeat ? i - 1 : i].id;
+        final prof = botProfiles[humanSeat ? i - 1 : i];
+        // A real personality is tracked under its durable profile.id (reads
+        // persist across sessions). An anonymous field-filler is a one-off
+        // instance: tracked this session under an ephemeral `gen:<seat>` key so
+        // it still builds and shows reads, but nothing about it is persisted.
+        identityBySeat[id] = prof.generated ? 'gen:$id' : prof.id;
+        profileBySeat[id] = prof;
       }
     }
-    final reads = statsService?.readsFor((seat) => identityBySeat[seat]);
+    String? identityOfSeat(String seat) => identityBySeat[seat];
 
     // Deciders are built after the state so each can be wrapped with tournament
     // awareness (ICM/bubble discipline + short-stack push-fold), reading the live
@@ -154,6 +187,10 @@ class TournamentController {
       final isHuman = humanSeat && i == 0;
       final profile =
           (!isHuman && botProfiles != null) ? botProfiles[humanSeat ? i - 1 : i] : null;
+      // Each bot reads from its own perspective: its impression of the human is
+      // built only from the hands it shared (see [OpponentStatsService.readsFor]).
+      final reads = statsService?.readsFor(identityOfSeat,
+          observerId: identityBySeat[id]);
       final base = profile != null
           ? deciderForProfile(profile, random: Random(seed * 1000 + i), reads: reads)
           : (deciderBuilder?.call(id, i) ??
@@ -179,6 +216,7 @@ class TournamentController {
       enginePlayers: engine,
       statsService: statsService,
       identityBySeat: identityBySeat,
+      profileBySeat: profileBySeat,
     );
   }
 
@@ -668,6 +706,17 @@ class TournamentController {
     final busted = state.players.values.where((p) => !p.isActive).toList()
       ..sort((a, b) =>
           (a.finishPlace ?? 1 << 30).compareTo(b.finishPlace ?? 1 << 30));
+    StandingKind kindOf(TournamentPlayer p) {
+      if (p.isHuman) return StandingKind.human;
+      final prof = _profileBySeat[p.id];
+      return (prof != null && isAmateurProfile(prof))
+          ? StandingKind.amateur
+          : StandingKind.pro;
+    }
+
+    bool generatedOf(TournamentPlayer p) =>
+        _profileBySeat[p.id]?.generated ?? false;
+
     final rows = <StandingRow>[];
     var place = 1;
     for (final p in active) {
@@ -678,6 +727,8 @@ class TournamentController {
         chips: p.chips,
         busted: false,
         prize: 0,
+        kind: kindOf(p),
+        generated: generatedOf(p),
       ));
     }
     for (final p in busted) {
@@ -688,6 +739,8 @@ class TournamentController {
         chips: 0,
         busted: true,
         prize: p.prizeWon,
+        kind: kindOf(p),
+        generated: generatedOf(p),
       ));
     }
     return rows;

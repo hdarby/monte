@@ -4,6 +4,7 @@ import 'package:monte/core/domain/ai/home_game_profiles.dart';
 import 'package:monte/core/domain/ai/player_profiles.dart';
 import 'package:monte/core/domain/ai/profile_decider.dart';
 import 'package:monte/core/domain/ai/profile_policy.dart';
+import 'package:monte/features/reads/data/player_stats_store.dart';
 import 'package:monte/features/tournament/data/tournament_controller.dart';
 import 'package:monte/features/tournament/domain/tournament_state.dart';
 import 'package:monte/features/tournament/domain/tournament_structure.dart';
@@ -19,9 +20,37 @@ void main() {
     expect(r.name, 'Alias Smith');
     expect(r.id, isaacHaxton.id);
     expect(r.skill, isaacHaxton.skill);
+    expect(r.generated, isFalse);
     // Same brain: a renamed pro still plays like a pro.
     expect(deciderForProfile(r).runtimeType,
         deciderForProfile(isaacHaxton).runtimeType);
+  });
+
+  test('both real and generated players are read within a session', () async {
+    // e1 is a real, named personality; e2 is an anonymous generated filler
+    // (same style, worn under a fictitious name).
+    final field = [
+      danielNegreanu,
+      danielNegreanu.renamed('Random Reg', generated: true),
+    ];
+    final stats =
+        await OpponentStatsService.load(const NoopPlayerStatsStore());
+    final c = TournamentController.create(
+      structure: TournamentStructure.turbo(
+          clockMode: LevelClockMode.hands, startingStack: 400),
+      entrants: field.length + 1,
+      buyIn: 100,
+      tableSize: 3,
+      seed: 5,
+      humanSeat: true,
+      names: ['Hal', ...field.map((p) => p.name)],
+      botProfiles: field,
+      statsService: stats,
+    );
+    // Both get a read card (a generated filler still builds/shows reads this
+    // session — it just won't persist to the next one).
+    expect(c.readForSeat('e1'), isNotNull);
+    expect(c.readForSeat('e2'), isNotNull);
   });
 
   test('a tournament seats the chosen personalities and plays them out', () {

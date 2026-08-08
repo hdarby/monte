@@ -5,6 +5,8 @@ import 'package:monte/core/domain/ai/decider_factory.dart';
 import 'package:monte/core/domain/ai/ismcts.dart';
 import 'package:monte/core/domain/ai/opponent_model.dart';
 import 'package:monte/core/domain/ai/opponent_reads.dart';
+import 'package:monte/core/domain/ai/player_read.dart';
+import 'package:monte/core/domain/ai/player_stats.dart';
 import 'package:monte/core/domain/ai/personality.dart';
 import 'package:monte/core/domain/ai/player_profile.dart';
 import 'package:monte/core/domain/ai/profile_decider.dart';
@@ -145,10 +147,38 @@ class LocalGameRepository extends GameRepository {
   /// `profile.id` for a profiled bot, or null (untracked heuristic seat).
   String? _identityOf(String seatId) {
     if (seatId == 'human') return 'human';
-    return _specByPlayer[seatId]?.profile?.id;
+    final profile = _specByPlayer[seatId]?.profile;
+    // Anonymous generated fillers are ephemeral — never tracked (see
+    // [PlayerProfile.generated]).
+    if (profile == null || profile.generated) return null;
+    return profile.id;
   }
 
-  late final OpponentReads? _reads = statsService?.readsFor(_identityOf);
+  /// Reads bound to bot [playerId]'s own perspective: its impression of the
+  /// human comes only from hands it shared with them.
+  OpponentReads? _readsAs(String playerId) =>
+      statsService?.readsFor(_identityOf, observerId: _identityOf(playerId));
+
+  /// A human-readable read on the player in [seatId] for the HUD, or null if
+  /// they're untracked or no reads are being kept.
+  SeatRead? readForSeat(String seatId) {
+    final svc = statsService;
+    if (svc == null) return null;
+    final id = _identityOf(seatId);
+    if (id == null) return null; // untracked (e.g. a heuristic bot, no profile)
+    // A tracked seat with no data yet still shows a "building a read" card, so
+    // the player can see the model is watching from hand one.
+    final mine = PlayerRead.of(svc.book.read(id) ?? PlayerStats());
+    // How this opponent reads the hero — biased by their own style, from only
+    // the hands they've actually shared with the human.
+    PlayerRead? ofMe;
+    final observer = _specByPlayer[seatId]?.profile;
+    if (observer != null && id != PlayerStatsBook.humanIdentity) {
+      final me = svc.book.read(PlayerStatsBook.meKey(id)) ?? PlayerStats();
+      ofMe = PlayerRead.perceivedBy(me, observer);
+    }
+    return SeatRead(mine: mine, ofMe: ofMe);
+  }
 
   /// One decider per bot seat (keyed by player id), so seats can hold distinct
   /// personalities and a busted seat can be replaced independently.
@@ -308,7 +338,9 @@ class LocalGameRepository extends GameRepository {
         // Amateurs get the degraded AmateurPolicy; pros get calibrated preflop
         // frequencies + the range-aware postflop brain. Shared with tournaments
         // via [deciderForProfile] so a personality plays identically everywhere.
-        return deciderForProfile(pro, reads: _reads);
+        // Reads are bound to *this* bot's perspective (its read of the human is
+        // only the hands it saw — see [OpponentStatsService.readsFor]).
+        return deciderForProfile(pro, reads: _readsAs(playerId));
       }
       return buildDecider(
         spec.brain,
