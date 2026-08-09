@@ -48,6 +48,8 @@ class PlayerRead {
         foldToCbet: s.foldToCbetRate,
         foldBlindSteal: s.foldBlindStealRate,
         af: s.aggressionFactor,
+        foldToBet: s.foldToBetRate,
+        wsd: s.wonAtShowdownRate,
         hands: s.hands.round(),
         confidence: s.confidence,
         established: s.established,
@@ -80,6 +82,8 @@ class PlayerRead {
       foldToCbet: s.foldToCbetRate,
       foldBlindSteal: s.foldBlindStealRate,
       af: pAf,
+      foldToBet: s.foldToBetRate,
+      wsd: s.wonAtShowdownRate,
       hands: s.hands.round(),
       confidence: s.confidence,
       established: s.established,
@@ -95,6 +99,8 @@ class PlayerRead {
     required double foldToCbet,
     required double foldBlindSteal,
     required double af,
+    required double foldToBet,
+    required double wsd,
     required int hands,
     required double confidence,
     required bool established,
@@ -103,24 +109,11 @@ class PlayerRead {
       ('VPIP', _pct(vpip)),
       ('PFR', _pct(pfr)),
       ('3B', _pct(threeBet)),
-      ('Stl', _pct(steal)),
       ('CB', _pct(cbet)),
+      ('F2B', _pct(foldToBet)),
+      ('WSD', _pct(wsd)),
       ('AF', af.isFinite ? af.toStringAsFixed(1) : '∞'),
     ];
-    if (!established) {
-      final need = PlayerStats.baselineHands.round();
-      return PlayerRead(
-        description: hands == 0
-            ? 'unread — no hands observed yet'
-            : 'still building a read ($hands of $need hands)',
-        tags: const [],
-        handsSeen: hands,
-        confidence: confidence,
-        stats: lines,
-        thin: true,
-      );
-    }
-
     final loose = vpip >= 0.42
         ? 'very loose'
         : vpip >= 0.30
@@ -144,6 +137,33 @@ class PlayerRead {
                 ? 'passive'
                 : 'standard';
     final sticky = foldToCbet < 0.35;
+
+    // Sub-baseline reads: a read firms up in stages. Nothing at all at first;
+    // an "impression" once you've shared a few hands; an "idea" after ~two
+    // orbits; and only past the baseline is it a trusted read (the exploit
+    // gate — [established] — still needs the full sample). The tentative
+    // stages hedge the language so the model never over-claims.
+    if (!established) {
+      final need = PlayerStats.baselineHands.round();
+      final String desc;
+      if (hands == 0) {
+        desc = 'unread — no hands observed yet';
+      } else if (hands < 5) {
+        desc = 'still forming a read ($hands of $need hands)';
+      } else if (hands < 10) {
+        desc = 'early impression — looks $loose and $preAgg preflop';
+      } else {
+        desc = 'getting an idea — plays $loose and $preAgg preflop';
+      }
+      return PlayerRead(
+        description: desc,
+        tags: const [],
+        handsSeen: hands,
+        confidence: confidence,
+        stats: lines,
+        thin: true,
+      );
+    }
 
     // The read grows more detailed as more hands accrue: the preflop read firms
     // up first, the postflop read needs more streets played, and the finer
@@ -172,6 +192,10 @@ class PlayerRead {
       if (cbet >= 0.78) tags.add('c-bets relentlessly');
       if (foldToCbet >= 0.62) tags.add('folds to c-bets');
       if (post == 'passive' && sticky) tags.add('calling station');
+      // Fold-to-bet and won-at-showdown tell you how to attack them postflop.
+      if (foldToBet >= 0.58) tags.add('gives up to pressure');
+      if (wsd <= 0.42) tags.add('shows down weak');
+      if (wsd >= 0.62) tags.add('only shows the nuts');
     }
 
     return PlayerRead(

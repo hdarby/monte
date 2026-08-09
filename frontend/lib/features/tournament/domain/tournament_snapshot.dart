@@ -1,4 +1,5 @@
 import 'chip_set.dart';
+import 'tournament_chronicle.dart';
 import 'tournament_state.dart';
 import 'tournament_structure.dart';
 
@@ -117,6 +118,7 @@ class TournamentSnapshot {
     required this.youBusted,
     required this.smallestChip,
     this.colorUp,
+    this.recap,
     this.finalResults,
   });
 
@@ -166,6 +168,9 @@ class TournamentSnapshot {
   /// A color-up that just happened this tick, else null.
   final ColorUpDisplay? colorUp;
 
+  /// A recap for a level that just completed this tick, else null (one-shot).
+  final LevelRecap? recap;
+
   /// Final standings once [status] is finished (best first), else null.
   final List<FinishRow>? finalResults;
 
@@ -177,6 +182,7 @@ class TournamentSnapshot {
     String humanId, {
     ChipSet? chipSet,
     ColorUpEvent? colorUp,
+    LevelRecap? recap,
   }) {
     final level = state.currentLevel;
     final chips = chipSet ?? ChipSet.wsop();
@@ -258,6 +264,7 @@ class TournamentSnapshot {
       youBusted: you != null && !you.isActive,
       smallestChip: smallestChip,
       colorUp: colorUpDisplay,
+      recap: recap,
       finalResults: results,
     );
   }

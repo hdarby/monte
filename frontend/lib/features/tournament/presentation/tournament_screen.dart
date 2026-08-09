@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:monte/core/di/game_providers.dart';
 import 'package:monte/core/domain/ai/player_profile.dart';
+import 'package:monte/core/presentation/money_format.dart';
 import 'package:monte/features/table/domain/table_snapshot.dart';
 import 'package:monte/features/table/presentation/table_screen.dart';
 import 'package:monte/features/tournament/data/tournament_controller.dart';
+import 'package:monte/features/tournament/domain/tournament_chronicle.dart';
 import 'package:monte/features/tournament/domain/tournament_snapshot.dart';
 import 'package:monte/features/tournament/domain/tournament_structure.dart';
 
@@ -62,6 +64,7 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
       if (!mounted) return;
       setState(() => _tour = s);
       if (s.colorUp != null) _showColorUp(s.colorUp!);
+      if (s.recap != null) _showRecap(s.recap!);
     });
     _c.simProgressStream.listen((s) {
       if (mounted) setState(() => _sim = s.isRunning ? s : null);
@@ -132,6 +135,15 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
     );
   }
 
+  /// Shows the between-levels recap: chip leaders, the biggest pot(s) with what
+  /// was shown down, notable players, and the human's own story.
+  void _showRecap(LevelRecap r) {
+    showDialog<void>(
+      context: context,
+      builder: (_) => _RecapDialog(recap: r),
+    );
+  }
+
   @override
   void dispose() {
     _c.dispose();
@@ -150,7 +162,11 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
     // The human's current table size drives the felt layout.
     final playerCount = table.seats.length;
 
-    return Stack(
+    // Tournament stacks are chips; the seat's BB readout needs the *current
+    // level's* big blind, not the cash-settings default.
+    return MoneyScope(
+      format: MoneyFormat(showBigBlinds: false, bigBlind: tour.bigBlind),
+      child: Stack(
       children: [
         TableScreen(
           snapshot: table,
@@ -185,6 +201,7 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
           ),
         if (tour.finished) _ResultsOverlay(tour: tour),
       ],
+      ),
     );
   }
 }
@@ -754,4 +771,263 @@ String _ord(int n) {
     3 => '${n}rd',
     _ => '${n}th',
   };
+}
+
+/// The between-levels recap card: chip leaders, the level's biggest pot(s) with
+/// what was shown down, notable players, and the human's own story. Every line
+/// is generated from real results (see [TournamentChronicle]).
+class _RecapDialog extends StatelessWidget {
+  const _RecapDialog({required this.recap});
+  final LevelRecap recap;
+
+  @override
+  Widget build(BuildContext context) {
+    final gold = Theme.of(context).colorScheme.primary;
+    return AlertDialog(
+      title: Text('Level ${recap.levelJustFinished} in the books'),
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 380, maxHeight: 460),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(recap.intro,
+                  style: const TextStyle(fontSize: 13, height: 1.3)),
+              Text('avg stack ${_chips(recap.averageStack)}',
+                  style: const TextStyle(color: Colors.white60, fontSize: 11)),
+              if (recap.bubbleLine != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(recap.bubbleLine!,
+                      style: TextStyle(
+                          fontSize: 13,
+                          height: 1.3,
+                          color: gold,
+                          fontStyle: FontStyle.italic)),
+                ),
+              if (recap.leaderFollowUp != null) ...[
+                _heading(gold, 'LAST LEVEL\'S LEADER'),
+                _blurb(recap.leaderFollowUp!),
+              ],
+              if (recap.bountyLine != null) ...[
+                _heading(gold, 'BOUNTIES'),
+                _blurb(recap.bountyLine!),
+              ],
+              if (recap.chipLeaders.isNotEmpty) ...[
+                _heading(gold, 'CHIP LEADERS'),
+                for (var i = 0; i < recap.chipLeaders.length; i++)
+                  _leaderRow(i + 1, recap.chipLeaders[i], recap.bigBlind),
+              ],
+              if (recap.biggestPots.isNotEmpty) ...[
+                _heading(gold, 'BIGGEST POT'),
+                for (final p in recap.biggestPots.take(2))
+                  _blurb(_potLine(p, recap.bigBlind)),
+              ],
+              if (recap.featureHand != null) ...[
+                _heading(gold, 'HAND OF THE LEVEL'),
+                _FeatureHand(hand: recap.featureHand!, bigBlind: recap.bigBlind),
+              ],
+              if (recap.risers.isNotEmpty) ...[
+                _heading(gold, 'RUNNING DEEP'),
+                for (final r in recap.risers) _blurb(r),
+              ],
+              if (recap.eliminations.isNotEmpty) ...[
+                _heading(gold, 'HIT THE RAIL'),
+                for (final e in recap.eliminations) _blurb(e),
+              ],
+              if (recap.fallers.isNotEmpty) ...[
+                _heading(gold, 'IN TROUBLE'),
+                for (final f in recap.fallers) _blurb(f),
+              ],
+              if (recap.notables.isNotEmpty) ...[
+                _heading(gold, 'STORYLINES'),
+                for (final n in recap.notables) _blurb('• $n'),
+              ],
+              if (recap.yourStory != null) ...[
+                _heading(gold, 'YOUR LEVEL'),
+                Text(recap.yourStory!,
+                    style: TextStyle(
+                        fontSize: 13,
+                        height: 1.3,
+                        color: gold,
+                        fontWeight: FontWeight.w600)),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Back to the felt'),
+        ),
+      ],
+    );
+  }
+
+  Widget _blurb(String text) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: Text(text, style: const TextStyle(fontSize: 13, height: 1.3)),
+      );
+
+  Widget _heading(Color gold, String text) => Padding(
+        padding: const EdgeInsets.only(top: 14, bottom: 4),
+        child: Text(text,
+            style: TextStyle(
+                color: gold,
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1.2)),
+      );
+
+  /// A chip amount with its big-blind equivalent, e.g. "250,000 (125 BB)".
+  static String _amt(int chips, int bb) =>
+      bb > 0 ? '${_chips(chips)} (${_chips((chips / bb).round())} BB)' : _chips(chips);
+
+  Widget _leaderRow(int rank, ChipLeaderLine l, int bb) {
+    final delta = l.delta == 0
+        ? ''
+        : ' (${l.delta > 0 ? '+' : ''}${_chips(l.delta)})';
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 1),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 18,
+            child: Text('$rank',
+                style: const TextStyle(color: Colors.white54, fontSize: 12)),
+          ),
+          Expanded(
+            child: Text(l.isHuman ? '${l.name} (you)' : l.name,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    fontSize: 13,
+                    fontWeight:
+                        l.isHuman ? FontWeight.bold : FontWeight.normal)),
+          ),
+          Text('${_amt(l.chips, bb)}$delta',
+              style: TextStyle(
+                  fontSize: 12,
+                  color: l.delta >= 0 ? Colors.greenAccent : Colors.redAccent)),
+        ],
+      ),
+    );
+  }
+
+  String _potLine(NotablePot p, int bb) {
+    final buf = StringBuffer();
+    buf.write('${p.winnerName}\'s ${p.winnerHand.toLowerCase()} '
+        'beat ${p.loserName}\'s ${p.loserHand.toLowerCase()} '
+        'for ${_amt(p.pot, bb)}');
+    if (p.humanTable) buf.write(' at your table');
+    buf.write('.');
+    if (p.suckout) {
+      buf.write(' ${p.winnerName} got there on the river.');
+    } else if (p.allIn) {
+      buf.write(' All in.');
+    }
+    return buf.toString();
+  }
+}
+
+/// Renders a replayed hand: the hole cards shown down, the board, the action
+/// street by street, and Bart-Hanson-style commentary evaluating the play.
+class _FeatureHand extends StatelessWidget {
+  const _FeatureHand({required this.hand, required this.bigBlind});
+  final HandReplay hand;
+  final int bigBlind;
+
+  @override
+  Widget build(BuildContext context) {
+    final gold = Theme.of(context).colorScheme.primary;
+    final bb = bigBlind > 0 ? ' (${(hand.pot / bigBlind).round()} BB)' : '';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('${_chips(hand.pot)}$bb pot',
+            style: TextStyle(
+                color: gold, fontSize: 12, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 4),
+        // Showdown holdings.
+        for (final s in hand.seats)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 1),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(s.won ? '${s.name} (wins)' : s.name,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 12,
+                          fontWeight:
+                              s.won ? FontWeight.bold : FontWeight.normal,
+                          color: s.won ? gold : Colors.white)),
+                ),
+                for (final c in s.cards) _card(c),
+              ],
+            ),
+          ),
+        const SizedBox(height: 4),
+        Row(
+          children: [
+            const Text('Board ',
+                style: TextStyle(color: Colors.white54, fontSize: 11)),
+            for (final c in hand.board) _card(c),
+          ],
+        ),
+        const SizedBox(height: 6),
+        // Street-by-street action.
+        for (final st in hand.streets) ...[
+          Text(st.name.toUpperCase(),
+              style: TextStyle(
+                  color: gold.withValues(alpha: 0.7),
+                  fontSize: 9,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1)),
+          for (final line in st.lines)
+            Text(line,
+                style: const TextStyle(fontSize: 12, height: 1.25)),
+          const SizedBox(height: 3),
+        ],
+        // Commentary.
+        for (final c in hand.commentary)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(c,
+                style: TextStyle(
+                    fontSize: 12,
+                    height: 1.3,
+                    color: gold,
+                    fontStyle: FontStyle.italic)),
+          ),
+      ],
+    );
+  }
+
+  /// A small suit-coloured card chip, e.g. A♥.
+  Widget _card(String code) {
+    if (code.length < 2) return const SizedBox.shrink();
+    final rank = code.substring(0, code.length - 1);
+    final suit = code[code.length - 1].toLowerCase();
+    final (sym, red) = switch (suit) {
+      'h' => ('♥', true),
+      'd' => ('♦', true),
+      's' => ('♠', false),
+      _ => ('♣', false),
+    };
+    return Container(
+      margin: const EdgeInsets.only(left: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(3),
+      ),
+      child: Text('$rank$sym',
+          style: TextStyle(
+              color: red ? Colors.red.shade700 : Colors.black,
+              fontSize: 11,
+              fontWeight: FontWeight.bold)),
+    );
+  }
 }

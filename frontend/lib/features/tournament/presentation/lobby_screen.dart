@@ -36,9 +36,19 @@ class _LobbyScreenState extends State<LobbyScreen> {
   static const _fields = [6, 9, 80, 180, 1000, 8000];
   static const _buyIns = [11, 55, 100, 500, 1000, 10000];
 
-  // Personality pools (each includes the owner-created customs).
-  List<PlayerProfile> get _regs => homeGameProfiles;
-  List<PlayerProfile> get _pros => builtInProfiles;
+  // Personality pools (each includes the owner-created customs), shown
+  // alphabetically and with the human's own namesake removed — you shouldn't
+  // face a bot playing "you".
+  List<PlayerProfile> get _regs => _pool(homeGameProfiles);
+  List<PlayerProfile> get _pros => _pool(builtInProfiles);
+  List<PlayerProfile> _pool(List<PlayerProfile> src) {
+    final me = widget.humanName.trim().toLowerCase();
+    return [
+      for (final p in src)
+        if (p.name.trim().toLowerCase() != me) p,
+    ]..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+  }
+
   PlayerProfile? _byId(String id) =>
       [..._regs, ..._pros].where((p) => p.id == id).firstOrNull;
 

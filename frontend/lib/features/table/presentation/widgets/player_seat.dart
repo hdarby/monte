@@ -226,6 +226,19 @@ class _PlayerSeatState extends State<PlayerSeat> {
               fontWeight: FontWeight.w500,
             ),
           ),
+          // The stack in the *other* unit, so both chips and big blinds are
+          // always visible at a glance (BB is what actually drives decisions).
+          if (money.bigBlind > 0)
+            Text(
+              money.showBigBlinds
+                  ? '\$${seat.stack}'
+                  : '${(seat.stack / money.bigBlind).round()} BB',
+              style: TextStyle(
+                color: Colors.white54,
+                fontSize: compact ? 9 : 10,
+                fontWeight: FontWeight.w400,
+              ),
+            ),
           _statusLine(money, suppressMoney: botMoney),
         ],
       ),

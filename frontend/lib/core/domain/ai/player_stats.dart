@@ -31,7 +31,9 @@ class PlayerStats {
   // Postflop.
   double cbet = 0, cbetOpp = 0; // preflop aggressor's flop continuation bet
   double foldToCbet = 0, cbetFaced = 0;
+  double foldToBet = 0, betFaced = 0; // folded facing any postflop bet/raise
   double postAggr = 0, postCalls = 0; // bets/raises vs calls postflop (for AF)
+  double wsdWon = 0, wsdSeen = 0; // won at / reached showdown
 
   /// Per-observation decay: each newly observed hand fades prior totals by this,
   /// giving an effective window of ~1/(1−decay) ≈ 200 recent hands. Bounds the
@@ -56,8 +58,12 @@ class PlayerStats {
     cbetOpp *= decayPerHand;
     foldToCbet *= decayPerHand;
     cbetFaced *= decayPerHand;
+    foldToBet *= decayPerHand;
+    betFaced *= decayPerHand;
     postAggr *= decayPerHand;
     postCalls *= decayPerHand;
+    wsdWon *= decayPerHand;
+    wsdSeen *= decayPerHand;
   }
 
   // ---- Priors / smoothing --------------------------------------------------
@@ -74,6 +80,14 @@ class PlayerStats {
   double get foldBlindStealRate => _rate(foldBlindSteal, blindStealFaced, 0.55);
   double get cbetRate => _rate(cbet, cbetOpp, 0.55);
   double get foldToCbetRate => _rate(foldToCbet, cbetFaced, 0.45);
+
+  /// How often the player folds when facing a postflop bet or raise — a broad
+  /// "gives up to aggression" number that drives bluffing decisions.
+  double get foldToBetRate => _rate(foldToBet, betFaced, 0.42);
+
+  /// Won-money-at-showdown: of the showdowns they reach, how often they win —
+  /// low ≈ shows down weak (a station), high ≈ only gets there with the goods.
+  double get wonAtShowdownRate => _rate(wsdWon, wsdSeen, 0.5);
 
   /// Postflop aggression factor (bets+raises)/calls; 1.0 when no calls yet.
   double get aggressionFactor => postCalls == 0 ? 1.0 : postAggr / postCalls;
@@ -106,8 +120,12 @@ class PlayerStats {
         'cbetOpp': cbetOpp,
         'foldToCbet': foldToCbet,
         'cbetFaced': cbetFaced,
+        'foldToBet': foldToBet,
+        'betFaced': betFaced,
         'postAggr': postAggr,
         'postCalls': postCalls,
+        'wsdWon': wsdWon,
+        'wsdSeen': wsdSeen,
       };
 
   static PlayerStats fromJson(Map<String, dynamic> j) {
@@ -130,8 +148,12 @@ class PlayerStats {
       ..cbetOpp = g('cbetOpp')
       ..foldToCbet = g('foldToCbet')
       ..cbetFaced = g('cbetFaced')
+      ..foldToBet = g('foldToBet')
+      ..betFaced = g('betFaced')
       ..postAggr = g('postAggr')
-      ..postCalls = g('postCalls');
+      ..postCalls = g('postCalls')
+      ..wsdWon = g('wsdWon')
+      ..wsdSeen = g('wsdSeen');
   }
 }
 
@@ -268,8 +290,14 @@ class PlayerStatsBook {
       s.cbetFaced++;
       if (r.foldToCbet) s.foldToCbet++;
     }
+    s.betFaced += r.betFaced;
+    s.foldToBet += r.foldToBet;
     s.postAggr += r.postAggr;
     s.postCalls += r.postCalls;
+    if (r.sawShowdown) {
+      s.wsdSeen++;
+      if (r.wonShowdown) s.wsdWon++;
+    }
   }
 }
 
@@ -284,7 +312,9 @@ class _SeatFlags {
   bool blindStealFaced = false, foldBlindSteal = false;
   bool cbetOpp = false, cbet = false;
   bool cbetFaced = false, foldToCbet = false;
+  int betFaced = 0, foldToBet = 0; // postflop spots facing a bet/raise, & folds
   int postAggr = 0, postCalls = 0;
+  bool sawShowdown = false, wonShowdown = false;
 }
 
 class _HandReplay {
@@ -385,8 +415,18 @@ class _HandReplay {
       if (streetActions.isEmpty) continue;
       var betOpened = false;
       String? aggressor;
+      final facedBet = <String>{}; // counted once per player per street
       for (final a in streetActions) {
         final f = flags[a.playerId]!;
+        // Facing a postflop bet/raise: a broad fold-to-aggression signal. Count
+        // the spot once per street, and mark a fold to it.
+        if (betOpened &&
+            a.playerId != aggressor &&
+            !facedBet.contains(a.playerId)) {
+          facedBet.add(a.playerId);
+          f.betFaced++;
+          if (a.type == ActionType.fold) f.foldToBet++;
+        }
         // Flop c-bet: the preflop aggressor's first bet before anyone else bet.
         if (street == BettingRound.flop && a.playerId == preflopAggressor &&
             !f.cbetOpp && !betOpened) {
@@ -425,6 +465,29 @@ class _HandReplay {
           case ActionType.check:
             break;
         }
+      }
+    }
+
+    // ---- Showdown (won-money-at-showdown) ---------------------------------
+    // A showdown happened when ≥2 players never folded; each of them "saw" it,
+    // and the pot winner(s) "won" it.
+    final folded = {
+      for (final a in hand.actions)
+        if (a.type == ActionType.fold) a.playerId
+    };
+    final contenders = [
+      for (final p in players)
+        if (!folded.contains(p.id)) p.id
+    ];
+    if (contenders.length >= 2) {
+      final winners = {
+        for (final r in hand.results)
+          if (r.amountWon > 0) r.playerId
+      };
+      for (final id in contenders) {
+        final f = flags[id]!;
+        f.sawShowdown = true;
+        if (winners.contains(id)) f.wonShowdown = true;
       }
     }
 

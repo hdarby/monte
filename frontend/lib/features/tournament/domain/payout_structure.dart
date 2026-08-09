@@ -22,9 +22,10 @@ class PrizePool {
 /// (index 0 = 1st) and sums to 1.0; its length is the number of paid places.
 ///
 /// [forFieldSize] generates a conventional top-heavy curve: roughly the top ~15%
-/// of the field is paid (with sensible small-field floors), and prizes decay
-/// geometrically so 1st earns the most. It's a believable stand-in for a real
-/// published payout table, not a copy of any specific one.
+/// of the field is paid (with sensible small-field floors). Every paid spot
+/// clears a **min-cash floor of ~1.5 buy-ins** and the rest of the pool is piled
+/// top-heavy toward 1st — so a big field never pays out nonsense like $1/$2 at
+/// the bottom. It's a believable stand-in for a real published table.
 @immutable
 class PayoutStructure {
   const PayoutStructure(this.fractions);
@@ -35,11 +36,19 @@ class PayoutStructure {
 
   factory PayoutStructure.forFieldSize(int entrants) {
     final places = _paidPlacesFor(entrants);
-    // Geometric decay, normalized. ratio 0.62 over 3 places ≈ 50/30/20.
-    const ratio = 0.62;
+    if (places <= 1) return const PayoutStructure([1.0]);
+    // A min-cash floor: since the pool is buyIn·entrants, a per-place base of
+    // 1.5/entrants is exactly ~1.5 buy-ins. Cap it so the top still takes the
+    // lion's share even in a small field.
+    final base = min(1.5 / entrants, 0.5 / places);
+    final remaining = 1.0 - base * places;
+    // A gentle geometric curve over the remaining pool — steep enough that 1st
+    // is clearly the biggest prize, flat enough that the tail isn't dust.
+    const ratio = 0.7;
     final weights = [for (var k = 0; k < places; k++) pow(ratio, k).toDouble()];
     final sum = weights.fold<double>(0, (a, b) => a + b);
-    return PayoutStructure([for (final w in weights) w / sum]);
+    return PayoutStructure(
+        [for (final w in weights) base + remaining * (w / sum)]);
   }
 
   static int _paidPlacesFor(int entrants) {

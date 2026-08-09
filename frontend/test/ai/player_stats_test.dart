@@ -6,7 +6,8 @@ import 'package:monte/core/domain/hand_history.dart';
 
 /// Builds a 6-handed hand with the button at seat 0, so seats are
 /// [BTN, SB, BB, UTG, MP, CO] at indices 0..5.
-HandHistory _hand(List<ActionRecord> actions, {List<String> board = const []}) {
+HandHistory _hand(List<ActionRecord> actions,
+    {List<String> board = const [], List<HandResultRecord> results = const []}) {
   const ids = ['btn', 'sb', 'bb', 'utg', 'mp', 'co'];
   return HandHistory(
     handNumber: 1,
@@ -25,7 +26,7 @@ HandHistory _hand(List<ActionRecord> actions, {List<String> board = const []}) {
     ],
     actions: actions,
     board: board,
-    results: const [],
+    results: results,
     finalStacks: const {},
   );
 }
@@ -143,6 +144,52 @@ void main() {
     expect(co.stealRate, greaterThan(0.7)); // shrinkage prior keeps it < 1
     // Recency decay bounds the running total (it never grows to 20).
     expect(co.hands, lessThan(20));
+  });
+
+  test('fold-to-bet and won-at-showdown are recorded', () {
+    // CO opens, BB calls; flop BB checks, CO bets, BB folds → BB folded to a bet.
+    final fold = _hand([
+      _a('co', ActionType.raise, amount: 300),
+      _a('btn', ActionType.fold),
+      _a('sb', ActionType.fold),
+      _a('bb', ActionType.call, amount: 200),
+      _a('utg', ActionType.fold),
+      _a('mp', ActionType.fold),
+      _a('bb', ActionType.check, street: BettingRound.flop),
+      _a('co', ActionType.bet, amount: 250, street: BettingRound.flop),
+      _a('bb', ActionType.fold, street: BettingRound.flop),
+    ], board: ['Ah', '7d', '2c']);
+    final bb = _statsFor(fold, 'bb');
+    expect(bb.betFaced, 1);
+    expect(bb.foldToBet, 1);
+    // No showdown (BB folded) → CO didn't "see" one.
+    expect(_statsFor(fold, 'co').wsdSeen, 0);
+
+    // A hand that reaches showdown: CO and BB both check the whole way; CO wins.
+    final sd = _hand([
+      _a('co', ActionType.raise, amount: 300),
+      _a('btn', ActionType.fold),
+      _a('sb', ActionType.fold),
+      _a('bb', ActionType.call, amount: 200),
+      _a('utg', ActionType.fold),
+      _a('mp', ActionType.fold),
+      _a('bb', ActionType.check, street: BettingRound.flop),
+      _a('co', ActionType.check, street: BettingRound.flop),
+      _a('bb', ActionType.check, street: BettingRound.turn),
+      _a('co', ActionType.check, street: BettingRound.turn),
+      _a('bb', ActionType.check, street: BettingRound.river),
+      _a('co', ActionType.check, street: BettingRound.river),
+    ], board: [
+      'Ah', '7d', '2c', 'Ks', 'Qh'
+    ], results: [
+      HandResultRecord(playerId: 'co', amountWon: 620),
+    ]);
+    final coSd = _statsFor(sd, 'co');
+    expect(coSd.wsdSeen, 1);
+    expect(coSd.wsdWon, 1);
+    final bbSd = _statsFor(sd, 'bb');
+    expect(bbSd.wsdSeen, 1);
+    expect(bbSd.wsdWon, 0);
   });
 
   test('the human is read per-observer, not as a shared global', () {

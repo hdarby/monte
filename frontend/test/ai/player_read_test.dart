@@ -4,11 +4,26 @@ import 'package:monte/core/domain/ai/player_read.dart';
 import 'package:monte/core/domain/ai/player_stats.dart';
 
 void main() {
-  test('thin sample shows a building-a-read message, no over-reading', () {
-    final s = PlayerStats()..hands = 3;
-    expect(PlayerRead.of(s).thin, isTrue);
-    expect(PlayerRead.of(s).description, contains('building a read'));
-    expect(PlayerRead.of(s).tags, isEmpty);
+  test('reads firm up in stages: nothing, impression, idea, then a read', () {
+    PlayerRead read(double hands) {
+      final s = PlayerStats()
+        ..hands = hands
+        ..vpip = hands * 0.5
+        ..pfr = hands * 0.4;
+      return PlayerRead.of(s);
+    }
+
+    // A tiny sample over-reads nothing — it says so.
+    expect(read(3).thin, isTrue);
+    expect(read(3).description, contains('forming a read'));
+    expect(read(3).tags, isEmpty);
+    // 5 hands → an "impression"; 10 → an "idea"; both still tentative (thin).
+    expect(read(6).description, contains('impression'));
+    expect(read(6).thin, isTrue);
+    expect(read(12).description, contains('idea'));
+    expect(read(12).thin, isTrue);
+    // Past the baseline it's a trusted read.
+    expect(read(30).thin, isFalse);
   });
 
   test('a loose-aggressive preflop player reads as such', () {

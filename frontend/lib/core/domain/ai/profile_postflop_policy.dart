@@ -90,9 +90,15 @@ class ProfilePostflopPolicy implements DecisionPolicy {
     final st = _representativeOpponent(game, p, toCall);
     if (st != null && st.established) {
       final w = (exploit * st.confidence).clamp(0.0, 1.0);
-      final foldy = st.foldToCbetRate - 0.45; // + overfolds, − calls too much
+      // Blend the c-bet-specific and the broad postflop fold-to-bet signals: a
+      // player who folds to aggression generally (not just c-bets) is a prime
+      // bluff target; one who shows down weak pays off thin value.
+      final foldy = (0.6 * (st.foldToCbetRate - 0.45) +
+          0.4 * (st.foldToBetRate - 0.42));
       rBluffMore = (foldy * 2.0 * w).clamp(-0.30, 0.30);
-      rValueThin = ((-foldy) * 0.8 * w).clamp(0.0, 0.15);
+      // Station read from both calling tendency and a low won-at-showdown.
+      final station = (-foldy) + 0.5 * (0.5 - st.wonAtShowdownRate);
+      rValueThin = (station * 0.8 * w).clamp(0.0, 0.15);
       if (toCall > 0) {
         final passive = (1.0 - st.aggressionFactor).clamp(0.0, 1.0);
         rRespect = (passive * 0.12 * w).clamp(0.0, 0.12);
