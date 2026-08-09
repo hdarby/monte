@@ -64,8 +64,8 @@ class ChipStackView extends StatelessWidget {
     this.maxHeight = 34,
     this.chipWidth = 13,
     this.chipHeight = 3.2,
-    this.maxColumns = 3,
-    this.maxChips = 30,
+    this.maxColumns = 5,
+    this.maxChips = 60,
   });
 
   /// The chip count to draw.
@@ -106,32 +106,46 @@ class ChipStackView extends StatelessWidget {
     );
     if (breakdown.isEmpty) return SizedBox(height: maxHeight);
 
-    // Capacity is fixed by the space available: how many chips fit in a column,
-    // times how many columns we allow. Deriving the total from this (rather than
-    // clipping each column afterwards) is what keeps height monotonic — clipping
-    // per column made a single-denomination monster stack draw *shorter* than a
-    // mixed one, which is exactly backwards.
+    // Capacity is fixed by the space available: chips per column x columns.
+    // Deriving the total from this (rather than clipping each column afterwards)
+    // keeps height monotonic in stack size — clipping per column made a
+    // single-denomination monster draw *shorter* than a mixed one.
     final perColumn = (maxHeight / (chipHeight + 0.6)).floor().clamp(1, 40);
     final capacity = (perColumn * maxColumns).clamp(1, maxChips);
 
     final ref = reference > 0 ? reference : amount;
     final total = (capacity * amount / ref).round().clamp(1, capacity);
 
-    // Fill left to right, biggest chips first, each column to its limit before
-    // starting the next — the way a real stack grows.
-    final columnsUsed = (total / perColumn).ceil();
-    final denoms = breakdown.columns.map((c) => c.denomination).toList();
+    // Allocate the drawn chips across denominations in proportion to how many
+    // of each the player *actually holds*, so the colours on screen reflect the
+    // real composition of the stack rather than an arbitrary column order.
+    final held = breakdown.chipCount;
+    final alloc = <int, int>{};
+    var assigned = 0;
+    for (var i = 0; i < breakdown.columns.length; i++) {
+      final c = breakdown.columns[i];
+      final isLast = i == breakdown.columns.length - 1;
+      var n = isLast
+          ? total - assigned
+          : (total * (held <= 0 ? 0 : c.count / held)).round();
+      if (n < 1 && !isLast) n = 1;
+      if (assigned + n > total) n = total - assigned;
+      if (n <= 0) continue;
+      alloc[c.denomination] = n;
+      assigned += n;
+    }
 
+    // Lay them out largest denomination first, spilling into a fresh column of
+    // the same colour whenever one fills up — the way a real stack is set down.
     final drawn = <ChipColumn>[];
-    var left = total;
-    for (var i = 0; i < columnsUsed; i++) {
-      final n = left > perColumn ? perColumn : left;
-      left -= n;
-      // Biggest denomination on the left; past the breakdown's variety, reuse
-      // the smallest chip it found.
-      final d = i < denoms.length ? denoms[i] : denoms.last;
-      drawn.add(ChipColumn(denomination: d, count: n));
-      if (left <= 0) break;
+    for (final entry in alloc.entries) {
+      var remaining = entry.value;
+      while (remaining > 0 && drawn.length < maxColumns) {
+        final n = remaining > perColumn ? perColumn : remaining;
+        drawn.add(ChipColumn(denomination: entry.key, count: n));
+        remaining -= n;
+      }
+      if (drawn.length >= maxColumns) break;
     }
 
     return SizedBox(

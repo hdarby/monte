@@ -263,7 +263,7 @@ class _PlayerSeatState extends State<PlayerSeat> {
               reference: chipReference,
               minDenomination: chipUnit,
               maxHeight: compact ? 22 : 32,
-              chipWidth: compact ? 10 : 13,
+              chipWidth: compact ? 9 : 12,
               chipHeight: compact ? 2.6 : 3.2,
             ),
           ],

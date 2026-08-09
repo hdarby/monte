@@ -148,4 +148,103 @@ void main() {
       }
     });
   });
+
+  group('five columns, coloured by what they actually hold', () {
+    Future<List<int>> columnDenoms(WidgetTester tester, int amount) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: ChipStackView(
+                amount: amount,
+                denominations: wsop,
+                reference: amount,
+                minDenomination: 100,
+                maxHeight: 32,
+              ),
+            ),
+          ),
+        ),
+      );
+      // Each column is a Tooltip labelled with its denomination.
+      return find
+          .descendant(
+            of: find.byType(ChipStackView),
+            matching: find.byType(Tooltip),
+          )
+          .evaluate()
+          .map((e) => (e.widget as Tooltip).message ?? '')
+          .map(
+            (m) => m.endsWith('M')
+                ? (double.parse(m.substring(0, m.length - 1)) * 1000000).round()
+                : m.endsWith('k')
+                ? (double.parse(m.substring(0, m.length - 1)) * 1000).round()
+                : int.parse(m),
+          )
+          .toList();
+    }
+
+    testWidgets('a full stack uses five columns, not three', (tester) async {
+      final denoms = await columnDenoms(tester, 1275000);
+      expect(denoms.length, 5);
+    });
+
+    testWidgets('never exceeds five columns however mixed the stack',
+        (tester) async {
+      for (final amount in [1275000, 60000, 987654, 5000000]) {
+        expect(
+          (await columnDenoms(tester, amount)).length,
+          lessThanOrEqualTo(5),
+          reason: 'amount $amount used too many columns',
+        );
+      }
+    });
+
+    testWidgets('columns run largest denomination first', (tester) async {
+      final denoms = await columnDenoms(tester, 1275000);
+      final sorted = [...denoms]..sort((a, b) => b.compareTo(a));
+      expect(denoms, sorted);
+    });
+
+    testWidgets('the most-held denomination gets the most chips',
+        (tester) async {
+      // 29,000 breaks down as 1 x 25,000 + 4 x 1,000: by *count* the 1,000s
+      // dominate, so they must dominate the picture even though the single 25k
+      // is worth far more. (Greedy decomposition minimises chip count, so the
+      // amount has to be chosen to actually produce change.)
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: ChipStackView(
+                amount: 29000,
+                denominations: const [1000, 25000],
+                reference: 29000,
+                minDenomination: 1000,
+                maxHeight: 32,
+              ),
+            ),
+          ),
+        ),
+      );
+      final tooltips = find
+          .descendant(
+            of: find.byType(ChipStackView),
+            matching: find.byType(Tooltip),
+          )
+          .evaluate()
+          .toList();
+      // Count chips per denomination across all columns.
+      final perDenom = <String, int>{};
+      for (final e in tooltips) {
+        final t = e.widget as Tooltip;
+        final chips = find
+            .descendant(of: find.byWidget(t), matching: find.byType(Container))
+            .evaluate()
+            .length;
+        perDenom[t.message ?? ''] = (perDenom[t.message ?? ''] ?? 0) + chips;
+      }
+      expect(perDenom['1k'], greaterThan(perDenom['25k'] ?? 0));
+    });
+  });
 }
