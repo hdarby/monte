@@ -24,6 +24,14 @@ class _LobbyScreenState extends State<LobbyScreen> {
   int _fieldSize = 9;
   int _buyIn = 100;
   final _selected = <String>{}; // profile ids the owner explicitly added
+  @override
+  void initState() {
+    super.initState();
+    _selected.addAll([
+      for (final p in _regs) p.id,
+      for (final p in _pros) p.id,
+    ]);
+  }
 
   static const _presets = ['turbo', 'standard', 'deep', 'circuit', 'wsop'];
   static const _presetLabels = {
