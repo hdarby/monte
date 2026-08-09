@@ -22,6 +22,7 @@ TableSnapshot projectTableSnapshot(
   Map<String, PlayerProfile> seatProfiles = const {},
   bool flagBusted = false,
   String? frontPlayerId,
+  List<int>? denominations,
 }) {
   final showdownHappened = game.results.any((r) => r.handValue != null);
   final wonByPlayer = {for (final r in game.results) r.player: r.netWon};
@@ -110,5 +111,10 @@ TableSnapshot projectTableSnapshot(
     log: List.of(game.log),
     actionContext: ctx,
     bustedPlayerIds: busted,
+    chipUnit: game.chipUnit,
+    denominations: denominations ?? _defaultDenominations,
   );
 }
+
+/// Cash-game chip ladder, used when no tournament chip set is supplied.
+const _defaultDenominations = [1, 5, 25, 100, 500, 1000, 5000, 25000];

@@ -334,6 +334,11 @@ class _TableScreenState extends State<TableScreen> {
                   compact: !seats[i].isHuman,
                   buttonPlacement: _buttonPlacement(i, seats.length),
                   showBehavior: showBehavior,
+                  // Real denominations for this level, so a 100/100 table draws
+                  // no 25 chips.
+                  chipUnit: snapshot.chipUnit,
+                  chipReference: _biggestStack(seats),
+                  denominations: snapshot.denominations,
                   onCoach: seats[i].isHuman ? onCoach : null,
                   onTap: (showOpponentRanges &&
                           !seats[i].isHuman &&
@@ -369,6 +374,11 @@ class _TableScreenState extends State<TableScreen> {
 
   /// Distributes seats evenly around an ellipse, seat 0 (the human) at the
   /// bottom centre and the rest going clockwise around the table.
+  /// The biggest stack at the table — the reference every seat's chip graphic
+  /// is scaled against, so the tallest stack on the felt is the chip leader.
+  static int _biggestStack(List<SeatView> seats) =>
+      seats.fold(0, (a, s) => s.stack > a ? s.stack : a);
+
   Alignment _seatAlignment(int index, int total) {
     final theta = math.pi / 2 + index * (2 * math.pi / total);
     return Alignment(0.95 * math.cos(theta), 0.96 * math.sin(theta));

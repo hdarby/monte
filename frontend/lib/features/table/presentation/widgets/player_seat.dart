@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:monte/core/domain/ai/player_read.dart';
 import 'package:monte/core/presentation/player_kind_color.dart';
+import 'package:monte/core/presentation/widgets/chip_stack_view.dart';
 import 'package:monte/features/table/domain/table_snapshot.dart';
 import 'package:monte/core/theme/app_theme.dart';
 import 'package:monte/core/presentation/money_format.dart';
@@ -20,6 +21,10 @@ class PlayerSeat extends StatefulWidget {
     this.compact = false,
     this.buttonPlacement = ButtonPlacement.none,
     this.showBehavior = false,
+    this.showChips = true,
+    this.chipUnit = 1,
+    this.chipReference = 0,
+    this.denominations = const [1, 5, 25, 100, 500, 1000, 5000, 25000],
     this.onCoach,
     this.onTap,
     this.read,
@@ -52,6 +57,20 @@ class PlayerSeat extends StatefulWidget {
   /// Whether to show this seat's behavior model badge ([SeatView.behavior]).
   final bool showBehavior;
 
+  /// Whether to draw the side-on chip stack above the numbers.
+  final bool showChips;
+
+  /// The smallest chip in play, so no seat draws a denomination that isn't on
+  /// the table at this level.
+  final int chipUnit;
+
+  /// The denominations in play, ascending.
+  final List<int> denominations;
+
+  /// The biggest stack at the table, which fills the chip graphic. 0 falls back
+  /// to this seat's own stack (so a lone seat still draws something sensible).
+  final int chipReference;
+
   @override
   State<PlayerSeat> createState() => _PlayerSeatState();
 }
@@ -63,6 +82,10 @@ class _PlayerSeatState extends State<PlayerSeat> {
   VoidCallback? get onTap => widget.onTap;
   ButtonPlacement get buttonPlacement => widget.buttonPlacement;
   bool get showBehavior => widget.showBehavior;
+  bool get showChips => widget.showChips;
+  int get chipUnit => widget.chipUnit;
+  int get chipReference => widget.chipReference;
+  List<int> get denominations => widget.denominations;
 
   /// One hole-card's width; the seat's whole footprint is derived from this so
   /// the box stays a fixed size regardless of name/badge/status text length.
@@ -228,6 +251,22 @@ class _PlayerSeatState extends State<PlayerSeat> {
           const SizedBox(height: 6),
           _name(),
           if (showBehavior && seat.behavior != null) _behaviorBadge(),
+          // Chips, drawn side-on. The numbers stay right below — this is
+          // flavour and at-a-glance stack depth, not a replacement for them.
+          if (showChips && seat.stack > 0) ...[
+            const SizedBox(height: 4),
+            ChipStackView(
+              amount: seat.stack,
+              denominations: denominations,
+              // Scaled against the table's biggest stack, so the tallest stack
+              // on the felt really is the chip leader.
+              reference: chipReference,
+              minDenomination: chipUnit,
+              maxHeight: compact ? 22 : 32,
+              chipWidth: compact ? 10 : 13,
+              chipHeight: compact ? 2.6 : 3.2,
+            ),
+          ],
           const SizedBox(height: 2),
           Text(
             money.format(seat.stack),

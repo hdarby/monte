@@ -164,11 +164,20 @@ class TableSnapshot {
     required this.log,
     this.actionContext,
     this.bustedPlayerIds = const [],
+    this.chipUnit = 1,
+    this.denominations = const [1, 5, 25, 100, 500, 1000, 5000, 25000],
   });
 
   final List<SeatView> seats;
   final List<Card> board;
   final int pot;
+
+  /// The smallest physical chip on the table. Seats never draw a chip smaller
+  /// than this — at a 100/100 level there are no 25s in play.
+  final int chipUnit;
+
+  /// The denominations available, ascending, for drawing chip stacks.
+  final List<int> denominations;
   final BettingRound round;
   final String? currentPlayerId;
   final bool isHandOver;

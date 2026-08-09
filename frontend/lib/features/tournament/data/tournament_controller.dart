@@ -784,6 +784,8 @@ class TournamentController {
         frontPlayerId: humanId,
         // Colour each seat pro vs recreational, matching the standings panel.
         seatProfiles: _profileBySeat,
+        // Draw stacks in the denominations actually in play at this level.
+        denominations: chips.denominations,
       ),
     );
   }
