@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:monte/core/domain/ai/player_read.dart';
+import 'package:monte/core/presentation/player_kind_color.dart';
 import 'package:monte/features/table/domain/table_snapshot.dart';
 import 'package:monte/core/theme/app_theme.dart';
 import 'package:monte/core/presentation/money_format.dart';
@@ -197,16 +198,26 @@ class _PlayerSeatState extends State<PlayerSeat> {
     final Widget cardsChild = botMoney
         ? (revealed ? _revealedCardsWithMoney(ms) : _moneyBanner(ms))
         : _cards();
+    // Pro / rec / human colour coding, from the same source as the tournament
+    // standings. Layered *under* the acting-player highlight so whose turn it is
+    // still reads first; the kind tint is identity, the gold is urgency.
+    final kind = seat.kind;
+    final tint = kind?.tint(generated: seat.generated, strength: 1.15);
+
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
         color: highlight
             ? AppTheme.gold.withValues(alpha: 0.18)
-            : Colors.black26,
+            : (tint ?? Colors.black26),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: highlight ? AppTheme.gold : Colors.white10,
+          color: highlight
+              ? AppTheme.gold
+              : (kind == null
+                    ? Colors.white10
+                    : kind.accent.withValues(alpha: seat.generated ? 0.3 : 0.5)),
           width: highlight ? 2 : 1,
         ),
       ),

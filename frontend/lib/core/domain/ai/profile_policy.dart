@@ -143,11 +143,16 @@ class ProfilePolicy implements DecisionPolicy {
       return const GameAction.fold();
     }
 
-    // Facing a single open: 3-bet the top range, flat the rest of the VPIP
-    // range, otherwise fold.
+    // Facing a single open: 3-bet the top range, flat a *tightened* slice of the
+    // VPIP range, otherwise fold.
+    //
+    // Cold-calling an open is much tighter than opening yourself: you are up
+    // against a range that has already shown strength, you are often dominated,
+    // and every player still to act can squeeze. Flatting the full opening range
+    // here was what pushed half of all flops multiway.
     if (raises == 1) {
       if (s >= threeBetCut && canRaise) return raiseBy(0.6);
-      if (s >= vpipCut) return const GameAction.call();
+      if (s >= _coldCallCut(game, p, vpipCut)) return const GameAction.call();
       return const GameAction.fold();
     }
 
@@ -174,8 +179,35 @@ class ProfilePolicy implements DecisionPolicy {
     // where the VPIP≫PFR gap gets realised, so over-limp the rest of the VPIP
     // range only when a limper is already in.
     if (s >= pfrCut && canRaise) return raiseBy(0.5);
-    if (hasLimper && s >= vpipCut) return const GameAction.call();
+    // Over-limping is cheap, but piling into a family pot with a marginal hand
+    // is still how stacks get lost — tighten as the limpers stack up.
+    if (hasLimper && s >= _coldCallCut(game, p, vpipCut)) {
+      return const GameAction.call();
+    }
     return const GameAction.fold();
+  }
+
+  /// The strength needed to cold-call, tightened from the opening cut by how
+  /// many players are already in and by whether hero will be out of position.
+  ///
+  /// Keeps pots heads-up far more often, which is both more realistic and what
+  /// stops marginal hands building multiway pots they can't win.
+  double _coldCallCut(PokerGame game, Player p, double vpipCut) {
+    final alreadyIn = game.players
+        .where((x) => !identical(x, p) && !x.hasFolded && x.currentBet > 0)
+        .length;
+    // Each player already committed narrows what is worth calling with.
+    var cut = vpipCut + 0.05 + 0.05 * (alreadyIn - 1).clamp(0, 4);
+
+    // Out of position for the whole hand is worth roughly another half-step.
+    final n = game.players.length;
+    if (n > 1) {
+      final heroIdx = game.players.indexOf(p);
+      final sbIndex = (game.buttonIndex + 1) % n;
+      final rank = ((heroIdx - sbIndex + n) % n) / (n - 1);
+      if (rank < 0.5) cut += 0.03;
+    }
+    return cut.clamp(0.0, 1.0);
   }
 
   /// The read on the opponent who has put the most chips in this round (the

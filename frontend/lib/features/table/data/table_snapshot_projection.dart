@@ -1,3 +1,5 @@
+import 'package:monte/core/domain/ai/player_kind.dart';
+import 'package:monte/core/domain/ai/player_profile.dart';
 import 'package:monte/core/domain/engine/game.dart';
 import 'package:monte/core/domain/engine/hand_evaluator.dart';
 import 'package:monte/features/table/domain/table_snapshot.dart';
@@ -9,12 +11,15 @@ import 'package:monte/features/table/domain/table_snapshot.dart';
 /// - [revealAll]: show every hole (all-bots / spectator); otherwise only the
 ///   human, and everyone still in at showdown.
 /// - [behaviorLabels]: per-seat brain/style badge (id -> label), or empty.
+/// - [seatProfiles]: per-seat personality (id -> profile), used to colour the
+///   seat pro vs recreational. Seats absent from the map render untinted.
 /// - [flagBusted]: when true, list any 0-stack seats once the hand is over (the
 ///   human-vs-bots reload/eliminate prompt); all-bots/eval never busts.
 TableSnapshot projectTableSnapshot(
   PokerGame game, {
   bool revealAll = false,
   Map<String, String?> behaviorLabels = const {},
+  Map<String, PlayerProfile> seatProfiles = const {},
   bool flagBusted = false,
   String? frontPlayerId,
 }) {
@@ -53,6 +58,8 @@ TableSnapshot projectTableSnapshot(
         wonAmount: wonByPlayer[p] ?? 0,
         wonIsChop: chopByPlayer[p] ?? false,
         behavior: behaviorLabels[p.id],
+        kind: PlayerKind.of(seatProfiles[p.id], isHuman: p.isHuman),
+        generated: seatProfiles[p.id]?.generated ?? false,
       ),
     );
   }
@@ -81,6 +88,7 @@ TableSnapshot projectTableSnapshot(
       bigBlind: game.bigBlind,
       currentBet: game.currentBet,
       raiseCount: game.raiseCountThisRound,
+      chipUnit: game.chipUnit,
     );
   }
 

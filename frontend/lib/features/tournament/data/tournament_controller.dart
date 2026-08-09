@@ -14,8 +14,8 @@ import 'package:monte/core/domain/engine/actions.dart';
 import 'package:monte/core/domain/engine/decision_policy.dart';
 import 'package:monte/core/domain/engine/deck.dart';
 import 'package:monte/core/domain/engine/game.dart';
-import 'package:monte/core/domain/engine/hand_evaluator.dart';
 import 'package:monte/core/domain/engine/player.dart';
+import 'package:monte/features/tournament/data/chronicle_recorder.dart';
 import 'package:monte/features/tournament/domain/tournament_chronicle.dart';
 import 'package:monte/features/table/data/table_snapshot_projection.dart';
 import 'package:monte/features/table/domain/table_snapshot.dart';
@@ -100,6 +100,14 @@ class TournamentController {
   final TournamentChronicle chronicle = TournamentChronicle();
   bool get _chronicling => humanId != null;
 
+  /// Turns finished engine hands into the chronicle's factual records.
+  late final ChronicleRecorder _recorder = ChronicleRecorder(
+    chronicle: chronicle,
+    enabled: _chronicling,
+    kindForSeat: _kindForSeat,
+    profileForSeat: (id) => _profileBySeat[id],
+  );
+
   /// The recap for the level that just ended, surfaced once on the next
   /// tournament snapshot (mirrors [lastColorUp]).
   LevelRecap? lastRecap;
@@ -113,157 +121,6 @@ class TournamentController {
   }
 
   /// Snapshots the current active field into the chronicle as a level's start.
-  void _beginChronicleLevel() {
-    if (!_chronicling) return;
-    final chips = <String, int>{};
-    final names = <String, String>{};
-    final kinds = <String, StandingKind>{};
-    final personalities = <String>{};
-    for (final p in state.activePlayers) {
-      chips[p.id] = p.chips;
-      names[p.id] = p.name;
-      kinds[p.id] = _kindForSeat(p.id);
-      final prof = _profileBySeat[p.id];
-      if (prof != null && !prof.generated) personalities.add(p.id);
-    }
-    chronicle.beginLevel(chips, names, kinds, personalities);
-  }
-
-  /// Builds a [HandDigest] from a completed [game] (pre-hand chips in [pre]) and
-  /// folds it into the chronicle. Uses the real hole cards + full runout, so an
-  /// off-table pot is reported by what was genuinely shown down.
-  void _chronicleHand(
-      PokerGame game, Map<String, int> pre, int tableId, Set<String> busted,
-      {bool humanTable = false, List<ActionRecord> actions = const []}) {
-    if (!_chronicling) return;
-    final contenders = game.players.where((p) => p.inHand).toList();
-    final showdown = <ShowdownEntry>[];
-    if (contenders.length >= 2 && game.board.length >= 5) {
-      // Best flop hand among the all-in contenders → the "ahead on the flop"
-      // marker that distinguishes a suck-out from a hand that was always best.
-      final flop = game.board.take(3).toList();
-      HandValue? bestFlop;
-      String? bestFlopId;
-      for (final p in contenders) {
-        if (!p.isAllIn) continue;
-        final v = HandEvaluator.evaluate([...p.hole, ...flop]);
-        if (bestFlop == null || v > bestFlop) {
-          bestFlop = v;
-          bestFlopId = p.id;
-        }
-      }
-      for (final p in contenders) {
-        final river = HandEvaluator.evaluate([...p.hole, ...game.board]);
-        showdown.add(ShowdownEntry(
-          id: p.id,
-          name: p.name,
-          kind: _kindForSeat(p.id),
-          wentAllIn: p.isAllIn,
-          net: p.stack - (pre[p.id] ?? p.stack),
-          rank: river.rank,
-          aheadOnFlop: p.id == bestFlopId,
-        ));
-      }
-    }
-    final winners = [
-      for (final r in game.results)
-        if (r.netWon > 0) r.player.id
-    ];
-    final pot = game.results.fold<int>(0, (a, r) => a + (r.netWon > 0 ? r.netWon : 0));
-    final replay = showdown.length >= 2
-        ? _buildReplay(game, actions, showdown, winners.toSet(), pot)
-        : null;
-    chronicle.record(
-      HandDigest(
-        levelIndex: state.levelIndex,
-        tableId: tableId,
-        pot: pot,
-        showdown: showdown,
-        winners: winners,
-        busted: busted.toList(),
-        humanTable: humanTable,
-        replay: replay,
-      ),
-      avgStack: state.averageStack,
-    );
-  }
-
-  /// Builds a full [HandReplay] (hole cards, board, per-street action) for a
-  /// showdown, for the recap's biggest-hand replay.
-  HandReplay _buildReplay(PokerGame game, List<ActionRecord> actions,
-      List<ShowdownEntry> showdown, Set<String> winners, int pot) {
-    final winner = showdown
-        .where((s) => winners.contains(s.id))
-        .reduce((a, b) => a.net >= b.net ? a : b);
-    final loser =
-        showdown.reduce((a, b) => a.net <= b.net ? a : b);
-    final seats = [
-      for (final p in game.players.where((p) => p.inHand))
-        ReplaySeat(
-          name: p.name,
-          cards: [for (final c in p.hole) c.code],
-          won: winners.contains(p.id),
-        ),
-    ];
-    final nameOf = {for (final p in game.players) p.id: p.name};
-    final streets = <ReplayStreet>[];
-    for (final round in const [
-      BettingRound.preflop,
-      BettingRound.flop,
-      BettingRound.turn,
-      BettingRound.river,
-    ]) {
-      final lines = [
-        for (final a in actions.where((a) => a.street == round))
-          '${nameOf[a.playerId] ?? a.playerId} ${_actionVerb(a)}',
-      ];
-      if (lines.isNotEmpty) streets.add(ReplayStreet(_streetName(round), lines));
-    }
-    return HandReplay(
-      pot: pot,
-      board: [for (final c in game.board) c.code],
-      seats: seats,
-      streets: streets,
-      winnerName: winner.name,
-      winnerHand: winner.rank?.label ?? 'the winner',
-      loserName: loser.name,
-      loserHand: loser.rank?.label ?? 'a losing hand',
-      winnerRank: winner.rank ?? HandRank.highCard,
-      loserRank: loser.rank ?? HandRank.highCard,
-      allIn: showdown.any((s) => s.wentAllIn),
-      suckout: !winner.aheadOnFlop &&
-          showdown.any((s) => !winners.contains(s.id) && s.wentAllIn && s.aheadOnFlop),
-      reachedRiver: game.board.length >= 5,
-    );
-  }
-
-  static String _streetName(BettingRound r) => switch (r) {
-        BettingRound.preflop => 'Preflop',
-        BettingRound.flop => 'Flop',
-        BettingRound.turn => 'Turn',
-        BettingRound.river => 'River',
-        _ => 'Showdown',
-      };
-
-  String _actionVerb(ActionRecord a) => switch (a.type) {
-        ActionType.fold => 'folds',
-        ActionType.check => 'checks',
-        ActionType.call => 'calls',
-        ActionType.bet => 'bets ${_chipsC(a.amount)}',
-        ActionType.raise => 'raises to ${_chipsC(a.amount)}',
-        ActionType.allIn => 'all-in ${_chipsC(a.amount)}',
-      };
-
-  static String _chipsC(int n) {
-    final s = n.abs().toString();
-    final b = StringBuffer();
-    for (var i = 0; i < s.length; i++) {
-      if (i > 0 && (s.length - i) % 3 == 0) b.write(',');
-      b.write(s[i]);
-    }
-    return b.toString();
-  }
-
   /// Per-table button seat (survives roster changes via modulo).
   final Map<int, int> _button = {};
   int _handCounter = 0;
@@ -534,8 +391,15 @@ class TournamentController {
       state.players[p.id]!.chips = p.stack;
       if (p.stack == 0 && state.players[p.id]!.isActive) busts[p.id] = pre[p.id]!;
     }
-    _chronicleHand(game, pre, table.id, busts.keys.toSet(),
-        actions: actions ?? const []);
+    _recorder.recordHand(
+      game,
+      pre: pre,
+      tableId: table.id,
+      busted: busts.keys.toSet(),
+      levelIndex: state.levelIndex,
+      averageStack: state.averageStack,
+      actions: actions ?? const [],
+    );
     // Drop the busted players from *this* table's seats directly — the busts all
     // happened here, so there's no need for the O(tables) scan that made huge
     // fields quadratic. The caller records the finish/payout with the global
@@ -577,7 +441,7 @@ class TournamentController {
     if (state.maybeAdvanceLevel()) {
       _maybeColorUp(before, state.currentLevel);
       _buildRecap(before.level, before.bigBlind);
-      _beginChronicleLevel(); // snapshot the new level's starting stacks
+      _recorder.beginLevel(state.activePlayers); // snapshot the new level's starting stacks
     }
   }
 
@@ -636,7 +500,7 @@ class TournamentController {
   /// turn); every other table simulates one hand between the human's hands.
   Future<void> startLive({Duration botDelay = const Duration(milliseconds: 300)}) {
     _botDelay = botDelay;
-    _beginChronicleLevel(); // snapshot level 1's starting stacks
+    _recorder.beginLevel(state.activePlayers); // snapshot level 1's starting stacks
     _publishTournament();
     return _beginHumanHand();
   }
@@ -790,8 +654,16 @@ class TournamentController {
         busts[p.id] = _preChipsLive[p.id] ?? 0;
       }
     }
-    _chronicleHand(game, _preChipsLive, humanTableId, busts.keys.toSet(),
-        humanTable: true, actions: liveActions);
+    _recorder.recordHand(
+      game,
+      pre: _preChipsLive,
+      tableId: humanTableId,
+      busted: busts.keys.toSet(),
+      levelIndex: state.levelIndex,
+      averageStack: state.averageStack,
+      humanTable: true,
+      actions: liveActions,
+    );
     // Drop busts from the human's table seats locally (avoids the O(tables) scan).
     if (busts.isNotEmpty) {
       final ht = state.tables
@@ -906,7 +778,14 @@ class TournamentController {
   void _publishTable() {
     if (_liveGame == null || _tableCtrl.isClosed) return;
     // Anchor the human at the bottom-centre seat wherever they've been reseated.
-    _tableCtrl.add(projectTableSnapshot(_liveGame!, frontPlayerId: humanId));
+    _tableCtrl.add(
+      projectTableSnapshot(
+        _liveGame!,
+        frontPlayerId: humanId,
+        // Colour each seat pro vs recreational, matching the standings panel.
+        seatProfiles: _profileBySeat,
+      ),
+    );
   }
 
   void _publishTournament() {

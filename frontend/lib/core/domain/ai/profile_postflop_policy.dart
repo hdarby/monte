@@ -10,6 +10,7 @@ import 'package:monte/core/domain/engine/bet_snap.dart';
 import 'package:monte/core/domain/engine/card.dart';
 import 'package:monte/core/domain/engine/hand_evaluator.dart';
 import 'package:monte/core/domain/engine/decision_policy.dart';
+import 'package:monte/core/domain/engine/board_texture.dart';
 import 'package:monte/core/domain/engine/game.dart';
 import 'package:monte/core/domain/engine/player.dart';
 
@@ -135,6 +136,10 @@ class ProfilePostflopPolicy implements DecisionPolicy {
     );
     final isDraw = eq >= 0.32 && eq <= 0.55;
 
+    // Board texture drives sizing (see [_sizeFraction]) — the single biggest
+    // reason a real player's bets vary rather than sitting on one number.
+    final texture = BoardTexture.maybeOf(game.board);
+
     // Leverage pressure: some pros hunt for spots to apply maximum pressure —
     // when the pot is heads-up, or when a bet can set an opponent all-in to
     // continue. It ramps aggression and bluffs and sizes up toward the
@@ -195,7 +200,18 @@ class ProfilePostflopPolicy implements DecisionPolicy {
       if ((wantsValue || wantsBluff) && p.stack > bb) {
         // Pressure (jam threat) and geometric overbets both size up; the overbet
         // only fires with a nut advantage on a later street.
-        final b = betBy((0.55 * sizeScale + 0.6 * pv + 0.9 * geoBoost).clamp(0.33, 2.0));
+        final b = betBy(
+          _sizeFraction(
+            texture: texture,
+            // A bluff or the near-nuts is polarised; middling value is merged.
+            polarised: !wantsValue || eq > 0.85,
+            thinValue: wantsValue && eq < 0.72,
+            opponents: liveOpp,
+            sizeScale: sizeScale,
+            pressure: pv,
+            geoBoost: geoBoost,
+          ),
+        );
         final risked = b.amount - p.currentBet;
         if (_deepCommitOk(p, risked, eq, deepFactor) &&
             _flushCommitOk(game, p, risked, eq)) {
@@ -216,7 +232,17 @@ class ProfilePostflopPolicy implements DecisionPolicy {
     final wantsBluffRaise = isDraw &&
         _random.nextDouble() < 0.05 + 0.30 * exploit + 0.30 * pv - 0.03 * deepFactor;
     if (canRaise && (wantsValueRaise || wantsBluffRaise)) {
-      final r = raiseBy((0.5 * sizeScale + 0.6 * pv + 0.9 * geoBoost).clamp(0.33, 2.0));
+      final r = raiseBy(
+        _sizeFraction(
+          texture: texture,
+          polarised: wantsBluffRaise || eq > 0.85,
+          thinValue: wantsValueRaise && eq < 0.80,
+          opponents: liveOpp,
+          sizeScale: sizeScale,
+          pressure: pv,
+          geoBoost: geoBoost,
+        ),
+      );
       final risked = r.amount - p.currentBet;
       if (_deepCommitOk(p, risked, eq, deepFactor) &&
           _flushCommitOk(game, p, risked, eq)) {
@@ -320,4 +346,59 @@ class ProfilePostflopPolicy implements DecisionPolicy {
     }
     return _reads.forSeat(opps.first.id);
   }
+
+  /// Picks a bet size as a fraction of the pot.
+  ///
+  /// Real players do not bet one size. The size is driven by *why* they are
+  /// betting and *what the board looks like*:
+  ///
+  /// - **Static / dry** boards: small. Nothing is getting outdrawn, so the goal
+  ///   is thin value and keeping worse hands in — a third to a half pot.
+  /// - **Dynamic / wet** boards: large. Equity denial is worth real money, so
+  ///   charge the draws — two-thirds to a full pot.
+  /// - **Polarised** holdings (the near-nuts, or a pure bluff) size up; **merged**
+  ///   thin-value hands size down, because they want calls from worse.
+  /// - **Multiway** sizes up: more players means more equity to deny and a
+  ///   greater chance somebody has a real hand.
+  ///
+  /// A little jitter keeps the sizing from being a readable tell. The profile's
+  /// [sizeScale] (its risk premium) still tilts the whole distribution, so an
+  /// aggressive personality genuinely bets bigger than a passive one.
+  double _sizeFraction({
+    required BoardTexture? texture,
+    required bool polarised,
+    required bool thinValue,
+    required int opponents,
+    required double sizeScale,
+    required double pressure,
+    required double geoBoost,
+  }) {
+    var f = 0.52;
+
+    if (texture != null) {
+      if (texture.isStatic) f -= 0.16;
+      if (texture.isDynamic) f += 0.16;
+      if (texture.isDry) f -= 0.08;
+      if (texture.isWet) f += 0.10;
+      // A made flush out there polarises the betting range hard.
+      if (texture.isMonochrome) f += 0.06;
+      // Paired boards are cheap to represent, so bets run smaller.
+      if (texture.isPaired) f -= 0.05;
+    }
+
+    if (polarised) f += 0.20;
+    if (thinValue) f -= 0.12;
+
+    // Each extra opponent beyond the first adds protection value.
+    f += 0.07 * (opponents - 1).clamp(0, 3);
+
+    f *= sizeScale;
+    f += 0.6 * pressure + 0.9 * geoBoost;
+
+    // ±0.06 of jitter so the size itself carries no information.
+    f += (_random.nextDouble() - 0.5) * 0.12;
+
+    return f.clamp(0.25, 2.0);
+  }
+
 }

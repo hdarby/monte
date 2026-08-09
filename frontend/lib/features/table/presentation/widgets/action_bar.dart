@@ -44,7 +44,12 @@ class _ActionBarState extends State<ActionBar> {
     final canRaise = ctx.canRaise;
     final min = ctx.minRaiseTo.toDouble();
     final max = ctx.maxRaiseTo.toDouble();
-    final raiseTo = canRaise ? (_raiseTo ?? min).clamp(min, max) : min;
+    // Every displayed amount is chip-aligned: at a 100/100 level you can bet
+    // 100, never 33. Snapping here (not just in the engine) means the number on
+    // screen is the number that gets wagered.
+    final raiseTo = canRaise
+        ? ctx.snapRaise(_raiseTo ?? min).toDouble()
+        : min;
     final isBet = ctx.currentBet == 0;
 
     return _bar(
@@ -114,8 +119,13 @@ class _ActionBarState extends State<ActionBar> {
                         value: raiseTo.toDouble(),
                         min: min,
                         max: max,
+                        // Discrete stops so dragging can only land on a legal,
+                        // chip-aligned amount.
+                        divisions: ctx.raiseSteps,
                         onChanged: max > min
-                            ? (v) => setState(() => _raiseTo = v)
+                            ? (v) => setState(
+                                () => _raiseTo = ctx.snapRaise(v).toDouble(),
+                              )
                             : null,
                       ),
                     ),
@@ -226,11 +236,7 @@ class _ActionBarState extends State<ActionBar> {
   }
 
   void _setRaiseTo(ActionContext ctx, double target) {
-    final clamped = target.clamp(
-      ctx.minRaiseTo.toDouble(),
-      ctx.maxRaiseTo.toDouble(),
-    );
-    setState(() => _raiseTo = clamped);
+    setState(() => _raiseTo = ctx.snapRaise(target).toDouble());
   }
 
   void _send(GameAction action) {

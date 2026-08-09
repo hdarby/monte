@@ -188,13 +188,20 @@ class TournamentStructure {
       );
 
   /// The real WSOP Main Event structure: a 60k starting stack and a long, slow
-  /// blind ladder (2-hour levels; ~25 hands in hands mode), antes from level 5.
-  /// Designed for the big-field 8,000-runner event.
+  /// blind ladder, designed for the big-field 8,000-runner event.
+  ///
+  /// Opens at 100/200 (as the event actually does — there is no 100/100 level),
+  /// with antes from level 4.
+  ///
+  /// Levels are 2 hours, which is **50 hands** in hands mode: live poker runs
+  /// ~25 hands an hour. This matters more than it looks — it sets how many hands
+  /// a Day 1 actually contains (5 levels x 50 = ~250), and therefore how much
+  /// play there is before the blinds start to bite.
   factory TournamentStructure.wsopMainEvent({
     LevelClockMode clockMode = LevelClockMode.hands,
   }) {
     const rungs = <List<int>>[
-      [100, 100, 0], [100, 200, 0], [200, 300, 0], [200, 400, 0],
+      [100, 200, 0], [200, 300, 0], [200, 400, 0],
       [300, 500, 500], [300, 600, 600], [400, 800, 800], [500, 1000, 1000],
       [600, 1200, 1200], [800, 1600, 1600], [1000, 2000, 2000],
       [1500, 2500, 2500], [1500, 3000, 3000], [2000, 4000, 4000],
@@ -215,7 +222,7 @@ class TournamentStructure {
             bigBlind: rungs[i][1],
             ante: rungs[i][2],
             durationMinutes: 120,
-            durationHands: 25,
+            durationHands: 50,
           ),
       ],
       clockMode: clockMode,

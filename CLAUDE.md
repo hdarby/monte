@@ -75,6 +75,10 @@ clean path to the client/server + MTT future.
 
 ## Repo layout
 
+> **See [ARCHITECTURE.md](ARCHITECTURE.md) for the full file-by-file map** —
+> what lives where, why, and a "I want to change X → go to Y" index. The tree
+> below is the summary.
+
 ```
 monte/
 ├── frontend/   Flutter app (active)
@@ -85,26 +89,33 @@ monte/
 │       │   │                        DecisionPolicy seam, HandStrength, heuristic bot)
 │       │   ├── domain/ai/           bot intelligence: ISMCTS engine, determinizer, action
 │       │   │                        abstraction, PersonalityProfile/policy, buildDecider factory
-│       │   ├── domain/hand_history.dart   shared hand-history entity
-│       │   ├── presentation/        MoneyScope ($ vs BB), suit colour + shared widgets
+│       │   ├── domain/hand_history.dart   shared hand-history entity (bot-facing, masked)
+│       │   ├── presentation/        MoneyScope ($ vs BB), suit colour + widgets/
+│       │   ├── util/format.dart     pure formatting primitives (chips, ordinals, names)
 │       │   └── theme/
 │       └── features/
-│           ├── table/{domain,data,presentation}      game + table UI (GameRepository, TableViewModel)
+│           ├── table/{domain,data,presentation}      game + table UI (GameRepository,
+│           │                                         TableConfig, TableViewModel)
+│           ├── tournament/{domain,data,presentation} MTTs: structures, ICM, seating,
+│           │                                         chronicle/ recaps, TournamentViewModel
 │           ├── settings/{domain,data,presentation}   persisted GameSettings (SettingsController)
 │           ├── analytics/{domain,presentation}       VPIP/PFR/AF (AnalyticsViewModel)
 │           ├── coach/{domain,presentation}           in-hand coach: HandCoach (SPR/equity,
 │           │                                          range beat/lose split, polarized reads,
 │           │                                          per-action EV + recommendation) + screen
+│           ├── history/presentation                  hand log screen + ViewModel
+│           ├── reads/data                            persistent per-opponent stats
 │           └── eval_history/{domain,data,presentation}  permanent full-info tuning
 │                                                     record (EvalHand, JSONL store, EvalMetrics)
 │                                                     + offline AutoTuner → persisted ProfileOverrides
 └── backend/    Ktor scaffold (Postgres/Exposed, WebSocket — TODO)
 ```
 
-> MVVM migration **complete**: settings, table, and analytics all run on Riverpod
-> Notifiers; Views are `Consumer`s that talk only to ViewModels. Domain and data
-> are framework-free; the table repository exposes a `Stream<TableSnapshot>`. The
-> remote/WebSocket swap is a one-line change in `core/di/game_providers.dart`.
+> MVVM migration **complete**: settings, table, analytics and tournament all run
+> on Riverpod Notifiers; Views are `Consumer`s that talk only to ViewModels.
+> Domain and data are framework-free; the table repository exposes a
+> `Stream<TableSnapshot>`. The remote/WebSocket swap is a one-line change in
+> `core/di/game_providers.dart`.
 
 ## Bot intelligence (Monte Carlo)
 

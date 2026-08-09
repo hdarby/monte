@@ -1,3 +1,4 @@
+import 'package:monte/core/domain/ai/player_kind.dart';
 import 'chip_set.dart';
 import 'tournament_chronicle.dart';
 import 'tournament_state.dart';
@@ -36,11 +37,12 @@ class ColorUpDisplay {
   final List<ColorUpRow> rows;
 }
 
+/// The tournament standings' name for [PlayerKind]. Kept as an alias so the
+/// standings and the table seats classify players with one shared enum.
+typedef StandingKind = PlayerKind;
+
 /// One line of the live standings list: every player ordered by place —
 /// still-active players first (ranked by chips), then busted players by finish.
-/// Which brain a standings entry is playing, for at-a-glance colour-coding.
-enum StandingKind { human, pro, amateur }
-
 class StandingRow {
   const StandingRow({
     required this.place,
@@ -175,6 +177,21 @@ class TournamentSnapshot {
   final List<FinishRow>? finalResults;
 
   bool get finished => status == TournamentStatus.finished;
+
+  /// The human's stack measured in big blinds — the number that actually drives
+  /// tournament decisions. 0 when the level has no big blind yet.
+  double get yourStackBb => bigBlind == 0 ? 0 : yourChips / bigBlind;
+
+  /// The field's average stack in big blinds.
+  double get averageStackBb => bigBlind == 0 ? 0 : averageStack / bigBlind;
+
+  /// The human's stack as a percentage of the average (100 = exactly average).
+  int get yourStackVsAveragePercent =>
+      averageStack == 0 ? 0 : (yourChips / averageStack * 100).round();
+
+  /// How many players must still bust before the money. 0 once in the money.
+  int get playersToTheMoney =>
+      inMoney ? 0 : (playersLeft - paidPlaces).clamp(0, playersLeft);
 
   /// Projects the current [state] for the human identified by [humanId].
   factory TournamentSnapshot.of(

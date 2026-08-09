@@ -1,3 +1,4 @@
+import 'package:monte/core/domain/ai/player_kind.dart';
 import 'package:monte/core/domain/engine/card.dart';
 import 'package:monte/core/domain/engine/game.dart';
 
@@ -29,6 +30,8 @@ class SeatView {
     this.wonAmount = 0,
     this.wonIsChop = false,
     this.behavior,
+    this.kind,
+    this.generated = false,
   });
 
   final String id;
@@ -76,6 +79,16 @@ class SeatView {
   /// The bot's behavior model label (brain + style), e.g. "Maniac · MCTS".
   /// Null for the human seat. Shown on the seat only when the player enables it.
   final String? behavior;
+
+  /// Whether this seat is the human, a pro-calibre personality, or a
+  /// recreational one — drives the seat's colour coding. Null when the seat's
+  /// class isn't known (an untracked bot), which renders untinted.
+  final PlayerKind? kind;
+
+  /// True for an anonymous auto-filled tournament seat rather than an
+  /// explicitly-chosen personality. Filler gets a softer tint so the players
+  /// you actually picked stand out.
+  final bool generated;
 }
 
 /// What the human can legally do right now. Null unless it's their turn.
@@ -88,6 +101,7 @@ class ActionContext {
     required this.bigBlind,
     required this.currentBet,
     this.raiseCount = 0,
+    this.chipUnit = 1,
   });
 
   final int callAmount;
@@ -100,6 +114,39 @@ class ActionContext {
   /// Voluntary bets/raises so far this street: 0 unraised, 1 open, 2 3-bet,
   /// 3+ 4-bet. Lets the coach infer how tight the opponents' range should be.
   final int raiseCount;
+
+  /// The smallest physical chip in play. Every wager must be a whole number of
+  /// these, so the slider and the pot-fraction presets snap to it — at a
+  /// 100/100 level a "third pot" bet is 100, not 33.
+  final int chipUnit;
+
+  /// Snaps a raise target to a legal, chip-aligned amount.
+  ///
+  /// Rounds to the nearest whole chip and clamps into
+  /// `[minRaiseTo, maxRaiseTo]`. Going all-in stays exact even when the stack
+  /// isn't a clean multiple, matching the engine's own rule — otherwise the UI
+  /// would refuse to let a player shove an odd stack.
+  int snapRaise(num target) {
+    final max = maxRaiseTo;
+    if (target >= max) return max;
+    final unit = chipUnit <= 1 ? 1 : chipUnit;
+    final snapped = (target / unit).round() * unit;
+    // Round *up* to the minimum: a rounded-down value would be an illegal raise.
+    if (snapped < minRaiseTo) {
+      final up = (minRaiseTo / unit).ceil() * unit;
+      return up.clamp(minRaiseTo, max);
+    }
+    return snapped.clamp(minRaiseTo, max);
+  }
+
+  /// The number of distinct chip-aligned raise amounts available — the slider's
+  /// division count, so dragging lands on legal values only.
+  int get raiseSteps {
+    final unit = chipUnit <= 1 ? 1 : chipUnit;
+    final span = maxRaiseTo - minRaiseTo;
+    if (span <= 0) return 1;
+    return (span / unit).ceil().clamp(1, 1 << 20);
+  }
 
   bool get canRaise => maxRaiseTo > currentBet && maxRaiseTo > callAmount;
 }

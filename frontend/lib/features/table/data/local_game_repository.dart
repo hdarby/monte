@@ -8,10 +8,8 @@ import 'package:monte/core/domain/ai/opponent_reads.dart';
 import 'package:monte/core/domain/ai/player_read.dart';
 import 'package:monte/core/domain/ai/player_stats.dart';
 import 'package:monte/core/domain/ai/personality.dart';
-import 'package:monte/core/domain/ai/player_profile.dart';
 import 'package:monte/core/domain/ai/profile_decider.dart';
 import 'package:monte/core/domain/engine/actions.dart';
-import 'package:monte/core/domain/engine/deck.dart';
 import 'package:monte/core/domain/engine/decision_policy.dart';
 import 'package:monte/core/domain/engine/game.dart';
 import 'package:monte/core/domain/engine/hand_evaluator.dart';
@@ -21,114 +19,13 @@ import 'package:monte/features/reads/data/player_stats_store.dart';
 import 'package:monte/features/eval_history/domain/eval_hand.dart';
 import 'package:monte/features/table/domain/game_repository.dart';
 import 'package:monte/features/table/data/table_snapshot_projection.dart';
+import 'package:monte/features/table/domain/table_config.dart';
 import 'package:monte/features/table/domain/table_snapshot.dart';
 
-/// Static table configuration for a client-only game.
-class TableConfig {
-  const TableConfig({
-    this.humanName = 'You',
-    this.playerCount = 4,
-    this.startingStack = 1000,
-    this.smallBlind = 5,
-    this.bigBlind = 10,
-    this.allBots = false,
-    this.botThinkTime = const Duration(milliseconds: 700),
-    this.botType = BotType.heuristic,
-    this.personality = const PersonalityProfile.balanced(),
-    this.defaultStyle = PersonalityArchetype.balanced,
-    this.seatBots = const [],
-    this.rotateButton = true,
-    this.mctsIterations = 250,
-    this.deckBuilder,
-    this.deciderBuilder,
-    this.onHandRecorded,
-    this.onEvalHandRecorded,
-    this.overrideProfile,
-  });
-
-  /// Total seats including the human. 2 = heads-up, up to 10 for a full table.
-  final int playerCount;
-
-  /// When true, every seat is a bot (evaluation mode, no human).
-  final bool allBots;
-
-  final String humanName;
-  final int startingStack;
-  final int smallBlind;
-  final int bigBlind;
-
-  /// Target time each bot decision should take (the pace-of-play budget). It's
-  /// not idle waiting: an MCTS seat spends it searching *deeper* (see
-  /// [_runBots] / [IsmctsEngine.decideTimed]); other brains decide instantly and
-  /// then pad to this target so pacing feels uniform. [Duration.zero] = no
-  /// artificial delay and no deepening (pure engine speed).
-  final Duration botThinkTime;
-
-  /// The default brain the bots use, and the personality shaping it. Used for
-  /// any bot seat not covered by [seatBots].
-  final BotType botType;
-  final PersonalityProfile personality;
-
-  /// The archetype matching [personality], used to label fallback bot seats
-  /// (those not covered by [seatBots]) accurately on their behavior badge.
-  final PersonalityArchetype defaultStyle;
-
-  /// Optional per-bot-seat behavior models (brain + style), in seat order
-  /// (excluding the human). Bot seats past the end of this list fall back to
-  /// [botType] + [personality]. Empty means every bot uses the defaults.
-  final List<BotSpec> seatBots;
-
-  /// Whether the dealer button rotates each hand (normal play) or stays pinned
-  /// to one seat — handy in evaluation to isolate positional effects.
-  final bool rotateButton;
-
-  /// Search budget per decision for [BotType.mcts].
-  final int mctsIterations;
-
-  /// Optional deck source — supply a seeded or [Deck.stacked] deck for
-  /// reproducible games and tests. Defaults to a fresh shuffled deck.
-  final Deck Function()? deckBuilder;
-
-  /// Optional per-seat decider override (seat index = bot index, human
-  /// excluded). Returns null to fall back to the configured brain. Used by
-  /// evaluation to drop in arbitrary policies (e.g. a calibrated profile).
-  final DecisionPolicy? Function(int seatIndex)? deciderBuilder;
-
-  /// Called for each finished hand of *interactive* play (not batch
-  /// [simulate]), e.g. to log a transcript for diagnosis.
-  final void Function(HandHistory hand)? onHandRecorded;
-
-  /// Called for **every** finished hand (interactive *and* batch [simulate])
-  /// with the full-information tuning record — all hole cards, positions, and
-  /// the model each seat played. Feeds the permanent tuning history; must never
-  /// be routed to a bot / opponent model (that would leak folded cards).
-  final void Function(EvalHand hand)? onEvalHandRecorded;
-
-  /// Maps a seat's named [PlayerProfile] to the *effective* profile to play —
-  /// used to swap in the offline auto-tuner's tuned preflop baseline. Identity
-  /// when null. Applied to profile seats only, before the decider is built.
-  final PlayerProfile Function(PlayerProfile profile)? overrideProfile;
-
-  /// Smallest and largest supported table sizes.
-  static const int minPlayers = 2;
-  static const int maxPlayers = 10;
-
-  /// Names assigned to bots, in seat order (enough for a full table).
-  static const List<String> botNamePool = [
-    'Ada',
-    'Boris',
-    'Chen',
-    'Dora',
-    'Eli',
-    'Farah',
-    'Gus',
-    'Hana',
-    'Ivan',
-    'Jo',
-  ];
-
-  int get botCount => allBots ? playerCount : playerCount - 1;
-}
+/// Re-exported so the many existing `import '.../local_game_repository.dart'`
+/// call sites (tests included) keep resolving [TableConfig] after it moved to
+/// the domain layer where it belongs.
+export 'package:monte/features/table/domain/table_config.dart';
 
 /// Client-only implementation: the entire game runs on-device. Bots act
 /// automatically with a short delay so the table feels alive. In all-bots mode
@@ -744,6 +641,11 @@ class LocalGameRepository extends GameRepository {
         revealAll: config.allBots,
         behaviorLabels: {
           for (final e in _specByPlayer.entries) e.key: e.value.label,
+        },
+        // Colour each seat pro vs recreational, matching the tournament table.
+        seatProfiles: {
+          for (final e in _specByPlayer.entries)
+            if (e.value.profile != null) e.key: e.value.profile!,
         },
         // Flag busted seats only in human-vs-bots play (all-bots tops up).
         flagBusted: !config.allBots,

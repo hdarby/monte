@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:monte/core/domain/engine/game.dart' show BettingRound;
 import 'package:monte/core/domain/engine/hand_evaluator.dart';
 import 'package:monte/features/tournament/domain/tournament_chronicle.dart';
 import 'package:monte/features/tournament/domain/tournament_snapshot.dart'
@@ -185,18 +186,46 @@ void main() {
     expect(pot.suckout, isTrue);
   });
 
-  test('the biggest showdown is kept and replayed with commentary', () {
+  test('the biggest showdown of the level is the one kept for the recap', () {
     final c = fresh();
     HandReplay replay(int pot) => HandReplay(
           pot: pot,
+          bigBlind: 100,
           board: const ['Ah', 'Kh', '7h', '2d', '3c'],
           seats: const [
-            ReplaySeat(name: 'Al Pro', cards: ['Qh', 'Jh'], won: true),
-            ReplaySeat(name: 'Bo Reg', cards: ['Ad', 'Ac'], won: false),
+            ReplaySeat(
+              playerId: 'a',
+              name: 'Al Pro',
+              cards: ['Qh', 'Jh'],
+              position: TablePosition.button,
+              startingStack: 5000,
+              won: true,
+              net: 5000,
+              styleLabel: 'lag',
+              foldedOn: null,
+              finalRank: HandRank.flush,
+            ),
+            ReplaySeat(
+              playerId: 'b',
+              name: 'Bo Reg',
+              cards: ['Ad', 'Ac'],
+              position: TablePosition.bigBlind,
+              startingStack: 5000,
+              won: false,
+              net: -5000,
+              styleLabel: 'nit',
+              foldedOn: null,
+              finalRank: HandRank.threeOfAKind,
+            ),
           ],
           streets: const [
-            ReplayStreet('Preflop', ['Al Pro raises to 300', 'Bo Reg calls']),
-            ReplayStreet('Flop', ['Bo Reg checks', 'Al Pro all-in 5,000']),
+            ReplayStreet(
+              name: 'Preflop',
+              round: BettingRound.preflop,
+              boardAfter: [],
+              actions: [],
+              potAfter: 600,
+            ),
           ],
           winnerName: 'Al Pro',
           winnerHand: 'Flush',
@@ -237,8 +266,9 @@ void main() {
         level: 1, playersLeft: 3, currentChips: {'a': 500, 'gen': 100, 'you': 100});
     expect(recap.featureHand, isNotNull);
     expect(recap.featureHand!.pot, 5000); // the bigger pot won
-    expect(recap.featureHand!.commentary, isNotEmpty);
-    expect(recap.featureHand!.commentary.join(' '), contains('Bart'));
+    // The chronicle carries the replay through untouched — commentary is added
+    // upstream by ReplayBuilder/HandNarrator, which can see the hole cards.
+    expect(recap.featureHand!.seats, hasLength(2));
   });
 
   test('your story reports your swing and best pot of the level', () {
@@ -259,5 +289,117 @@ void main() {
         level: 1, playersLeft: 3, currentChips: {'b': 100, 'gen': 100, 'you': 220});
     expect(recap.yourStory, contains('up 120'));
     expect(recap.yourStory, contains('set'));
+  });
+
+  group('the human is a character in their own tournament', () {
+    test('a human wrecking-ball level gets a storyline, in second person', () {
+      final c = fresh();
+      // Three knockouts for the human across three hands.
+      for (var i = 0; i < 3; i++) {
+        c.record(
+          _hand(
+            pot: 300,
+            winners: const ['you'],
+            showdown: [
+              _e('you', 'You', 300, kind: StandingKind.human),
+              _e('a', 'Al Pro', -300),
+            ],
+            busted: const ['a'],
+          ),
+          avgStack: 100,
+        );
+      }
+      final recap = recapOf(c,
+          level: 1, playersLeft: 3, currentChips: {'you': 900, 'b': 100, 'gen': 100});
+      final text = recap.notables.join(' ');
+      expect(text, contains('You are a wrecking ball'));
+      expect(text, isNot(contains('You is')));
+    });
+
+    test('the human running deep is listed among the risers', () {
+      final c = fresh();
+      final recap = recapOf(c,
+          level: 1, playersLeft: 3, currentChips: {'you': 900, 'a': 100, 'gen': 100});
+      final text = recap.risers.join(' ');
+      expect(text, isNotEmpty);
+      // Human is chip leader, so they lead the section in second person.
+      expect(text, contains('You are'));
+      expect(text, isNot(contains('You is')));
+    });
+
+    test('a short-stacked human appears among the fallers as "you"', () {
+      final c = fresh();
+      final recap = recapOf(c,
+          level: 1,
+          playersLeft: 3,
+          currentChips: {'you': 10, 'a': 400, 'gen': 400});
+      expect(recap.fallers.join(' '), contains('you'));
+    });
+
+    test('the human can be the bounty leader', () {
+      final c = fresh();
+      for (final victim in ['a', 'b']) {
+        c.record(
+          _hand(
+            pot: 300,
+            winners: const ['you'],
+            showdown: [
+              _e('you', 'You', 300, kind: StandingKind.human),
+              _e(victim, 'Victim', -300),
+            ],
+            busted: [victim],
+          ),
+          avgStack: 100,
+        );
+      }
+      final recap = recapOf(c,
+          level: 1, playersLeft: 2, currentChips: {'you': 700, 'gen': 100});
+      expect(recap.bountyLine, isNotNull);
+      expect(recap.bountyLine, contains('You have sent'));
+    });
+
+    test('a human comeback is reported in second person', () {
+      final c = TournamentChronicle();
+      // The human starts the level on fumes.
+      c.beginLevel(
+          {'a': 100, 'b': 100, 'gen': 100, 'you': 2}, names, kinds, personalities);
+      final recap = recapOf(c,
+          level: 1,
+          playersLeft: 4,
+          currentChips: {'you': 400, 'a': 100, 'b': 100, 'gen': 100});
+      final text = recap.notables.join(' ');
+      expect(text, contains('You were left for dead'));
+      expect(text, contains('you have clawed'.replaceFirst('you ', '')));
+      expect(text, isNot(contains('You was')));
+    });
+
+    test('the human cashing is reported alongside the other eliminations', () {
+      final c = fresh();
+      final recap = recapOf(c,
+          level: 1,
+          playersLeft: 2,
+          currentChips: {'a': 200, 'b': 200},
+          finishPlaces: {'you': 3},
+          prizes: {'you': 500});
+      expect(recap.eliminations.join(' '), contains('You banked'));
+    });
+
+    test('no third-person verb ever leaks into a second-person line', () {
+      final c = fresh();
+      final recap = recapOf(c,
+          level: 1, playersLeft: 3, currentChips: {'you': 900, 'a': 50, 'gen': 50});
+      final all = [
+        recap.intro,
+        ...recap.notables,
+        ...recap.risers,
+        ...recap.fallers,
+        ...recap.eliminations,
+        recap.bountyLine ?? '',
+        recap.yourStory ?? '',
+      ].join(' ');
+      for (final bad in ['You is', 'You has', 'You was', 'You keeps']) {
+        expect(all, isNot(contains(bad)), reason: 'ungrammatical: "$bad"');
+      }
+    });
   });
 }

@@ -29,6 +29,14 @@ void main() {
     await tester.tap(find.widgetWithText(OutlinedButton, 'Cancel'));
     await tester.pumpAndSettle(const Duration(seconds: 1));
 
+    // Boot then asks for a player name behind a modal barrier. Until it is
+    // dismissed nothing on the table is tappable, so accept the default.
+    final namePrompt = find.text('What should we call you?');
+    if (namePrompt.evaluate().isNotEmpty) {
+      await tester.tap(find.widgetWithText(TextButton, 'Play'));
+      await tester.pumpAndSettle(const Duration(seconds: 1));
+    }
+
     // Off by default: no badge on the table.
     expect(find.textContaining('· Personality'), findsNothing);
 
