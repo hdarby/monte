@@ -102,11 +102,29 @@ void main() {
   });
 
   group('chip colours', () {
-    test('known denominations use the casino convention', () {
-      expect(chipColorFor(25).body, const Color(0xFF2E7D32)); // green 25
-      expect(chipColorFor(100).body, const Color(0xFF212121)); // black 100
-      expect(chipColorFor(500).body, const Color(0xFF7B1FA2)); // purple 500
-      expect(chipColorFor(1000).body, const Color(0xFFFDD835)); // yellow 1k
+    test('low denominations are the classic solids', () {
+      expect(chipColorFor(1).body, const Color(0xFFF5F5F5)); // white
+      expect(chipColorFor(5).body, const Color(0xFFD32F2F)); // red
+      expect(chipColorFor(25).body, const Color(0xFF2E7D32)); // green
+      // No edge spots at the bottom of the ladder.
+      for (final d in [1, 5, 25]) {
+        expect(chipColorFor(d).spot, isNull);
+      }
+    });
+
+    test('high denominations carry edge spots', () {
+      for (final d in [100, 500, 1000, 5000, 25000, 100000, 250000, 500000]) {
+        expect(chipColorFor(d).spot, isNotNull, reason: '$d has no spot');
+      }
+      expect(chipColorFor(100).spot, const Color(0xFF1565C0)); // blue on black
+      expect(chipColorFor(500).spot, const Color(0xFFF57C00)); // orange on purple
+      expect(chipColorFor(1000).spot, const Color(0xFF757575)); // gray on yellow
+    });
+
+    test('black 100 and black 500k are told apart by their spots', () {
+      // The bodies genuinely match, which is why spots are not decoration.
+      expect(chipColorFor(500000).body, chipColorFor(100).body);
+      expect(chipColorFor(500000).spot, isNot(chipColorFor(100).spot));
     });
 
     test('an unknown denomination falls back to the next one down', () {
@@ -114,9 +132,20 @@ void main() {
       expect(chipColorFor(300).body, chipColorFor(100).body);
     });
 
-    test('every denomination in play has a distinct colour', () {
-      final colors = {for (final d in wsop) chipColorFor(d).body};
-      expect(colors.length, wsop.length);
+    test('every denomination in play is visually distinct', () {
+      // Body alone is not enough (two blacks), so identity is body + spot.
+      final seen = {
+        for (final d in wsop)
+          '${chipColorFor(d).body}/${chipColorFor(d).spot}',
+      };
+      expect(seen.length, wsop.length);
+    });
+
+    test('the rim is a darkened version of the body', () {
+      for (final d in wsop) {
+        final c = chipColorFor(d);
+        expect(c.edge.computeLuminance(), lessThan(c.body.computeLuminance() + 0.01));
+      }
     });
   });
 }

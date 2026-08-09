@@ -2,33 +2,50 @@ import 'package:flutter/material.dart';
 
 import 'package:monte/core/domain/engine/chip_breakdown.dart';
 
-/// Casino chip colours by denomination, following standard US/WSOP convention.
+/// Casino chip colours by denomination: body plus edge spots.
 ///
-/// Values not in the table fall back to the next one down, so an unusual
-/// denomination still gets a sensible, stable colour rather than grey.
-const _chipColors = <int, ({Color body, Color edge})>{
-  1: (body: Color(0xFFF5F5F5), edge: Color(0xFF9E9E9E)), // white
-  5: (body: Color(0xFFE53935), edge: Color(0xFF8E1B18)), // red
-  25: (body: Color(0xFF2E7D32), edge: Color(0xFF134716)), // green
-  100: (body: Color(0xFF212121), edge: Color(0xFF000000)), // black
-  500: (body: Color(0xFF7B1FA2), edge: Color(0xFF3E0F52)), // purple
-  1000: (body: Color(0xFFFDD835), edge: Color(0xFF9A8100)), // yellow
-  5000: (body: Color(0xFFEF6C00), edge: Color(0xFF7A3600)), // orange
-  25000: (body: Color(0xFF00ACC1), edge: Color(0xFF00565F)), // light blue
-  100000: (body: Color(0xFFD81B60), edge: Color(0xFF6D0D30)), // magenta
-  500000: (body: Color(0xFF6D4C41), edge: Color(0xFF33231C)), // brown
-  1000000: (body: Color(0xFF1565C0), edge: Color(0xFF0A3260)), // blue
-  5000000: (body: Color(0xFFC0CA33), edge: Color(0xFF5F651A)), // lime
+/// Edge spots are what actually distinguishes chips in play — 100 and 500,000
+/// are both black, and it is the blue vs red spots that tell them apart. Seen
+/// side-on they read as vertical stripes across the chip's rim, which is exactly
+/// how you identify a stack across a real table.
+///
+/// A null [spot] means a solid chip, which is normal at the low denominations.
+const _chipColors = <int, ({Color body, Color? spot})>{
+  1: (body: Color(0xFFF5F5F5), spot: null), // white
+  5: (body: Color(0xFFD32F2F), spot: null), // red
+  25: (body: Color(0xFF2E7D32), spot: null), // green
+  100: (body: Color(0xFF1A1A1A), spot: Color(0xFF1565C0)), // black / blue
+  500: (body: Color(0xFF6A1B9A), spot: Color(0xFFF57C00)), // purple / orange
+  1000: (body: Color(0xFFFDD835), spot: Color(0xFF757575)), // yellow / gray
+  5000: (body: Color(0xFFF4511E), spot: Color(0xFFFFFFFF)), // blaze / white
+  25000: (body: Color(0xFF1B5E20), spot: Color(0xFF8B0000)), // forest / dk red
+  100000: (body: Color(0xFF1565C0), spot: Color(0xFFFDD835)), // blue / yellow
+  250000: (body: Color(0xFFD7CCA3), spot: Color(0xFF8C6A3F)), // beige / bronze
+  500000: (body: Color(0xFF1A1A1A), spot: Color(0xFFD32F2F)), // black / red
+  1000000: (body: Color(0xFFEF6C00), spot: Color(0xFFFDD835)), // orange / yellow
+  5000000: (body: Color(0xFF9E9E9E), spot: Color(0xFF6A1B9A)), // gray / purple
 };
 
-({Color body, Color edge}) chipColorFor(int denomination) {
-  if (_chipColors.containsKey(denomination)) return _chipColors[denomination]!;
-  final keys = _chipColors.keys.toList()..sort();
-  var pick = keys.first;
-  for (final k in keys) {
-    if (k <= denomination) pick = k;
+/// The body and spot colours for a denomination, plus a derived rim shade.
+///
+/// An unlisted denomination falls back to the next one down, so an unusual chip
+/// set still gets a stable, sensible colour rather than grey.
+({Color body, Color? spot, Color edge}) chipColorFor(int denomination) {
+  var pick = _chipColors[denomination];
+  if (pick == null) {
+    final keys = _chipColors.keys.toList()..sort();
+    var best = keys.first;
+    for (final k in keys) {
+      if (k <= denomination) best = k;
+    }
+    pick = _chipColors[best]!;
   }
-  return _chipColors[pick]!;
+  return (
+    body: pick.body,
+    spot: pick.spot,
+    // The rim is the body in shadow — what gives the slab its cylinder edge.
+    edge: Color.lerp(pick.body, Colors.black, 0.55)!,
+  );
 }
 
 /// A player's chips, drawn side-on: one column per denomination, its height the
@@ -167,6 +184,7 @@ class _Column extends StatelessWidget {
               height: chipHeight,
               body: colors.body,
               edge: colors.edge,
+              spot: colors.spot,
               // The top chip of a column catches the light.
               highlight: i == column.count - 1,
             ),
@@ -196,6 +214,7 @@ class _Chip extends StatelessWidget {
     required this.height,
     required this.body,
     required this.edge,
+    required this.spot,
     required this.highlight,
   });
 
@@ -203,27 +222,70 @@ class _Chip extends StatelessWidget {
   final double height;
   final Color body;
   final Color edge;
+
+  /// Edge-spot colour, or null for a solid chip.
+  final Color? spot;
+
   final bool highlight;
 
+  /// Edge spots, seen side-on, as vertical stripes across the rim. Built as a
+  /// horizontal gradient with hard stops so it stays crisp at ~3px tall.
+  static const _spotCount = 3;
+
+  LinearGradient? get _spots {
+    final c = spot;
+    if (c == null) return null;
+    final colors = <Color>[];
+    final stops = <double>[];
+    // Three stripes, each ~14% of the width, evenly spaced.
+    const band = 0.14;
+    for (var i = 0; i < _spotCount; i++) {
+      final centre = (i + 1) / (_spotCount + 1);
+      final from = (centre - band / 2).clamp(0.0, 1.0);
+      final to = (centre + band / 2).clamp(0.0, 1.0);
+      colors.addAll([Colors.transparent, c, c, Colors.transparent]);
+      stops.addAll([from - 0.001, from, to, to + 0.001]);
+    }
+    return LinearGradient(colors: colors, stops: stops);
+  }
+
   @override
-  Widget build(BuildContext context) => Container(
-    width: width,
-    height: height,
-    margin: const EdgeInsets.only(bottom: 0.6),
-    decoration: BoxDecoration(
-      // A vertical gradient reads as a cylinder edge rather than a flat bar.
-      gradient: LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [
-          Color.lerp(body, Colors.white, highlight ? 0.45 : 0.22)!,
-          body,
-          edge,
-        ],
-        stops: const [0.0, 0.55, 1.0],
+  Widget build(BuildContext context) {
+    final radius = BorderRadius.circular(height / 2 + 0.6);
+    final spots = _spots;
+
+    return Container(
+      width: width,
+      height: height,
+      margin: const EdgeInsets.only(bottom: 0.6),
+      decoration: BoxDecoration(
+        // A vertical gradient reads as a cylinder edge rather than a flat bar.
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Color.lerp(body, Colors.white, highlight ? 0.45 : 0.22)!,
+            body,
+            edge,
+          ],
+          stops: const [0.0, 0.55, 1.0],
+        ),
+        borderRadius: radius,
+        border: Border.all(color: edge.withValues(alpha: 0.9), width: 0.3),
       ),
-      borderRadius: BorderRadius.circular(height / 2 + 0.6),
-      border: Border.all(color: edge.withValues(alpha: 0.9), width: 0.3),
-    ),
-  );
+      // Edge spots sit over the body, inset so the rim still reads as a rim.
+      child: spots == null
+          ? null
+          : ClipRRect(
+              borderRadius: radius,
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: height * 0.18),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(gradient: spots),
+                  child: const SizedBox.expand(),
+                ),
+              ),
+            ),
+    );
+  }
 }
