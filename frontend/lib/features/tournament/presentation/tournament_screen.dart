@@ -89,7 +89,10 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
               const Text('Everyone had exact change — no chips changed hands.')
             else
               ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: 260, maxWidth: 320),
+                constraints: const BoxConstraints(
+                  maxHeight: 260,
+                  maxWidth: 320,
+                ),
                 child: SingleChildScrollView(
                   child: Column(
                     children: [
@@ -104,17 +107,19 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
                                   r.isHuman ? '${r.name} (you)' : r.name,
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
-                                      fontWeight: r.isHuman
-                                          ? FontWeight.bold
-                                          : FontWeight.normal),
+                                    fontWeight: r.isHuman
+                                        ? FontWeight.bold
+                                        : FontWeight.normal,
+                                  ),
                                 ),
                               ),
                               Text(
                                 '${r.delta > 0 ? '+' : ''}${_chips(r.delta)}',
                                 style: TextStyle(
-                                    color: r.delta > 0
-                                        ? Colors.green
-                                        : Colors.red),
+                                  color: r.delta > 0
+                                      ? Colors.green
+                                      : Colors.red,
+                                ),
                               ),
                             ],
                           ),
@@ -167,40 +172,42 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
     return MoneyScope(
       format: MoneyFormat(showBigBlinds: false, bigBlind: tour.bigBlind),
       child: Stack(
-      children: [
-        TableScreen(
-          snapshot: table,
-          isAllBots: false,
-          humanName: widget.humanName,
-          playerCount: playerCount,
-          sidePanel: _StandingsPanel(rows: _c.standings()),
-          readForSeat: _c.readForSeat,
-          onAction: _c.submitLiveAction,
-          onNewGame: _noop,
-          onNextHand: _noop, // hands auto-advance in a tournament
-          onOpenSettings: _noop,
-          onOpenAnalytics: _noop,
-          onOpenHistory: _noop,
-        ),
-        Positioned(
-          top: 0,
-          left: 0,
-          right: 0,
-          child: SafeArea(
-              child: _TournamentHud(
-                  tour: tour,
-                  standings: _c.standings,
-                  humanName: widget.humanName)),
-        ),
-        if (_sim != null && !tour.finished)
+        children: [
+          TableScreen(
+            snapshot: table,
+            isAllBots: false,
+            humanName: widget.humanName,
+            playerCount: playerCount,
+            sidePanel: _StandingsPanel(rows: _c.standings()),
+            readForSeat: _c.readForSeat,
+            onAction: _c.submitLiveAction,
+            onNewGame: _noop,
+            onNextHand: _noop, // hands auto-advance in a tournament
+            onOpenSettings: _noop,
+            onOpenAnalytics: _noop,
+            onOpenHistory: _noop,
+          ),
           Positioned(
+            top: 0,
             left: 0,
             right: 0,
-            bottom: 0,
-            child: SafeArea(child: _SimProgressBar(sim: _sim!)),
+            child: SafeArea(
+              child: _TournamentHud(
+                tour: tour,
+                standings: _c.standings,
+                humanName: widget.humanName,
+              ),
+            ),
           ),
-        if (tour.finished) _ResultsOverlay(tour: tour),
-      ],
+          if (_sim != null && !tour.finished)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: SafeArea(child: _SimProgressBar(sim: _sim!)),
+            ),
+          if (tour.finished) _ResultsOverlay(tour: tour),
+        ],
       ),
     );
   }
@@ -229,8 +236,10 @@ class _SimProgressBar extends StatelessWidget {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 ),
                 const SizedBox(width: 10),
-                Text('Simulating other tables — ${sim.done} of ${sim.total}',
-                    style: const TextStyle(color: Colors.white, fontSize: 12)),
+                Text(
+                  'Simulating other tables — ${sim.done} of ${sim.total}',
+                  style: const TextStyle(color: Colors.white, fontSize: 12),
+                ),
               ],
             ),
             const SizedBox(height: 6),
@@ -249,8 +258,11 @@ class _SimProgressBar extends StatelessWidget {
 /// opens a popup with more detail (e.g. the level chip shows the full blind
 /// ladder with the active level highlighted).
 class _TournamentHud extends StatelessWidget {
-  const _TournamentHud(
-      {required this.tour, required this.standings, required this.humanName});
+  const _TournamentHud({
+    required this.tour,
+    required this.standings,
+    required this.humanName,
+  });
   final TournamentSnapshot tour;
   final String humanName;
 
@@ -275,16 +287,32 @@ class _TournamentHud extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _chip(context, 'L${tour.level}',
-                  '${tour.smallBlind}/${tour.bigBlind}$ante', _levelDetails),
-              _chip(context, 'Left', '${tour.playersLeft}/${tour.entrants}',
-                  _fieldDetails),
+              _chip(
+                context,
+                'L${tour.level}',
+                '${tour.smallBlind}/${tour.bigBlind}$ante',
+                _levelDetails,
+              ),
+              _chip(
+                context,
+                'Left',
+                '${tour.playersLeft}/${tour.entrants}',
+                _fieldDetails,
+              ),
               _chip(context, 'Avg', '${tour.averageStack}', _stackDetails),
-              _chip(context, humanName,
-                  '${tour.yourChips} · ${_ord(tour.yourPlace)}', _youDetails),
+              _chip(
+                context,
+                humanName,
+                '${tour.yourChips} · ${_ord(tour.yourPlace)}',
+                _youDetails,
+              ),
               _chip(context, 'Pool', '\$${tour.prizePool}', _payoutDetails),
-              _chip(context, tour.inMoney ? 'ITM' : 'Next', nextPay,
-                  _payoutDetails),
+              _chip(
+                context,
+                tour.inMoney ? 'ITM' : 'Next',
+                nextPay,
+                _payoutDetails,
+              ),
               Text(clock, style: const TextStyle(color: Colors.white54)),
             ],
           ),
@@ -298,185 +326,208 @@ class _TournamentHud extends StatelessWidget {
     String label,
     String value,
     Widget Function() detail,
-  ) =>
-      InkWell(
-        borderRadius: BorderRadius.circular(6),
-        onTap: () => showDialog<void>(context: context, builder: (_) => detail()),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(label,
-                  style: const TextStyle(color: Colors.white54, fontSize: 10)),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(value, style: const TextStyle(fontWeight: FontWeight.w600)),
-                  const SizedBox(width: 2),
-                  const Icon(Icons.info_outline, size: 10, color: Colors.white38),
-                ],
-              ),
-            ],
-          ),
-        ),
-      );
-
-  double get _yourBb => tour.bigBlind == 0 ? 0 : tour.yourChips / tour.bigBlind;
-  double get _avgBb => tour.bigBlind == 0 ? 0 : tour.averageStack / tour.bigBlind;
-
-  Widget _levelDetails() => _Detail(
-        title: 'Blind structure',
-        body: SizedBox(
-          width: 320,
-          height: 360,
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.only(bottom: 6),
-                child: Text('Smallest chip in play: ${_chips(tour.smallestChip)}',
-                    style: const TextStyle(fontWeight: FontWeight.w600)),
-              ),
-              Expanded(
-                child: ListView.builder(
-            itemCount: tour.schedule.length,
-            itemBuilder: (context, i) {
-              final l = tour.schedule[i];
-              final active = i == tour.levelIndex;
-              final ante = l.ante > 0 ? '  + ${l.ante} ante' : '';
-              return Container(
-                color: active ? Colors.amber.withValues(alpha: 0.22) : null,
-                child: ListTile(
-                  dense: true,
-                  leading: Text('L${l.level}',
-                      style: TextStyle(
-                          fontWeight: active ? FontWeight.bold : FontWeight.normal)),
-                  title: Text('${l.smallBlind} / ${l.bigBlind}$ante'),
-                  trailing: active
-                      ? Text(
-                          tour.clockMode == LevelClockMode.hands
-                              ? 'hand ${tour.handsThisLevel + 1}/${tour.handsPerLevel}'
-                              : 'now',
-                          style: const TextStyle(color: Colors.amber))
-                      : null,
-                ),
-              );
-                  },
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-
-  Widget _fieldDetails() => _Detail(
-        title: 'Field',
-        body: _rows([
-          ('Players left', '${tour.playersLeft} of ${tour.entrants}'),
-          ('Busted', '${tour.entrants - tour.playersLeft}'),
-          ('Tables', '${tour.tableCount}'),
-          ('Places paid', '${tour.paidPlaces}'),
-          ('To the money', tour.inMoney
-              ? 'in the money'
-              : '${tour.playersLeft - tour.paidPlaces} to bust'),
-        ]),
-      );
-
-  Widget _stackDetails() => _Detail(
-        title: 'Stacks',
-        body: _rows([
-          ('Average stack', '${tour.averageStack}  (${_avgBb.toStringAsFixed(1)} BB)'),
-          ('Your stack', '${tour.yourChips}  (${_yourBb.toStringAsFixed(1)} BB)'),
-          ('vs average', '${(tour.averageStack == 0 ? 0 : (tour.yourChips / tour.averageStack * 100)).round()}%'),
-          ('Total chips', '${tour.totalChips}'),
-          ('Starting stack', '${tour.startingStack}'),
-        ]),
-      );
-
-  Widget _youDetails() => _Detail(
-        title: 'Your standing',
-        body: SizedBox(
-          width: 320,
-          height: 420,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _rows([
-                ('Chips',
-                    '${tour.yourChips}  (${_yourBb.toStringAsFixed(1)} BB)'),
-                ('Place', '${_ord(tour.yourPlace)} of ${tour.entrants}'),
-                ('If you bust now',
-                    tour.nextPayoutAmount > 0
-                        ? '${_ord(tour.nextPayoutPlace)} — \$${tour.nextPayoutAmount}'
-                        : '${_ord(tour.nextPayoutPlace)} — no cash (bubble)'),
-              ]),
-              const Divider(),
-              Expanded(child: _StandingsList(rows: standings())),
-            ],
-          ),
-        ),
-      );
-
-  Widget _payoutDetails() => _Detail(
-        title: 'Payouts',
-        body: SizedBox(
-          width: 300,
-          height: 420,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _rows([
-                ('Prize pool', '\$${tour.prizePool}'),
-                ('Buy-in', '\$${tour.buyIn} x ${tour.entrants}'),
-                ('Places paid', '${tour.paidPlaces}'),
-              ]),
-              const Divider(),
-              Expanded(
-                child: ListView.builder(
-                  itemExtent: 32,
-                  itemCount: tour.payouts.length,
-                  itemBuilder: (context, i) {
-                    final active = i + 1 == tour.nextPayoutPlace;
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 2),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(_ord(i + 1),
-                              style: TextStyle(
-                                  fontWeight: active
-                                      ? FontWeight.bold
-                                      : FontWeight.normal,
-                                  color: active ? Colors.amber : null)),
-                          Text('\$${tour.payouts[i]}'),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-
-  Widget _rows(List<(String, String)> items) => Column(
+  ) => InkWell(
+    borderRadius: BorderRadius.circular(6),
+    onTap: () => showDialog<void>(context: context, builder: (_) => detail()),
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          for (final (k, v) in items)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 3),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(k, style: const TextStyle(color: Colors.white70)),
-                  const SizedBox(width: 16),
-                  Text(v, style: const TextStyle(fontWeight: FontWeight.w600)),
-                ],
-              ),
-            ),
+          Text(
+            label,
+            style: const TextStyle(color: Colors.white54, fontSize: 10),
+          ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(value, style: const TextStyle(fontWeight: FontWeight.w600)),
+              const SizedBox(width: 2),
+              const Icon(Icons.info_outline, size: 10, color: Colors.white38),
+            ],
+          ),
         ],
-      );
+      ),
+    ),
+  );
+
+  double get _yourBb => tour.bigBlind == 0 ? 0 : tour.yourChips / tour.bigBlind;
+  double get _avgBb =>
+      tour.bigBlind == 0 ? 0 : tour.averageStack / tour.bigBlind;
+
+  Widget _levelDetails() => _Detail(
+    title: 'Blind structure',
+    body: SizedBox(
+      width: 320,
+      height: 360,
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Text(
+              'Smallest chip in play: ${_chips(tour.smallestChip)}',
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+          ),
+          Expanded(
+            child: ListView.builder(
+              itemCount: tour.schedule.length,
+              itemBuilder: (context, i) {
+                final l = tour.schedule[i];
+                final active = i == tour.levelIndex;
+                final ante = l.ante > 0 ? '  + ${l.ante} ante' : '';
+                return Container(
+                  color: active ? Colors.amber.withValues(alpha: 0.22) : null,
+                  child: ListTile(
+                    dense: true,
+                    leading: Text(
+                      'L${l.level}',
+                      style: TextStyle(
+                        fontWeight: active
+                            ? FontWeight.bold
+                            : FontWeight.normal,
+                      ),
+                    ),
+                    title: Text('${l.smallBlind} / ${l.bigBlind}$ante'),
+                    trailing: active
+                        ? Text(
+                            tour.clockMode == LevelClockMode.hands
+                                ? 'hand ${tour.handsThisLevel + 1}/${tour.handsPerLevel}'
+                                : 'now',
+                            style: const TextStyle(color: Colors.amber),
+                          )
+                        : null,
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+
+  Widget _fieldDetails() => _Detail(
+    title: 'Field',
+    body: _rows([
+      ('Players left', '${tour.playersLeft} of ${tour.entrants}'),
+      ('Busted', '${tour.entrants - tour.playersLeft}'),
+      ('Tables', '${tour.tableCount}'),
+      ('Places paid', '${tour.paidPlaces}'),
+      (
+        'To the money',
+        tour.inMoney
+            ? 'in the money'
+            : '${tour.playersLeft - tour.paidPlaces} to bust',
+      ),
+    ]),
+  );
+
+  Widget _stackDetails() => _Detail(
+    title: 'Stacks',
+    body: _rows([
+      (
+        'Average stack',
+        '${tour.averageStack}  (${_avgBb.toStringAsFixed(1)} BB)',
+      ),
+      ('Your stack', '${tour.yourChips}  (${_yourBb.toStringAsFixed(1)} BB)'),
+      (
+        'vs average',
+        '${(tour.averageStack == 0 ? 0 : (tour.yourChips / tour.averageStack * 100)).round()}%',
+      ),
+      ('Total chips', '${tour.totalChips}'),
+      ('Starting stack', '${tour.startingStack}'),
+    ]),
+  );
+
+  Widget _youDetails() => _Detail(
+    title: 'Your standing',
+    body: SizedBox(
+      width: 320,
+      height: 420,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _rows([
+            ('Chips', '${tour.yourChips}  (${_yourBb.toStringAsFixed(1)} BB)'),
+            ('Place', '${_ord(tour.yourPlace)} of ${tour.entrants}'),
+            (
+              'If you bust now',
+              tour.nextPayoutAmount > 0
+                  ? '${_ord(tour.nextPayoutPlace)} — \$${tour.nextPayoutAmount}'
+                  : '${_ord(tour.nextPayoutPlace)} — no cash (bubble)',
+            ),
+          ]),
+          const Divider(),
+          Expanded(child: _StandingsList(rows: standings())),
+        ],
+      ),
+    ),
+  );
+
+  Widget _payoutDetails() => _Detail(
+    title: 'Payouts',
+    body: SizedBox(
+      width: 300,
+      height: 420,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _rows([
+            ('Prize pool', '\$${tour.prizePool}'),
+            ('Buy-in', '\$${tour.buyIn} x ${tour.entrants}'),
+            ('Places paid', '${tour.paidPlaces}'),
+          ]),
+          const Divider(),
+          Expanded(
+            child: ListView.builder(
+              itemExtent: 32,
+              itemCount: tour.payouts.length,
+              itemBuilder: (context, i) {
+                final active = i + 1 == tour.nextPayoutPlace;
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        _ord(i + 1),
+                        style: TextStyle(
+                          fontWeight: active
+                              ? FontWeight.bold
+                              : FontWeight.normal,
+                          color: active ? Colors.amber : null,
+                        ),
+                      ),
+                      Text('\$${tour.payouts[i]}'),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+
+  Widget _rows(List<(String, String)> items) => Column(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      for (final (k, v) in items)
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 3),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(k, style: const TextStyle(color: Colors.white70)),
+              const SizedBox(width: 16),
+              Text(v, style: const TextStyle(fontWeight: FontWeight.w600)),
+            ],
+          ),
+        ),
+    ],
+  );
 }
 
 /// A small titled dialog wrapper for the HUD detail popups.
@@ -487,14 +538,15 @@ class _Detail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-        title: Text(title),
-        content: body,
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Close')),
-        ],
-      );
+    title: Text(title),
+    content: body,
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.of(context).pop(),
+        child: const Text('Close'),
+      ),
+    ],
+  );
 }
 
 /// The end-of-tournament results, shown over the table when it finishes.
@@ -519,8 +571,10 @@ class _ResultsOverlay extends StatelessWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text('Tournament complete',
-                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                  const Text(
+                    'Tournament complete',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  ),
                   const SizedBox(height: 4),
                   if (you.isNotEmpty)
                     Text(
@@ -633,8 +687,9 @@ class _StandingsListState extends State<_StandingsList> {
     // manual scrolling when their rank is unchanged.
     final i = widget.rows.indexWhere((r) => r.isHuman);
     if (i != _lastCenteredIndex) {
-      WidgetsBinding.instance
-          .addPostFrameCallback((_) => _centerOnYou(animate: true));
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _centerOnYou(animate: true),
+      );
     }
   }
 
@@ -647,8 +702,11 @@ class _StandingsListState extends State<_StandingsList> {
     final target = (i * _itemExtent - (pos.viewportDimension - _itemExtent) / 2)
         .clamp(0.0, pos.maxScrollExtent);
     if (animate) {
-      _controller.animateTo(target,
-          duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
+      _controller.animateTo(
+        target,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOut,
+      );
     } else {
       _controller.jumpTo(target);
     }
@@ -671,22 +729,22 @@ class _StandingsListState extends State<_StandingsList> {
         final trailing = r.busted
             ? (r.prize > 0 ? 'out·\$${r.prize}' : 'out')
             : _chips(r.chips);
+
         // Subtle brain tint: blue behind amateurs, red behind pros, amber for
-        // the human. Busted rows fade. The human's tint wins over the kind tint.
-        // Real, explicitly-chosen personalities get a stronger tint than the
-        // anonymous generated fillers of the same kind, so they stand out.
+        // the human. The human's tint wins over the kind tint.
         final amateurA = r.generated ? 0.10 : 0.24;
         final proA = r.generated ? 0.09 : 0.22;
-        final Color? tint = r.busted
-            ? Colors.black.withValues(alpha: 0.03)
-            : r.isHuman
-                ? Colors.amber.withValues(alpha: 0.22)
-                : switch (r.kind) {
-                    StandingKind.amateur =>
-                      Colors.blue.withValues(alpha: amateurA),
-                    StandingKind.pro => Colors.red.withValues(alpha: proA),
-                    StandingKind.human => null,
-                  };
+
+        final Color? baseTint = r.isHuman
+            ? Colors.amber.withValues(alpha: 0.22)
+            : switch (r.kind) {
+                StandingKind.amateur => Colors.blue.withValues(alpha: amateurA),
+                StandingKind.pro => Colors.red.withValues(alpha: proA),
+                StandingKind.human => null,
+              };
+
+        final Color? tint = baseTint;
+
         final weight = r.isHuman ? FontWeight.bold : FontWeight.w400;
         final color = r.busted ? Colors.grey : Colors.white;
         return Container(
@@ -697,41 +755,47 @@ class _StandingsListState extends State<_StandingsList> {
             children: [
               SizedBox(
                 width: 30,
-                child: Text('${r.place}',
-                    maxLines: 1,
-                    softWrap: false,
-                    overflow: TextOverflow.visible,
-                    style: TextStyle(
-                        fontSize: 9, fontWeight: weight, color: color)),
-              ),
-              Expanded(
                 child: Text(
-                  r.isHuman ? '${_shortName(r.name)} (you)' : _shortName(r.name),
-                  overflow: TextOverflow.ellipsis,
+                  '${r.place}',
                   maxLines: 1,
+                  softWrap: false,
+                  overflow: TextOverflow.visible,
                   style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: weight,
-                      color: color,
-                      decoration:
-                          r.busted ? TextDecoration.lineThrough : null),
+                    fontSize: 9,
+                    fontWeight: weight,
+                    color: color,
+                  ),
                 ),
               ),
+              Expanded(
+                child: AdaptivePlayerName(
+                  name: r.name,
+                  isHuman: r.isHuman,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: weight,
+                    color: color,
+                    decoration: r.busted ? TextDecoration.lineThrough : null,
+                  ),
+                ),
+              ),
+
               const SizedBox(width: 4),
-              // The chip stack can be large; let it take the room it needs and
-              // shrink only if it truly must, so it never clips.
               ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 84),
-                child: Text(trailing,
-                    textAlign: TextAlign.right,
-                    overflow: TextOverflow.visible,
-                    maxLines: 1,
-                    softWrap: false,
-                    style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: weight,
-                        color: color,
-                        fontFeatures: const [FontFeature.tabularFigures()])),
+                child: Text(
+                  trailing,
+                  textAlign: TextAlign.right,
+                  overflow: TextOverflow.visible,
+                  maxLines: 1,
+                  softWrap: false,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: weight,
+                    color: color,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
               ),
             ],
           ),
@@ -741,14 +805,62 @@ class _StandingsListState extends State<_StandingsList> {
   }
 }
 
-/// Abbreviates a full name to "F. Lastname" (matching the seat display), so the
-/// narrow standings panel never has to ellipsize. Single-word names pass through.
-String _shortName(String name) {
+/// Formats a full name. If [abbreviate] is true, returns "F. Lastname".
+String _shortName(String name, {bool abbreviate = false}) {
   final parts = name.trim().split(RegExp(r'\s+'));
-  if (parts.length >= 2 && parts.first.isNotEmpty) {
+  if (abbreviate && parts.length >= 2 && parts.first.isNotEmpty) {
     return '${parts.first[0]}. ${parts.last}';
   }
+  if (parts.length >= 2) {
+    return '${parts.first} ${parts.last}';
+  }
   return name.trim();
+}
+
+class AdaptivePlayerName extends StatelessWidget {
+  final String name;
+  final bool isHuman;
+  final TextStyle style;
+
+  const AdaptivePlayerName({
+    super.key,
+    required this.name,
+    required this.isHuman,
+    required this.style,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final fullName = isHuman
+            ? '${_shortName(name)} (you)'
+            : _shortName(name);
+        final abbreviatedName = isHuman
+            ? '${_shortName(name, abbreviate: true)} (you)'
+            : _shortName(name, abbreviate: true);
+
+        // Measure full name width using TextPainter
+        final textPainter = TextPainter(
+          text: TextSpan(text: fullName, style: style),
+          maxLines: 1,
+          textDirection: TextDirection.ltr,
+        )..layout(maxWidth: double.infinity);
+
+        // Use full name if it fits, otherwise use abbreviated version
+        final displayText = textPainter.width <= constraints.maxWidth
+            ? fullName
+            : abbreviatedName;
+
+        return Text(
+          displayText,
+          overflow: TextOverflow.ellipsis,
+          maxLines: 1,
+          style: style,
+        );
+      },
+    );
+  }
 }
 
 /// Formats a chip count with thousands separators, preserving a leading sign.
@@ -792,19 +904,26 @@ class _RecapDialog extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(recap.intro,
-                  style: const TextStyle(fontSize: 13, height: 1.3)),
-              Text('avg stack ${_chips(recap.averageStack)}',
-                  style: const TextStyle(color: Colors.white60, fontSize: 11)),
+              Text(
+                recap.intro,
+                style: const TextStyle(fontSize: 13, height: 1.3),
+              ),
+              Text(
+                'avg stack ${_chips(recap.averageStack)}',
+                style: const TextStyle(color: Colors.white60, fontSize: 11),
+              ),
               if (recap.bubbleLine != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 6),
-                  child: Text(recap.bubbleLine!,
-                      style: TextStyle(
-                          fontSize: 13,
-                          height: 1.3,
-                          color: gold,
-                          fontStyle: FontStyle.italic)),
+                  child: Text(
+                    recap.bubbleLine!,
+                    style: TextStyle(
+                      fontSize: 13,
+                      height: 1.3,
+                      color: gold,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
                 ),
               if (recap.leaderFollowUp != null) ...[
                 _heading(gold, 'LAST LEVEL\'S LEADER'),
@@ -826,7 +945,10 @@ class _RecapDialog extends StatelessWidget {
               ],
               if (recap.featureHand != null) ...[
                 _heading(gold, 'HAND OF THE LEVEL'),
-                _FeatureHand(hand: recap.featureHand!, bigBlind: recap.bigBlind),
+                _FeatureHand(
+                  hand: recap.featureHand!,
+                  bigBlind: recap.bigBlind,
+                ),
               ],
               if (recap.risers.isNotEmpty) ...[
                 _heading(gold, 'RUNNING DEEP'),
@@ -846,12 +968,15 @@ class _RecapDialog extends StatelessWidget {
               ],
               if (recap.yourStory != null) ...[
                 _heading(gold, 'YOUR LEVEL'),
-                Text(recap.yourStory!,
-                    style: TextStyle(
-                        fontSize: 13,
-                        height: 1.3,
-                        color: gold,
-                        fontWeight: FontWeight.w600)),
+                Text(
+                  recap.yourStory!,
+                  style: TextStyle(
+                    fontSize: 13,
+                    height: 1.3,
+                    color: gold,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ],
             ],
           ),
@@ -867,23 +992,27 @@ class _RecapDialog extends StatelessWidget {
   }
 
   Widget _blurb(String text) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 2),
-        child: Text(text, style: const TextStyle(fontSize: 13, height: 1.3)),
-      );
+    padding: const EdgeInsets.symmetric(vertical: 2),
+    child: Text(text, style: const TextStyle(fontSize: 13, height: 1.3)),
+  );
 
   Widget _heading(Color gold, String text) => Padding(
-        padding: const EdgeInsets.only(top: 14, bottom: 4),
-        child: Text(text,
-            style: TextStyle(
-                color: gold,
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 1.2)),
-      );
+    padding: const EdgeInsets.only(top: 14, bottom: 4),
+    child: Text(
+      text,
+      style: TextStyle(
+        color: gold,
+        fontSize: 10,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 1.2,
+      ),
+    ),
+  );
 
   /// A chip amount with its big-blind equivalent, e.g. "250,000 (125 BB)".
-  static String _amt(int chips, int bb) =>
-      bb > 0 ? '${_chips(chips)} (${_chips((chips / bb).round())} BB)' : _chips(chips);
+  static String _amt(int chips, int bb) => bb > 0
+      ? '${_chips(chips)} (${_chips((chips / bb).round())} BB)'
+      : _chips(chips);
 
   Widget _leaderRow(int rank, ChipLeaderLine l, int bb) {
     final delta = l.delta == 0
@@ -895,21 +1024,28 @@ class _RecapDialog extends StatelessWidget {
         children: [
           SizedBox(
             width: 18,
-            child: Text('$rank',
-                style: const TextStyle(color: Colors.white54, fontSize: 12)),
+            child: Text(
+              '$rank',
+              style: const TextStyle(color: Colors.white54, fontSize: 12),
+            ),
           ),
           Expanded(
-            child: Text(l.isHuman ? '${l.name} (you)' : l.name,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                    fontSize: 13,
-                    fontWeight:
-                        l.isHuman ? FontWeight.bold : FontWeight.normal)),
-          ),
-          Text('${_amt(l.chips, bb)}$delta',
+            child: Text(
+              l.isHuman ? '${l.name} (you)' : l.name,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                  fontSize: 12,
-                  color: l.delta >= 0 ? Colors.greenAccent : Colors.redAccent)),
+                fontSize: 13,
+                fontWeight: l.isHuman ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
+          ),
+          Text(
+            '${_amt(l.chips, bb)}$delta',
+            style: TextStyle(
+              fontSize: 12,
+              color: l.delta >= 0 ? Colors.greenAccent : Colors.redAccent,
+            ),
+          ),
         ],
       ),
     );
@@ -917,9 +1053,11 @@ class _RecapDialog extends StatelessWidget {
 
   String _potLine(NotablePot p, int bb) {
     final buf = StringBuffer();
-    buf.write('${p.winnerName}\'s ${p.winnerHand.toLowerCase()} '
-        'beat ${p.loserName}\'s ${p.loserHand.toLowerCase()} '
-        'for ${_amt(p.pot, bb)}');
+    buf.write(
+      '${p.winnerName}\'s ${p.winnerHand.toLowerCase()} '
+      'beat ${p.loserName}\'s ${p.loserHand.toLowerCase()} '
+      'for ${_amt(p.pot, bb)}',
+    );
     if (p.humanTable) buf.write(' at your table');
     buf.write('.');
     if (p.suckout) {
@@ -945,9 +1083,14 @@ class _FeatureHand extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('${_chips(hand.pot)}$bb pot',
-            style: TextStyle(
-                color: gold, fontSize: 12, fontWeight: FontWeight.bold)),
+        Text(
+          '${_chips(hand.pot)}$bb pot',
+          style: TextStyle(
+            color: gold,
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
         const SizedBox(height: 4),
         // Showdown holdings.
         for (final s in hand.seats)
@@ -956,13 +1099,15 @@ class _FeatureHand extends StatelessWidget {
             child: Row(
               children: [
                 Expanded(
-                  child: Text(s.won ? '${s.name} (wins)' : s.name,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          fontSize: 12,
-                          fontWeight:
-                              s.won ? FontWeight.bold : FontWeight.normal,
-                          color: s.won ? gold : Colors.white)),
+                  child: Text(
+                    s.won ? '${s.name} (wins)' : s.name,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: s.won ? FontWeight.bold : FontWeight.normal,
+                      color: s.won ? gold : Colors.white,
+                    ),
+                  ),
                 ),
                 for (final c in s.cards) _card(c),
               ],
@@ -971,35 +1116,42 @@ class _FeatureHand extends StatelessWidget {
         const SizedBox(height: 4),
         Row(
           children: [
-            const Text('Board ',
-                style: TextStyle(color: Colors.white54, fontSize: 11)),
+            const Text(
+              'Board ',
+              style: TextStyle(color: Colors.white54, fontSize: 11),
+            ),
             for (final c in hand.board) _card(c),
           ],
         ),
         const SizedBox(height: 6),
         // Street-by-street action.
         for (final st in hand.streets) ...[
-          Text(st.name.toUpperCase(),
-              style: TextStyle(
-                  color: gold.withValues(alpha: 0.7),
-                  fontSize: 9,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 1)),
+          Text(
+            st.name.toUpperCase(),
+            style: TextStyle(
+              color: gold.withValues(alpha: 0.7),
+              fontSize: 9,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1,
+            ),
+          ),
           for (final line in st.lines)
-            Text(line,
-                style: const TextStyle(fontSize: 12, height: 1.25)),
+            Text(line, style: const TextStyle(fontSize: 12, height: 1.25)),
           const SizedBox(height: 3),
         ],
         // Commentary.
         for (final c in hand.commentary)
           Padding(
             padding: const EdgeInsets.only(top: 4),
-            child: Text(c,
-                style: TextStyle(
-                    fontSize: 12,
-                    height: 1.3,
-                    color: gold,
-                    fontStyle: FontStyle.italic)),
+            child: Text(
+              c,
+              style: TextStyle(
+                fontSize: 12,
+                height: 1.3,
+                color: gold,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
           ),
       ],
     );
@@ -1023,11 +1175,14 @@ class _FeatureHand extends StatelessWidget {
         color: Colors.white,
         borderRadius: BorderRadius.circular(3),
       ),
-      child: Text('$rank$sym',
-          style: TextStyle(
-              color: red ? Colors.red.shade700 : Colors.black,
-              fontSize: 11,
-              fontWeight: FontWeight.bold)),
+      child: Text(
+        '$rank$sym',
+        style: TextStyle(
+          color: red ? Colors.red.shade700 : Colors.black,
+          fontSize: 11,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
     );
   }
 }
