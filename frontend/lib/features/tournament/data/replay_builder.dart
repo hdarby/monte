@@ -187,7 +187,11 @@ class ReplayBuilder {
 
     for (final (round, label, boardCount) in rounds) {
       final onStreet = actions.where((a) => a.street == round).toList();
-      if (onStreet.isEmpty && round != BettingRound.preflop) continue;
+      // A street with no betting is still part of the hand when the board for it
+      // was dealt — that is exactly what a preflop all-in looks like. Skipping
+      // those left the analysis showing preflop and nothing else, with the
+      // runout that actually decided the hand invisible. Only skip a street
+      // whose cards never came.
       if (game.board.length < boardCount) break;
 
       // What each player has already committed on this street, so a raise's

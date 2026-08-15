@@ -710,4 +710,153 @@ void main() {
       expect(line, isNot(contains('60%')));
     });
   });
+
+/// A preflop all-in leaves the flop, turn and river with no betting on them.
+/// Those streets were being dropped from the replay entirely, so the analysis
+/// showed preflop and stopped — the runout that actually decided the hand was
+/// invisible. They are now kept, and narrated as a runout rather than run
+/// through the normal decision commentary, which would have described an
+/// all-in board as "checked through".
+  group('all-in runout', () {
+    ReplayStreet street(
+      String name,
+      BettingRound round,
+      List<String> board, {
+      List<ReplayAction> actions = const [],
+    }) =>
+        ReplayStreet(
+          name: name,
+          round: round,
+          boardAfter: board,
+          actions: actions,
+          potAfter: 4000,
+        );
+
+    HandReplay shove() => _replay(
+          allIn: true,
+          board: const ['Kd', '7s', '2c', '9h', '3d'],
+          seats: [
+            _seat('a', 'Ana', ['Ac', 'Ad'], TablePosition.button,
+                won: true, net: 2000, finalRank: HandRank.pair),
+            _seat('b', 'Ben', ['Kh', 'Qs'], TablePosition.bigBlind,
+                net: -2000, finalRank: HandRank.pair),
+          ],
+          streets: [
+            street('Preflop', BettingRound.preflop, const [], actions: [
+              _act('a', 'Ana', TablePosition.button, ActionType.raise,
+                  BettingRound.preflop, amount: 2000),
+              _act('b', 'Ben', TablePosition.bigBlind, ActionType.call,
+                  BettingRound.preflop, amount: 2000),
+            ]),
+            street('Flop', BettingRound.flop, const ['Kd', '7s', '2c']),
+            street('Turn', BettingRound.turn, const ['Kd', '7s', '2c', '9h']),
+            street('River', BettingRound.river,
+                const ['Kd', '7s', '2c', '9h', '3d']),
+          ],
+        );
+
+    test('every dealt street still gets commentary', () {
+      final narrated = HandNarrator.narrate(shove());
+      for (final s in narrated.streets) {
+        expect(s.commentary, isNotEmpty,
+            reason: '${s.name} was dealt but says nothing');
+      }
+    });
+
+    test('the runout cards are named, so they can at least be seen', () {
+      final narrated = HandNarrator.narrate(shove());
+      final turn = narrated.streets
+          .firstWhere((s) => s.round == BettingRound.turn)
+          .commentary
+          .join(' ');
+      expect(turn, contains('9'), reason: 'the turn card must be stated');
+    });
+
+    test('an all-in board is never described as checked', () {
+      final text = _allText(HandNarrator.narrate(shove()));
+      expect(text.toLowerCase(), isNot(contains('checked through')));
+      expect(text.toLowerCase(), isNot(contains('checked to showdown')));
+    });
+
+    test('it reports who is ahead as the board runs out', () {
+      final narrated = HandNarrator.narrate(shove());
+      final river = narrated.streets
+          .firstWhere((s) => s.round == BettingRound.river)
+          .commentary
+          .join(' ');
+      // Ana's aces hold against Ben's king.
+      expect(river, contains('Ana'));
+    });
+  });
+
+  group('phrasing variety', () {
+    /// Bart should not narrate every hand with the same sentence, but the
+    /// commentary must also be reproducible — so the variation is keyed off a
+    /// hash of the hand rather than a random number generator.
+    HandReplay shoveWith(List<String> board, String aCards, String bCards) =>
+        _replay(
+          allIn: true,
+          board: board,
+          seats: [
+            _seat('a', 'Ana', [aCards.substring(0, 2), aCards.substring(2)],
+                TablePosition.button,
+                won: true, net: 2000, finalRank: HandRank.pair),
+            _seat('b', 'Ben', [bCards.substring(0, 2), bCards.substring(2)],
+                TablePosition.bigBlind,
+                net: -2000, finalRank: HandRank.highCard),
+          ],
+          streets: [
+            ReplayStreet(
+              name: 'Preflop',
+              round: BettingRound.preflop,
+              boardAfter: const [],
+              actions: [
+                _act('a', 'Ana', TablePosition.button, ActionType.raise,
+                    BettingRound.preflop, amount: 2000),
+                _act('b', 'Ben', TablePosition.bigBlind, ActionType.call,
+                    BettingRound.preflop, amount: 2000),
+              ],
+              potAfter: 4000,
+            ),
+            ReplayStreet(
+              name: 'Flop',
+              round: BettingRound.flop,
+              boardAfter: board.take(3).toList(),
+              actions: const [],
+              potAfter: 4000,
+            ),
+          ],
+        );
+
+    String flopLine(HandReplay r) => HandNarrator.narrate(r)
+        .streets
+        .firstWhere((s) => s.round == BettingRound.flop)
+        .commentary
+        .first;
+
+    test('the same hand always narrates identically', () {
+      final r = shoveWith(const ['Kd', '7s', '2c', '9h', '3d'], 'AcAd', 'KhQs');
+      expect(flopLine(r), flopLine(r));
+      // And a second, independently built copy of the same hand.
+      final again =
+          shoveWith(const ['Kd', '7s', '2c', '9h', '3d'], 'AcAd', 'KhQs');
+      expect(flopLine(r), flopLine(again));
+    });
+
+    test('different hands do not all get the same sentence', () {
+      final lines = <String>{
+        for (final b in const [
+          ['Kd', '7s', '2c', '9h', '3d'],
+          ['Qh', '8d', '4s', 'Jc', '5h'],
+          ['Ts', '6c', '3h', '2d', '8c'],
+          ['9s', '5d', '2h', 'Kc', '7d'],
+          ['Jh', '4c', '3s', 'Qd', '6h'],
+          ['8h', '7c', '2s', 'Ad', '5c'],
+        ])
+          flopLine(shoveWith(b, 'AcAd', 'KhQs')),
+      };
+      expect(lines.length, greaterThan(1),
+          reason: 'every hand read the same way — the variation is not firing');
+    });
+  });
 }

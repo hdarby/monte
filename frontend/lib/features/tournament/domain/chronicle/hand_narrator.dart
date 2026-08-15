@@ -42,13 +42,84 @@ class HandNarrator {
     );
   }
 
-  static List<String> _forStreet(_HandContext ctx, ReplayStreet street) =>
-      switch (street.round) {
-        BettingRound.preflop => _preflop(ctx, street),
-        BettingRound.flop => _flop(ctx, street),
-        BettingRound.turn => _turn(ctx, street),
-        _ => _river(ctx, street),
-      };
+  static List<String> _forStreet(_HandContext ctx, ReplayStreet street) {
+    // A postflop street with no betting means the money was already in and the
+    // board is simply running out. It is still worth narrating — that runout
+    // decided the hand — but none of the decision commentary applies, and the
+    // flop writer would otherwise call an all-in board "checked through".
+    if (street.round != BettingRound.preflop &&
+        street.actions.isEmpty &&
+        ctx.replay.allIn) {
+      return _runout(ctx, street);
+    }
+    return switch (street.round) {
+      BettingRound.preflop => _preflop(ctx, street),
+      BettingRound.flop => _flop(ctx, street),
+      BettingRound.turn => _turn(ctx, street),
+      _ => _river(ctx, street),
+    };
+  }
+
+  /// A street dealt with no action left to take: everyone is all-in and the
+  /// cards are being run out. Says what the card is and, more usefully, whether
+  /// it changed who is winning.
+  static List<String> _runout(_HandContext ctx, ReplayStreet street) {
+    final out = <String>[];
+    final tex = ctx.textureAfter(street);
+    final board = ctx.boardOf(street);
+    final leader = ctx.leaderOn(street);
+    final previous = ctx.previousLeader(street);
+
+    final texture = tex != null ? ', ${tex.description}' : '';
+    if (street.round == BettingRound.flop) {
+      out.add(ctx.voice.pick([
+        '$board — the money went in before the flop, so this is a runout'
+            '$texture.',
+        '$board. Stacks were already in the middle preflop; all that is left '
+            'is to deal it out$texture.',
+        'No further betting — everyone committed preflop. The flop comes '
+            '$board$texture.',
+        '$board. Cards on their backs, and this one plays itself from here'
+            '$texture.',
+      ], 11));
+    } else {
+      final label = street.round == BettingRound.turn ? 'turn' : 'river';
+      out.add(ctx.voice.pick([
+        '$board.',
+        'The $label brings it to $board.',
+        'Running it out: $board.',
+        '$board on the $label.',
+      ], street.round.index * 7));
+    }
+
+    if (leader == null) {
+      return out;
+    }
+    final name = leader.name;
+    final made = ctx.made(leader, street);
+    if (previous != null && previous.playerId != leader.playerId) {
+      out.add(ctx.voice.pick([
+        'That card flips it — $name now has $made and takes the lead from '
+            '${previous.name}.',
+        'And that changes everything: $name gets there with $made, leaving '
+            '${previous.name} drawing.',
+        '${previous.name} was in front until that one. $name has $made now.',
+      ], street.round.index * 13));
+    } else if (street.round == BettingRound.river) {
+      out.add(ctx.voice.pick([
+        '$name wins it with $made.',
+        'It holds. $name takes it down with $made.',
+        'No change — $made is good for $name.',
+      ], 23));
+    } else {
+      out.add(ctx.voice.pick([
+        '$name is still in front with $made.',
+        'That is a blank. $name keeps the lead with $made.',
+        'Nothing changes there — $name holds on with $made.',
+      ], street.round.index * 17));
+    }
+    return out;
+  }
 
   // ---- Preflop --------------------------------------------------------------
 
@@ -166,10 +237,18 @@ class HandNarrator {
 
     final bet = ctx.firstAggressiveOn(BettingRound.flop);
     if (bet == null) {
-      out.add(
-        'Checked through. On a ${tex.isStatic ? 'static' : 'dynamic'} board '
-        '${tex.isStatic ? 'that is defensible — nothing is getting outdrawn, so keeping the weak hands in has value' : 'that is a mistake; every turn card changes who is winning and a free one is the last thing you want to give'}.',
-      );
+      final verdict = tex.isStatic
+          ? 'that is defensible — nothing is getting outdrawn, so keeping the '
+              'weak hands in has value'
+          : 'that is a mistake; every turn card changes who is winning and a '
+              'free one is the last thing you want to give';
+      final kind = tex.isStatic ? 'static' : 'dynamic';
+      out.add(ctx.voice.pick([
+        'Checked through. On a $kind board $verdict.',
+        'Nobody wanted it. That is a $kind board, and $verdict.',
+        'Both players tap the table. $kind board — $verdict.',
+        'A free card goes out. On this $kind texture $verdict.',
+      ], 31));
       return out;
     }
 
@@ -230,11 +309,14 @@ class HandNarrator {
     final prev = ctx.textureBefore(street);
     if (tex == null) return out;
 
-    out.add(
-      '${ctx.boardOf(street)} — '
-      '${prev != null ? tex.changeFrom(prev) : tex.description}. '
-      'The board reads ${tex.description} now.',
-    );
+    final change = prev != null ? tex.changeFrom(prev) : tex.description;
+    out.add(ctx.voice.pick([
+      '${ctx.boardOf(street)} — $change. The board reads ${tex.description} '
+          'now.',
+      'The turn: ${ctx.boardOf(street)}. $change, leaving ${tex.description}.',
+      '${ctx.boardOf(street)} on fourth street — $change. That is '
+          '${tex.description} to play against.',
+    ], 41));
 
     // Range narrowing from the flop action — the heart of turn strategy.
     // Whoever put in the *last* aggressive action on the flop is the one with
@@ -304,11 +386,15 @@ class HandNarrator {
     final bet = ctx.firstAggressiveOn(BettingRound.river);
     if (bet == null) {
       if (street.actions.isNotEmpty) {
-        out.add(
+        out.add(ctx.voice.pick([
           'Checked to showdown. Somebody left a value bet out there — there is '
-          'nothing left to protect against on the river, so if you beat their '
-          'calling range you are obliged to bet.',
-        );
+              'nothing left to protect against on the river, so if you beat '
+              'their calling range you are obliged to bet.',
+          'It goes check-check. That is money left on the table: no card can '
+              'hurt you now, so beating their calling range means betting it.',
+          'They both give up on the end. Protection is worth nothing here — if '
+              'worse hands call, that is a bet you have to make.',
+        ], 37));
       }
       return out;
     }
@@ -476,33 +562,50 @@ class HandNarrator {
     final r = ctx.replay;
     final out = <String>[];
 
+    final size = formatChipsWithBb(r.pot, r.bigBlind);
+    final won = r.winnerHand.toLowerCase();
+    final lost = r.loserHand.toLowerCase();
     if (r.suckout) {
-      out.add(
+      out.add(ctx.voice.pick([
         'The money went in bad and got there. ${r.winnerName} was behind to '
-        '${r.loserName}\'s ${r.loserHand.toLowerCase()} when the chips went in '
-        'and spiked it — a ${formatChipsWithBb(r.pot, r.bigBlind)} pot decided '
-        'by the deck, not by anybody\'s decision-making.',
-      );
+            '${r.loserName}\'s $lost when the chips went in and spiked it — a '
+            '$size pot decided by the deck, not by anybody\'s decision-making.',
+        'That is a cooler with a bad ending for ${r.loserName}: drawing thin '
+            'when it all went in, and the board obliged. $size to '
+            '${r.winnerName}, none of it earned.',
+        '${r.winnerName} needed help and got it. $lost was in front until the '
+            'deck intervened, and $size changes hands on a card.',
+      ], 53));
     } else if (r.allIn) {
-      out.add(
-        '${formatChipsWithBb(r.pot, r.bigBlind)} in the middle and '
-        '${r.winnerName}\'s ${r.winnerHand.toLowerCase()} holds against '
-        '${r.loserHand.toLowerCase()}. The chips went in with the best of it '
-        'and stayed there, which is all you can ask.',
-      );
+      out.add(ctx.voice.pick([
+        '$size in the middle and ${r.winnerName}\'s $won holds against $lost. '
+            'The chips went in with the best of it and stayed there, which is '
+            'all you can ask.',
+        'Stacks in, and it holds: $won beats $lost for $size. Nothing to '
+            'review — that is the good end of a flip.',
+        '${r.winnerName} gets it in ahead and stays ahead. $won over $lost, '
+            '$size shipped.',
+      ], 59));
     } else if (!r.reachedRiver) {
-      out.add(
-        '${r.winnerName} takes it down before showdown for '
-        '${formatChipsWithBb(r.pot, r.bigBlind)}. Pots like this are where '
-        'tournaments are quietly won — no cards had to cooperate, somebody just '
-        'applied pressure at a moment nobody could call.',
-      );
+      out.add(ctx.voice.pick([
+        '${r.winnerName} takes it down before showdown for $size. Pots like '
+            'this are where tournaments are quietly won — no cards had to '
+            'cooperate, somebody just applied pressure at a moment nobody '
+            'could call.',
+        'No showdown needed. ${r.winnerName} picks up $size by betting at a '
+            'spot the other hand simply could not continue in.',
+        'That is $size collected without ever turning a card over — the least '
+            'glamorous and most reliable way to build a stack.',
+      ], 61));
     } else {
-      out.add(
-        '${r.winnerName} gets there with ${r.winnerHand.toLowerCase()} for '
-        '${formatChipsWithBb(r.pot, r.bigBlind)}, beating '
-        '${r.loserName}\'s ${r.loserHand.toLowerCase()}.',
-      );
+      out.add(ctx.voice.pick([
+        '${r.winnerName} gets there with $won for $size, beating '
+            '${r.loserName}\'s $lost.',
+        '$size to ${r.winnerName}: $won was good, and ${r.loserName}\'s $lost '
+            'pays it off.',
+        'It goes to showdown and ${r.winnerName} shows $won for $size, with '
+            '${r.loserName} second best holding $lost.',
+      ], 67));
     }
 
     final pivot = ctx.pivotStreet();
@@ -685,10 +788,44 @@ class HandNarrator {
 
 /// Derived facts about one replay, computed on demand and shared by every
 /// commentary pass. Keeps the narrator itself readable.
+/// Deterministic phrase variation.
+///
+/// Bart should not narrate every hand with the same sentence, but the
+/// commentary also has to be reproducible — the same hand must always read the
+/// same way, which `recap_end_to_end_test` pins. So the variation cannot come
+/// from a random number generator. It comes from a stable hash of the hand
+/// itself: different hands pick different phrasings, any single hand always
+/// picks the same one.
+class _Voice {
+  _Voice(this._seed);
+
+  factory _Voice.of(HandReplay r) => _Voice(
+        Object.hashAll([
+          r.board.join(),
+          r.pot,
+          r.bigBlind,
+          for (final s in r.seats) ...[s.playerId, s.cards.join()],
+        ]),
+      );
+
+  final int _seed;
+
+  /// One of [options]. [salt] separates different lines within the same hand so
+  /// they don't all land on the same index and read as a matched set.
+  String pick(List<String> options, [int salt = 0]) {
+    if (options.isEmpty) return '';
+    final mixed = (_seed ^ (salt * 0x9E3779B1)) & 0x7FFFFFFF;
+    return options[mixed % options.length];
+  }
+}
+
 class _HandContext {
-  _HandContext(this.replay);
+  _HandContext(this.replay) : voice = _Voice.of(replay);
 
   final HandReplay replay;
+
+  /// Deterministic phrasing variation for this hand.
+  final _Voice voice;
 
   List<ReplaySeat> get flopSeats => replay.seats;
 
@@ -825,6 +962,17 @@ class _HandContext {
       }
     }
     return best;
+  }
+
+  /// Who was ahead on the street *before* this one, so a runout can say whether
+  /// the card that just landed changed the answer. Null on the flop, where
+  /// there is no previous board to compare against.
+  ReplaySeat? previousLeader(ReplayStreet street) {
+    final i = replay.streets.indexOf(street);
+    if (i <= 0) return null;
+    final prev = replay.streets[i - 1];
+    if (prev.boardAfter.length < 3) return null; // preflop: no board yet
+    return leaderOn(prev);
   }
 
   /// Whether a seat holds the effective nuts on this board.
