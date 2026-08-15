@@ -2,6 +2,7 @@ import 'dart:math';
 
 import 'package:monte/core/domain/ai/hand_range.dart';
 import 'package:monte/core/domain/ai/player_profile.dart';
+import 'package:monte/core/domain/ai/open_ranges.dart';
 import 'package:monte/core/domain/ai/postflop_equity.dart';
 import 'package:monte/core/domain/ai/stack_context.dart';
 import 'package:monte/core/domain/ai/preflop_ranges.dart';
@@ -146,14 +147,33 @@ class AmateurPolicy implements DecisionPolicy {
     }
 
     // Unraised.
+    // Position and dead money for an unopened pot (see [OpenRanges]). Recs feel
+    // this less than a pro does — they under-steal and don't count the antes —
+    // so the effect is damped by their incompetence rather than absent.
+    var pfrCut = _ranges.pfr;
+    var vpipCut = _ranges.vpip;
+    if (raises == 0) {
+      final m = OpenRanges.forSeat(game, p);
+      final damped = 1 + (m - 1) * (1 - 0.5 * _k).clamp(0.0, 1.0);
+      if (damped != 1.0) {
+        final b = profile.strategicBaseline;
+        pfrCut = PreflopRanges.thresholdForFraction(
+          (b.pfrTarget * damped).clamp(0.02, 0.90),
+        );
+        vpipCut = PreflopRanges.thresholdForFraction(
+          (b.vpipTarget * damped).clamp(0.02, 0.95),
+        );
+      }
+    }
+
     if (toCall == 0) {
-      if (s >= _ranges.pfr && p.stack > bb) return raiseBy(0.5);
+      if (s >= pfrCut && p.stack > bb) return raiseBy(0.5);
       return const GameAction.check();
     }
     // First in / over limpers: raise the PFR range; the rest of the VPIP range
     // limps along (the passive gap), everything else folds.
-    if (s >= _ranges.pfr && canRaise) return raiseBy(0.5);
-    if (s >= _ranges.vpip) return const GameAction.call();
+    if (s >= pfrCut && canRaise) return raiseBy(0.5);
+    if (s >= vpipCut) return const GameAction.call();
     return const GameAction.fold();
   }
 

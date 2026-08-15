@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:monte/core/domain/ai/bot_spec.dart';
 import 'package:monte/core/domain/ai/decider_factory.dart';
+import 'package:monte/core/di/game_providers.dart';
 import 'package:monte/core/presentation/bot_lineup_editor.dart';
 import 'package:monte/core/theme/app_theme.dart';
 import 'package:monte/features/settings/domain/game_settings.dart';
@@ -295,6 +296,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   ),
                 ),
                 const SizedBox(height: 8),
+                const Divider(color: Colors.white12),
+                const SizedBox(height: 12),
+                const Text(
+                  'Opponent reads',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 6),
+                _clearReads(context),
                     ],
                   ),
                 ),
@@ -304,6 +313,83 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
         ),
       ),
+    );
+  }
+
+
+  /// Clears every persisted opponent read.
+  ///
+  /// Reads are observed statistics — fold-to-c-bet, aggression factor, won-at-
+  /// showdown — accumulated across sessions and keyed to a personality's durable
+  /// id. When the bots' decision logic changes, everything gathered under the
+  /// old behaviour is describing a game that no longer exists, and an
+  /// exploitative bot will keep acting on it. Wiping is the honest reset.
+  ///
+  /// Distinct from Analytics' "Wipe tuning history", which clears the
+  /// full-information EvalHand file and in-session memory but leaves the
+  /// persisted `opponent_stats.json` untouched — so before this there was no way
+  /// to clear it from inside the app at all.
+  Widget _clearReads(BuildContext context) => Align(
+    alignment: Alignment.centerLeft,
+    child: Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Everything the personalities have learned about how each player '
+            'plays, kept across sessions. Clear it after changing how the bots '
+            'think, or reads gathered under the old behaviour will keep driving '
+            'their decisions.',
+            style: TextStyle(color: Colors.white54),
+          ),
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            onPressed: () => _confirmClearReads(context),
+            icon: const Icon(Icons.delete_sweep_outlined, size: 18),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFFEF5350),
+              side: const BorderSide(color: Color(0x55EF5350)),
+            ),
+            label: const Text('Clear all opponent reads'),
+          ),
+        ],
+      ),
+    ),
+  );
+
+  Future<void> _confirmClearReads(BuildContext context) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        title: const Text('Clear all opponent reads?'),
+        content: const Text(
+          'Permanently deletes every statistic the personalities have gathered '
+          'on you and on each other, across all sessions. They will start '
+          'reading players from scratch. This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFEF5350),
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Clear'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await ref.read(opponentStatsServiceProvider)?.wipe();
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Opponent reads cleared')),
     );
   }
 

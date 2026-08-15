@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:monte/core/domain/ai/opponent_reads.dart';
 import 'package:monte/core/domain/ai/player_profile.dart';
 import 'package:monte/core/domain/ai/player_stats.dart';
+import 'package:monte/core/domain/ai/open_ranges.dart';
 import 'package:monte/core/domain/ai/preflop_ranges.dart';
 import 'package:monte/core/domain/ai/stack_context.dart';
 import 'package:monte/core/domain/engine/actions.dart';
@@ -67,24 +68,29 @@ class ProfilePolicy implements DecisionPolicy {
     final raises = game.raiseCountThisRound;
     final canRaise = p.stack > toCall;
 
-    // Positional warfare: skew the entry/raise cutoffs by seat — tighter in
-    // early position, looser near the button. The shift is mean-zero across the
-    // rotating button, so the player's *average* VPIP/PFR (and calibration) is
-    // unchanged; only its distribution across positions tilts.
+    // Position and dead money, for an unopened pot. See [OpenRanges]: opening
+    // frequency is driven by how many players are still to act, and by how much
+    // is already in the middle. The previous model ranked seats by *postflop*
+    // order, which made the small blind the tightest seat at the table when
+    // preflop it is second to last, and it only applied at all to profiles
+    // carrying the Positional_Warfare characteristic. The multiplier averages
+    // 1.0 across the table, so this redistributes aggression by seat rather
+    // than inventing more of it and the profile's calibrated VPIP/PFR holds.
     var vpipCut = _ranges.vpip;
     var pfrCut = _ranges.pfr;
     var threeBetCut = _ranges.threeBet;
     final posProf = profile.proficiencyOf('Positional_Warfare');
-    if (posProf > 0) {
-      final n = game.players.length;
-      final heroIdx = game.players.indexOf(p);
-      final sbIndex = (game.buttonIndex + 1) % n;
-      // 0.0 = first to act postflop (SB, earliest), 1.0 = button (latest).
-      final rank = n <= 1 ? 0.5 : ((heroIdx - sbIndex + n) % n) / (n - 1);
-      final shift = 0.20 * posProf * (0.5 - rank); // + tighter early, − looser late
-      vpipCut = (vpipCut + shift).clamp(0.0, 1.0);
-      pfrCut = (pfrCut + shift).clamp(0.0, 1.0);
-      threeBetCut = (threeBetCut + shift).clamp(0.0, 1.0);
+    if (raises == 0 && toCall <= bb) {
+      final m = OpenRanges.forSeat(game, p, positionalProficiency: posProf);
+      if (m != 1.0) {
+        final b = profile.strategicBaseline;
+        pfrCut = PreflopRanges.thresholdForFraction(
+          (b.pfrTarget * m).clamp(0.02, 0.90),
+        );
+        vpipCut = PreflopRanges.thresholdForFraction(
+          (b.vpipTarget * m).clamp(0.02, 0.95),
+        );
+      }
     }
 
     // Data-driven exploit (scaled by exploit dial × read confidence): 3-bet

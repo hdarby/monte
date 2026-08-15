@@ -257,10 +257,28 @@ void main() {
           reason: 'positional warfare should open wider on the button');
     });
 
-    test('without the characteristic, opens do not skew by seat', () {
+    test('every pro skews by seat, characteristic or not', () {
+      // This used to assert the opposite: that position only mattered to a
+      // profile carrying Positional_Warfare. That was the bug -- opening tighter
+      // under the gun than on the button is not a personality trait, it is how
+      // poker works, and leaving it off by default left the table opening a flat
+      // ~18% from every seat and the big blind walking 9.3% of the time.
       final pol = ProfilePolicy(_pro(const []), ranges: _ranges, random: Random(1));
-      expect(opensAt(pol, buttonSeat), equals(opensAt(pol, utgSeat)),
-          reason: 'no positional skew without the characteristic');
+      expect(opensAt(pol, buttonSeat), greaterThan(opensAt(pol, utgSeat)),
+          reason: 'the button opens wider than under the gun for everybody');
+    });
+
+    test('the characteristic amplifies the skew rather than creating it', () {
+      final plain =
+          ProfilePolicy(_pro(const []), ranges: _ranges, random: Random(1));
+      final warrior = ProfilePolicy(
+        _pro([const PlayerCharacteristic(id: 'Positional_Warfare', proficiency: 0.9)]),
+        ranges: _ranges,
+        random: Random(1),
+      );
+      int spread(ProfilePolicy p) => opensAt(p, buttonSeat) - opensAt(p, utgSeat);
+      expect(spread(warrior), greaterThan(spread(plain)));
+      expect(spread(plain), greaterThan(0));
     });
   });
 
