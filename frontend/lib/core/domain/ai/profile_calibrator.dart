@@ -41,25 +41,30 @@ class ProfileCalibrator {
   /// [calibrate]; if the strength model changes, re-run it and update these —
   /// `test/ai/profile_calibration_test.dart` guards that they still hit target.
   static final Map<String, PreflopRanges> _cache = {
-    // Isaac Haxton (24 / 19.5 / 8) -> measured 23.8 / 19.6 / 8.4.
+    // Re-baked after opening frequency moved to a real open-raise model
+    // (`OpenRanges`: ~13% under the gun to ~42% on the button for a fully
+    // position-aware player, and RFI running well above headline PFR). The old
+    // values were tuned against a flat opening range and left Negreanu 3-betting
+    // 1.5% against a 9.5% target once the seats stopped being interchangeable.
+    // Isaac Haxton (24 / 19.5 / 8).
     '0.24_0.195_0.08_6': const PreflopRanges(
-      vpip: 0.4871,
-      pfr: 0.5086,
-      threeBet: 0.5086,
+      vpip: 0.3214,
+      pfr: 0.5494,
+      threeBet: 0.5494,
     ),
-    // Daniel Negreanu (26 / 21 / 9.5) -> measured 24.9 / 19.6 / 8.4.
+    // Daniel Negreanu (26 / 21 / 9.5).
     '0.26_0.21_0.095_6': const PreflopRanges(
-      vpip: 0.4729,
-      pfr: 0.5086,
-      threeBet: 0.5086,
+      vpip: 0.2923,
+      pfr: 0.5651,
+      threeBet: 0.5651,
     ),
-    // Michael Addamo (32 / 28 / 14) -> measured 32.8 / 23.8 / 10.2. PFR/3-bet
-    // undershoot: 28/14 is a short-handed/HU target not soundly reachable at
-    // 6-max (hitting it would require spewy light 3-bets).
+    // Michael Addamo (32 / 28 / 14). PFR/3-bet still undershoot: 28/14 is a
+    // short-handed/HU target not soundly reachable at 6-max (hitting it would
+    // require spewy light 3-bets).
     '0.32_0.28_0.14_6': const PreflopRanges(
-      vpip: 0.4443,
-      pfr: 0.4871,
-      threeBet: 0.4871,
+      vpip: 0.2494,
+      pfr: 0.5294,
+      threeBet: 0.5294,
     ),
   };
 

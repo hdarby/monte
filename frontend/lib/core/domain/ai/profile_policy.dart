@@ -87,14 +87,23 @@ class ProfilePolicy implements DecisionPolicy {
     var threeBetCut = _ranges.threeBet;
     final posProf = profile.proficiencyOf('Positional_Warfare');
     if (raises == 0 && toCall <= bb) {
-      final m = OpenRanges.forSeat(game, p, positionalProficiency: posProf);
-      if (m != 1.0) {
-        final b = profile.strategicBaseline;
-        pfrCut = PreflopRanges.thresholdForFraction(
-          (b.pfrTarget * m).clamp(0.02, 0.90),
-        );
+      // Anchored on the *calibrated* opening cut, not the raw target: the
+      // calibrator tunes `_ranges.pfr` to hit a player's stated PFR, and an
+      // opening frequency derived straight from `pfrTarget` would ignore it,
+      // leaving the calibration loop unable to move opening frequency at all.
+      final baseFrac = PreflopRanges.fractionForThreshold(_ranges.pfr);
+      final open = OpenRanges.forSeat(game, p,
+          base: baseFrac,
+          positionAwareness: profile.generalTraits.positionAwareness,
+          positionalProficiency: posProf);
+      if (open != baseFrac) {
+        // Shift VPIP by the same number of points, so the gap between "hands
+        // entered" and "hands raised" stays the player's own.
+        final shift = open - baseFrac;
+        final vpipFrac = PreflopRanges.fractionForThreshold(_ranges.vpip);
+        pfrCut = PreflopRanges.thresholdForFraction(open);
         vpipCut = PreflopRanges.thresholdForFraction(
-          (b.vpipTarget * m).clamp(0.02, 0.95),
+          (vpipFrac + shift).clamp(0.02, 0.95),
         );
       }
     }

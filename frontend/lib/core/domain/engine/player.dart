@@ -67,6 +67,14 @@ class Player {
   /// range toward value + bluffs).
   bool raisedPostflop = false;
 
+  /// Checked already on the current street.
+  ///
+  /// What makes a *check-raise* expressible: raising after checking is a
+  /// different play from raising a bet you were always going to face, and a
+  /// policy cannot choose it without knowing which one it is in. Reset every
+  /// street, like [wagerIsCall].
+  bool checkedThisRound = false;
+
   /// Called a bet on the flop (as opposed to checking behind or raising).
   ///
   /// A float is built on exactly this: call the flop with little or nothing,
@@ -97,7 +105,8 @@ class Player {
       ..raisedPreflop = raisedPreflop
       ..preflopRaiseLevel = preflopRaiseLevel
       ..raisedPostflop = raisedPostflop
-      ..calledBetOnFlop = calledBetOnFlop;
+      ..calledBetOnFlop = calledBetOnFlop
+      ..checkedThisRound = checkedThisRound;
     p.hole.addAll(hole);
     return p;
   }
@@ -117,6 +126,7 @@ class Player {
     preflopRaiseLevel = 0;
     raisedPostflop = false;
     calledBetOnFlop = false;
+    checkedThisRound = false;
   }
 
   /// Resets per-round state (called at the start of flop/turn/river).
@@ -125,6 +135,7 @@ class Player {
     hasActedThisRound = false;
     betLevel = 0;
     wagerIsCall = false;
+    checkedThisRound = false;
   }
 
   /// Moves [amount] chips from the stack into the pot, capping at the stack

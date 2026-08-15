@@ -381,7 +381,7 @@ void main() {
           ),
         ),
       );
-      await repo.simulate(600);
+      await repo.simulate(1500);
 
       for (final id in const [
         'Slow_Play_Trap',
@@ -389,7 +389,7 @@ void main() {
         'Float_And_Take_Away',
       ]) {
         expect(observer.count(id), greaterThan(0),
-            reason: '$id never fired in 600 hands — it is dead weight');
+            reason: '$id never fired in 1500 hands — it is dead weight');
       }
       // Underbluff_Exploit needs an established read on a recreational
       // opponent, which this all-pro table never produces; it is covered by the

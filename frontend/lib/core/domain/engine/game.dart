@@ -280,6 +280,7 @@ class PokerGame {
       case ActionType.check:
         if (!canCheck(p)) throw StateError('${p.name} cannot check');
         p.hasActedThisRound = true;
+        p.checkedThisRound = true;
         log.add('${p.name} checks.');
       case ActionType.call:
         final paid = p.commit(callAmount(p));

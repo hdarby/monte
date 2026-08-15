@@ -215,6 +215,7 @@ class ProfilePostflopPolicy implements DecisionPolicy {
     // Geometric overbet: on a later street (turn/river) with a clear nut
     // advantage, build the pot with an overbet rather than a standard size,
     // scaled by proficiency.
+    final checkRaiseProf = profile.proficiencyOf('Check_Raise_Merchant');
     final geo = profile.proficiencyOf('Geometric_Overbet_Execution');
     final laterStreet =
         game.round == BettingRound.turn || game.round == BettingRound.river;
@@ -266,6 +267,24 @@ class ProfilePostflopPolicy implements DecisionPolicy {
         final b = betBy((0.55 * sizeScale).clamp(0.33, 0.75));
         final risked = b.amount - p.currentBet;
         if (_commitOk(p, risked, eq, deepFactor, aggressive: true)) return b;
+      }
+
+      // Check-raise plan. Out of position with a hand that wants a big pot,
+      // checking is not weakness — it is the first half of a raise.
+      //
+      // This is the *cause* of check-raises being missing rather than rare.
+      // With a strong hand the policy always bet, so by the time anybody faced
+      // a bet after checking they necessarily held something weak, and the
+      // check-raise vanished from the game: measured at 0.6% of check-then-
+      // face-a-bet spots against roughly 8–15% in real play. Nothing needed
+      // adding to the engine; players needed a reason to check strong.
+      final crPlan = (0.26 + 0.35 * checkRaiseProf) * (1 + 0.4 * exploit);
+      if (!inPosition &&
+          !tc.onRiver &&
+          (eq > 0.70 || isDraw) &&
+          p.stack > bb &&
+          _random.nextDouble() < crPlan) {
+        return const GameAction.check();
       }
 
       // Slow-play trap: with a genuine monster, take the passive line and let
@@ -323,8 +342,13 @@ class ProfilePostflopPolicy implements DecisionPolicy {
     final potOdds = toCall / (game.pot + toCall);
     // Deep, only raise for value with a hand that wants a big pot; deep-bluff-
     // raises also need more, so we don't spew stacks off building bloated pots.
+    // Raising after we checked this street is a **check-raise** — a different
+    // play from raising a bet we were always going to face, and the thing that
+    // stops a continuation bet being free money.
+    final isCheckRaise = p.checkedThisRound;
+    final crEdge = isCheckRaise ? 0.15 + 0.10 * checkRaiseProf : 0.0;
     final wantsValueRaise =
-        eq > 0.74 - 0.08 * exploit - 0.10 * pv + 0.12 * deepFactor;
+        eq > 0.74 - 0.08 * exploit - 0.10 * pv + 0.12 * deepFactor - crEdge;
     // A semibluff needs cards to come. On the river the `isDraw` equity band
     // (0.32–0.55) contains no draws at all — just weak made hands — so raising
     // it was a pure punt, and it drove a 15.6% river raise rate in the tuning
@@ -339,8 +363,23 @@ class ProfilePostflopPolicy implements DecisionPolicy {
                 (0.005 + 0.5 * rBluffMore.clamp(0.0, 0.30)).clamp(0.0, 0.10)
         : isDraw &&
             _random.nextDouble() <
-                (0.04 + 0.22 * exploit + 0.22 * pv) * (1 - 0.55 * deepFactor);
-    if (canRaise && (wantsValueRaise || wantsBluffRaise)) {
+                (0.04 +
+                        0.22 * exploit +
+                        0.22 * pv +
+                        (isCheckRaise ? 0.16 + 0.28 * checkRaiseProf : 0.0)) *
+                    (1 - 0.55 * deepFactor);
+    // A check-raise keys off the **hand**, not a re-derived range estimate.
+    // Facing a bet, `polarisedOn` correctly narrows the villain to a betting
+    // range, which drops our equity sharply — so a hand that was strong enough
+    // to plan a check-raise no longer clears the ordinary value bar by the time
+    // it gets the chance, and the planned raise evaporates into a call. Two
+    // pair or better (or a live draw) is check-raise material regardless of
+    // what the range maths says this instant.
+    final wantsCheckRaise = isCheckRaise &&
+        (tc.madeAtLeast(HandRank.twoPair) || (isDraw && !tc.onRiver)) &&
+        _random.nextDouble() < 0.30 + 0.35 * checkRaiseProf;
+
+    if (canRaise && (wantsValueRaise || wantsBluffRaise || wantsCheckRaise)) {
       final raiseCap = ctx.fractionToReachSpr(
         _targetSpr(wantsValueRaise ? eq : min(eq, 0.5), ctx.spr),
       );
@@ -359,6 +398,9 @@ class ProfilePostflopPolicy implements DecisionPolicy {
       final risked = r.amount - p.currentBet;
       if (_commitOk(p, risked, eq, deepFactor, aggressive: true) &&
           _flushCommitOk(game, p, risked, eq)) {
+        if (isCheckRaise && checkRaiseProf > 0) {
+          _fired('Check_Raise_Merchant', p, game.round);
+        }
         return r;
       }
       // Too committing to raise deep without the goods — just continue if priced.

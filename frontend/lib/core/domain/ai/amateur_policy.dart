@@ -87,6 +87,18 @@ class AmateurPolicy implements DecisionPolicy {
     );
   }
 
+  /// Whether this seat is on the button.
+  static bool _isButton(PokerGame game, Player p) =>
+      game.players.indexOf(p) == game.buttonIndex;
+
+  /// Whether this seat is the small blind (the button, heads-up).
+  static bool _isSmallBlind(PokerGame game, Player p) {
+    final n = game.players.length;
+    if (n < 2) return false;
+    final sb = n == 2 ? game.buttonIndex : (game.buttonIndex + 1) % n;
+    return game.players.indexOf(p) == sb;
+  }
+
   /// A standard-normal sample from the injected (seeded) RNG — Box–Muller.
   double _gaussian() {
     final u1 = 1.0 - _random.nextDouble(); // in (0, 1]
@@ -139,10 +151,28 @@ class AmateurPolicy implements DecisionPolicy {
       return const GameAction.fold();
     }
 
+    // How many opponents have *voluntarily* put money in. Deliberately not
+    // "currentBet > 0", which counts the big blind's forced post and makes a
+    // single limper look like a multiway pot.
+    final alreadyIn = game.players
+        .where((x) => !identical(x, p) && !x.hasFolded && x.vpip)
+        .length;
+
     // Facing a single open: 3-bet the top range, flat the (widened) VPIP range.
     if (raises == 1) {
       if (s >= _ranges.threeBet && canRaise) return raiseBy(0.6);
-      if (s >= _ranges.vpip) return const GameAction.call();
+      // The button is defended backwards. Heads-up against a lone raiser a rec
+      // *under*-defends — it feels like a coin flip with nothing in the middle,
+      // so they pass — while the moment the pot goes multiway they *over*-defend,
+      // because the price on offer feels like it justifies any two cards. The
+      // real edge runs the other way: position heads-up is where the button is
+      // worth defending, and a multiway pot is where a weak holding is
+      // dominated by three people at once.
+      var cut = _ranges.vpip;
+      if (_isButton(game, p)) {
+        cut += (alreadyIn <= 1 ? 0.06 : -0.07) * _k;
+      }
+      if (s >= cut.clamp(0.0, 1.0)) return const GameAction.call();
       return const GameAction.fold();
     }
 
@@ -153,16 +183,35 @@ class AmateurPolicy implements DecisionPolicy {
     var pfrCut = _ranges.pfr;
     var vpipCut = _ranges.vpip;
     if (raises == 0) {
-      final m = OpenRanges.forSeat(game, p);
-      final damped = 1 + (m - 1) * (1 - 0.5 * _k).clamp(0.0, 1.0);
-      if (damped != 1.0) {
-        final b = profile.strategicBaseline;
-        pfrCut = PreflopRanges.thresholdForFraction(
-          (b.pfrTarget * damped).clamp(0.02, 0.90),
-        );
+      // A recreational player's curve from under the gun to the button is much
+      // flatter than a pro's — they play roughly the same hands from everywhere,
+      // which is one of the clearest tells separating them. That flattening is
+      // expressed by their `position_awareness` (0.5 by default against a pro's
+      // 0.9) rather than by a separate skill fudge.
+      final baseFrac = PreflopRanges.fractionForThreshold(_ranges.pfr);
+      final open = OpenRanges.forSeat(game, p,
+          base: baseFrac,
+          positionAwareness: profile.generalTraits.positionAwareness);
+      final shift = open - baseFrac;
+      if (shift != 0) {
+        final vpipFrac = PreflopRanges.fractionForThreshold(_ranges.vpip);
+        pfrCut = PreflopRanges.thresholdForFraction(open.clamp(0.02, 0.90));
         vpipCut = PreflopRanges.thresholdForFraction(
-          (b.vpipTarget * damped).clamp(0.02, 0.95),
+          (vpipFrac + shift).clamp(0.02, 0.95),
         );
+      }
+    }
+
+    // The small blind completing into a multiway limped pot. A rec sees half a
+    // bet to call against a pot four or five big blinds deep and treats the
+    // price as sufficient on its own, ignoring that they will play every street
+    // out of position against several opponents. This is the single most
+    // reliable chip leak in a home game, so it is modelled explicitly rather
+    // than left to the generic VPIP widening.
+    if (raises == 0 && toCall > 0 && toCall <= bb && _isSmallBlind(game, p)) {
+      final multiway = alreadyIn >= 2;
+      if (multiway && _random.nextDouble() < 0.75 * _k) {
+        return const GameAction.call();
       }
     }
 

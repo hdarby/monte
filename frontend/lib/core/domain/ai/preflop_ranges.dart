@@ -41,6 +41,29 @@ class PreflopRanges {
   static double thresholdForFraction(double fraction) =>
       _thresholdFor(_distribution, fraction);
 
+  /// The inverse of [thresholdForFraction]: what share of starting hands clears
+  /// [threshold].
+  ///
+  /// Needed so a positional adjustment can be applied *relative to a calibrated
+  /// threshold* rather than recomputed from the raw target. Deriving the opening
+  /// cut straight from `pfrTarget` bypasses whatever `ProfileCalibrator` tuned,
+  /// which leaves the calibration loop with nothing to grip on — it can no
+  /// longer move opening frequency by moving the threshold.
+  static double fractionForThreshold(double threshold) {
+    final d = _distribution;
+    if (d.isEmpty) return 0;
+    var lo = 0, hi = d.length;
+    while (lo < hi) {
+      final mid = (lo + hi) >> 1;
+      if (d[mid] >= threshold) {
+        lo = mid + 1;
+      } else {
+        hi = mid;
+      }
+    }
+    return lo / d.length;
+  }
+
   /// All 1326 combo strengths, sorted descending (computed once, cached).
   static final List<double> _distribution = _computeDistribution();
 

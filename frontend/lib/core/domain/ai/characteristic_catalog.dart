@@ -66,6 +66,14 @@ const List<CharacteristicSpec> characteristicCatalog = [
         '(the average number of hands played is unchanged).',
   ),
   CharacteristicSpec(
+    id: 'Check_Raise_Merchant',
+    name: 'Check-raise merchant',
+    description:
+        'Checks strong hands and draws out of position intending to raise, and '
+        'follows through far more often than a baseline player. Proficiency '
+        'scales both halves.',
+  ),
+  CharacteristicSpec(
     id: 'Slow_Play_Trap',
     name: 'Slow-play trap',
     description:
