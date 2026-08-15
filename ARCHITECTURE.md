@@ -108,6 +108,18 @@ carried the same bug, so they live in one place now:
   ranges. Normalised to average 1.0 across the table, which is what keeps each
   profile's calibrated VPIP/PFR on target.
 
+**Signature moves** — the per-player character layer:
+- `characteristic_catalog.dart` — the named moves a profile can carry, each with
+  a 0–1 proficiency. Eleven now: the original four plus `Slow_Play_Trap`,
+  `Sticky_Showdown`, `Float_And_Take_Away`, `Bubble_Predator`, `Limp_Reraise`,
+  `Underbluff_Exploit`.
+- `trigger_context.dart` — the shared predicate vocabulary moves are written
+  against. Conditions are reusable; actions are code, because a line change is
+  not a multiplier.
+- `trigger_observer.dart` — counts firings so a move can be shown to do
+  something. Non-negotiable: two earlier data models (`GeneralTraits`,
+  `EngineTriggers`) are authored on every profile and read by nothing.
+
 **Reads & equity:**
 - `player_stats.dart`, `player_read.dart`, `opponent_model.dart`,
   `opponent_reads.dart`, `opponent_range_read.dart` — what a bot has observed
@@ -286,6 +298,8 @@ seat), captured at the same `_finalizeHand` seam via
 |---|---|
 | change the rules of poker | `core/domain/engine/game.dart` |
 | change how a bot thinks | `core/domain/ai/` — `ismcts.dart` for search, `*_policy.dart` for style |
+| give a player a signature move | `core/domain/ai/characteristic_catalog.dart` + the owning policy |
+| add a condition a move can test | `core/domain/ai/trigger_context.dart` |
 | change which hands a bot plays | `core/domain/engine/hand_strength.dart` (`playabilityOf`) |
 | change opening ranges by seat, or ante/steal maths | `core/domain/ai/open_ranges.dart` |
 | change deep-stack or SPR behaviour, or bet sizing | `core/domain/ai/stack_context.dart` |

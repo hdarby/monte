@@ -66,6 +66,53 @@ const List<CharacteristicSpec> characteristicCatalog = [
         '(the average number of hands played is unchanged).',
   ),
   CharacteristicSpec(
+    id: 'Slow_Play_Trap',
+    name: 'Slow-play trap',
+    description:
+        'Checks or flats a big made hand instead of betting it, then springs '
+        'the trap on a later street. Proficiency scales how often they take '
+        'the passive line with a monster.',
+  ),
+  CharacteristicSpec(
+    id: 'Sticky_Showdown',
+    name: 'Sticky showdown',
+    description:
+        'Will not fold a made hand. Once they hold top pair or better they '
+        'call down far wider than the price justifies. Proficiency scales how '
+        'much of the normal fold discipline they give up.',
+  ),
+  CharacteristicSpec(
+    id: 'Float_And_Take_Away',
+    name: 'Float and take it away',
+    description:
+        'Calls a flop bet in position with little or nothing, then bets when '
+        'the aggressor checks the turn. Proficiency scales how often the '
+        'follow-through fires.',
+  ),
+  CharacteristicSpec(
+    id: 'Bubble_Predator',
+    name: 'Bubble predator',
+    description:
+        'Attacks opponents who cannot afford to call — ramps aggression as '
+        'ICM pressure rises near a pay jump. Proficiency scales how hard.',
+  ),
+  CharacteristicSpec(
+    id: 'Limp_Reraise',
+    name: 'Limp re-raise',
+    description:
+        'Old-school: limps a premium from early position hoping someone '
+        'raises, then comes over the top. Proficiency scales how often a '
+        'premium is limped rather than opened.',
+  ),
+  CharacteristicSpec(
+    id: 'Underbluff_Exploit',
+    name: 'Underbluff exploit',
+    description:
+        'Folds marginal bluff-catchers to river bets from recreational '
+        'players, who almost never bluff the end. Proficiency scales how '
+        'strongly the read is trusted.',
+  ),
+  CharacteristicSpec(
     id: 'Leverage_Pressure',
     name: 'Leverage pressure',
     description:

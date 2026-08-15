@@ -4,6 +4,7 @@ import 'package:monte/core/domain/ai/opponent_reads.dart';
 import 'package:monte/core/domain/ai/player_profile.dart';
 import 'package:monte/core/domain/ai/player_stats.dart';
 import 'package:monte/core/domain/ai/open_ranges.dart';
+import 'package:monte/core/domain/ai/trigger_observer.dart';
 import 'package:monte/core/domain/ai/preflop_ranges.dart';
 import 'package:monte/core/domain/ai/stack_context.dart';
 import 'package:monte/core/domain/engine/actions.dart';
@@ -33,6 +34,7 @@ class ProfilePolicy implements DecisionPolicy {
     PreflopRanges? ranges,
     DecisionPolicy? postflop,
     OpponentReads? reads,
+    TriggerObserver? triggers,
   }) : _random = random ?? Random(),
        _ranges =
            ranges ??
@@ -42,6 +44,7 @@ class ProfilePolicy implements DecisionPolicy {
              threeBetTarget: profile.strategicBaseline.threeBetFrequency,
            ) {
     _reads = reads;
+    _triggers = triggers;
     _postflop = postflop ?? BotStrategy(random: _random);
   }
 
@@ -50,6 +53,9 @@ class ProfilePolicy implements DecisionPolicy {
   final PreflopRanges _ranges;
   late final OpponentReads? _reads;
   late final DecisionPolicy _postflop;
+
+  /// Records signature moves when they fire (see [TriggerObserver]).
+  late final TriggerObserver? _triggers;
 
   /// Strength cutoffs for escalated preflop pots. Facing a 3-bet you continue
   /// only with a strong range, and only premiums 4-bet/stack off — otherwise two
@@ -176,6 +182,22 @@ class ProfilePolicy implements DecisionPolicy {
           x.hasActedThisRound &&
           x.currentBet == bb,
     );
+
+    // Limp re-raise: the old-school trap. First in from early position with a
+    // genuine premium, limp and hope somebody raises so the pot can be
+    // re-opened over the top. Only from early position (there has to be someone
+    // left to do the raising) and only with a hand happy to play a big pot,
+    // which is what stops it being an ordinary open-limp leak. The re-raise half
+    // needs no code: the `raises >= 2` branch above already ships premiums.
+    final limpTrap = profile.proficiencyOf('Limp_Reraise');
+    if (limpTrap > 0 &&
+        !hasLimper &&
+        s >= _stackOff &&
+        OpenRanges.playersBehind(game, p) >= 4 &&
+        _random.nextDouble() < 0.5 * limpTrap) {
+      _triggers?.onFired('Limp_Reraise', p.id);
+      return const GameAction.call();
+    }
 
     // A disciplined pro never *open*-limps: first-in it's raise (PFR range) or
     // fold. *Over*-limping — flatting behind an existing limper — is fine, and is

@@ -287,6 +287,7 @@ class PokerGame {
         // the raise it called (an unraised limp stays at level 0).
         p.betLevel = raiseCountThisRound;
         p.wagerIsCall = true;
+        if (paid > 0 && round == BettingRound.flop) p.calledBetOnFlop = true;
         p.hasActedThisRound = true;
         // Voluntarily putting chips in preflop (a limp or a cold/flat call) is
         // VPIP; it does NOT set raisedPreflop, which is the whole point.
@@ -352,6 +353,7 @@ class PokerGame {
       // A non-aggressive (calling) all-in matches the current level.
       p.betLevel = raiseCountThisRound;
       p.wagerIsCall = true;
+      if (round == BettingRound.flop) p.calledBetOnFlop = true;
       if (p.currentBet > before && round == BettingRound.preflop) p.vpip = true;
       log.add('${p.name} is all-in for ${p.currentBet - before} (call).');
     }

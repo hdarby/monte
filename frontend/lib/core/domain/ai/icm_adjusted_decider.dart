@@ -1,4 +1,8 @@
+import 'dart:math';
+
+import 'package:monte/core/domain/ai/player_profile.dart';
 import 'package:monte/core/domain/ai/push_fold_chart.dart';
+import 'package:monte/core/domain/ai/trigger_observer.dart';
 import 'package:monte/core/domain/ai/tournament_context.dart';
 import 'package:monte/core/domain/engine/actions.dart';
 import 'package:monte/core/domain/engine/decision_policy.dart';
@@ -23,11 +27,21 @@ class IcmAdjustedDecider implements DecisionPolicy {
     this._inner,
     this._contextFor, {
     this._chart = const PushFoldChart(),
-  });
+    this.profile,
+    this.triggers,
+    Random? random,
+  }) : _random = random ?? Random();
 
   final DecisionPolicy _inner;
   final TournamentContext Function(PokerGame, Player) _contextFor;
   final PushFoldChart _chart;
+
+  /// The seat's personality, for signature moves that only make sense with the
+  /// tournament context to hand (see `Bubble_Predator`). Null for a plain seat.
+  final PlayerProfile? profile;
+  /// Records signature moves when they fire (see [TriggerObserver]).
+  final TriggerObserver? triggers;
+  final Random _random;
 
   static const double _pushFoldMax = 12;
   static const double _tightenAt = 1.08;
@@ -39,6 +53,27 @@ class IcmAdjustedDecider implements DecisionPolicy {
       return _chart.decide(game, p, ctx);
     }
     final action = _inner.decide(game, p);
+
+    // Bubble predator: the mirror image of bubble tightening. ICM makes
+    // *everyone else* risk-averse near a pay jump, which makes their folding
+    // range enormous -- so the player with this move attacks instead of
+    // shrinking. Turns a fold or a check into a raise when the pot is unopened
+    // and the opponents are the ones who cannot afford to call.
+    final predator = profile?.proficiencyOf('Bubble_Predator') ?? 0.0;
+    if (predator > 0 &&
+        game.board.isEmpty &&
+        ctx.bubbleFactor >= _tightenAt &&
+        game.raiseCountThisRound == 0 &&
+        (action.type == ActionType.fold || action.type == ActionType.check) &&
+        p.stack > game.bigBlind * 8 &&
+        _random.nextDouble() < 0.35 * predator * (ctx.bubbleFactor - 1).clamp(0.0, 1.0)) {
+      final to = game.minRaiseTo(p);
+      if (to <= game.maxRaiseTo(p) && to > p.currentBet) {
+        triggers?.onFired('Bubble_Predator', p.id);
+        return GameAction.raise(to);
+      }
+    }
+
     if (ctx.bubbleFactor >= _tightenAt) return _bubbleTighten(game, p, action, ctx);
     // Large-field bubble / in-the-money laddering, where exact ICM isn't run:
     // a stack-scaled survival premium demotes marginal stack-offs so a short/mid

@@ -230,7 +230,8 @@ class TournamentController {
       // is exactly where a pro should out-earn them.
       final disciplined = profile == null || !isAmateurProfile(profile);
       deciders[id] = (icmAware && disciplined)
-          ? IcmAdjustedDecider(base, (g, p) => contextOf(state, p.stack, p.id))
+          ? IcmAdjustedDecider(base, (g, p) => contextOf(state, p.stack, p.id),
+              profile: profile, random: Random(seed * 977 + i))
           : base;
     }
     final seatManager = SeatManager(Random(seed ^ 0x5f3759df));

@@ -185,6 +185,34 @@ per-policy and drifted:
   pfr:vpip ratio (fewer hands, played harder), and `FieldBuilder` weights the pro
   pool by buy-in. A $10k field is both tougher players *and* better ones.
 
+### Signature moves — where the *fidelity* lives
+
+Shared logic makes everyone play better and, unavoidably, more alike. Each
+profile is otherwise separated by only seven scalars, so per-player character
+has to come from the **`PlayerCharacteristic` catalog**
+(`characteristic_catalog.dart`): named, bespoke moves that say how *this* player
+plays. That is the differentiator (see the project vision), so prefer adding a
+characterful named move over another generic dial.
+
+- **`trigger_context.dart`** — the shared predicate vocabulary a move is written
+  against (`inPosition`, `checkedToMe`, `calledFlop`, `madeAtLeast`, `hasTopPair`,
+  `sprBelow`, `villainIsRecreational`, …). The **conditions** are reusable data;
+  the **actions are not**. "Check your monster and spring it later" is a
+  different *line*, not a bigger bet, which is exactly why the spec's
+  `action_modifier` multipliers could never express these — and why
+  `EngineTriggers` has sat authored-but-unread on three profiles since day one.
+- **`trigger_observer.dart`** — counts firings, by move and by player. Built
+  *alongside* the moves, deliberately: `GeneralTraits` and `EngineTriggers` are
+  both authored everywhere and read by nothing, and nobody noticed because there
+  was no way to ask "did this ever do anything?". A move that cannot be shown to
+  fire is dead weight. `signature_moves_test.dart` runs a real 600-hand session
+  and fails if one stops firing.
+- Record a firing only when the move **changed the decision**, not merely when
+  its condition held — a counter that ticks on every hand tells you nothing.
+- A move shifts *frequencies*; it must never bypass the commitment gates
+  (`_commitOk`, the river floors). Sticky means one more crying call, not a
+  300 BB stack-off. There is a test for exactly that.
+
 > The remaining gap to real charts is **profile data, not policy**: the shipped
 > personalities carry PFR targets of 0.12–0.29, below a real Main Event field,
 > and the mean-1.0 constraint centres the positional curve on whatever they are

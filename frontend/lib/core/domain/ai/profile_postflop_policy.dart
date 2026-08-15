@@ -6,6 +6,8 @@ import 'package:monte/core/domain/ai/player_profile.dart';
 import 'package:monte/core/domain/ai/player_stats.dart';
 import 'package:monte/core/domain/ai/postflop_equity.dart';
 import 'package:monte/core/domain/ai/stack_context.dart';
+import 'package:monte/core/domain/ai/trigger_context.dart';
+import 'package:monte/core/domain/ai/trigger_observer.dart';
 import 'package:monte/core/domain/engine/actions.dart';
 import 'package:monte/core/domain/engine/bet_snap.dart';
 import 'package:monte/core/domain/engine/card.dart';
@@ -28,9 +30,14 @@ import 'package:monte/core/domain/engine/player.dart';
 /// a later refinement; the exploit strength here is the confidence-free part of
 /// Appendix B: `exploit = (1 − gtoAdherenceWeight) · exploitativeWeight`.
 class ProfilePostflopPolicy implements DecisionPolicy {
-  ProfilePostflopPolicy(this.profile, {Random? random, OpponentReads? reads})
-    : _random = random ?? Random() {
+  ProfilePostflopPolicy(
+    this.profile, {
+    Random? random,
+    OpponentReads? reads,
+    TriggerObserver? triggers,
+  }) : _random = random ?? Random() {
     _reads = reads;
+    _triggers = triggers;
   }
 
   final PlayerProfile profile;
@@ -38,6 +45,12 @@ class ProfilePostflopPolicy implements DecisionPolicy {
 
   /// Accumulated reads on the opponents (null = no data / GTO seat).
   late final OpponentReads? _reads;
+
+  /// Records signature moves when they fire, so they can be verified rather
+  /// than taken on faith. Null in production.
+  late final TriggerObserver? _triggers;
+
+  void _fired(String id, Player p) => _triggers?.onFired(id, p.id);
 
   static const _equityIterations = 160;
 
@@ -108,6 +121,9 @@ class ProfilePostflopPolicy implements DecisionPolicy {
         rSuspect = (pushy * 0.30 * w).clamp(0.0, 0.30);
       }
     }
+
+    // Signature moves are written against this shared predicate vocabulary.
+    final tc = TriggerContext.of(game, p, profile, villainStats: st);
 
     // Bet being faced as a fraction of the pot — big bets shrink the perceived
     // range (see `HandRange.narrowedBy`) so a pot-odds continue vs an overbet
@@ -233,6 +249,41 @@ class ProfilePostflopPolicy implements DecisionPolicy {
               0.4 * rBluffMore) *
           (1 - 0.45 * deepFactor);
       final wantsBluff = _random.nextDouble() < bluffChance;
+      // Float and take it away: we called their flop bet in position with
+      // little, they have surrendered the turn, so we take it. Fires on air --
+      // with a real hand the ordinary value logic already bets.
+      final float = profile.proficiencyOf('Float_And_Take_Away');
+      if (float > 0 &&
+          tc.onTurn &&
+          tc.calledFlop &&
+          tc.inPosition &&
+          tc.headsUp &&
+          eq < 0.55 &&
+          p.stack > bb &&
+          _random.nextDouble() < 0.65 * float) {
+        _fired('Float_And_Take_Away', p);
+        final b = betBy((0.55 * sizeScale).clamp(0.33, 0.75));
+        final risked = b.amount - p.currentBet;
+        if (_commitOk(p, risked, eq, deepFactor, aggressive: true)) return b;
+      }
+
+      // Slow-play trap: with a genuine monster, take the passive line and let
+      // them catch up or bluff into it. A *line* change, not a sizing one --
+      // which is precisely what `action_modifier` multipliers could never say.
+      // Restricted to hands strong enough that giving a free card is cheap, and
+      // to earlier streets, so it never becomes "check the river and win
+      // nothing".
+      final trap = profile.proficiencyOf('Slow_Play_Trap');
+      if (trap > 0 &&
+          !tc.onRiver &&
+          wantsValue &&
+          eq > 0.86 &&
+          tc.madeAtLeast(HandRank.threeOfAKind) &&
+          _random.nextDouble() < 0.55 * trap) {
+        _fired('Slow_Play_Trap', p);
+        return const GameAction.check();
+      }
+
       if ((wantsValue || wantsBluff) && p.stack > bb) {
         // Cap the size at whatever still arrives at the SPR this hand deserves.
         // A pure bluff is sized as a marginal hand, not as the value hand it is
@@ -321,8 +372,38 @@ class ProfilePostflopPolicy implements DecisionPolicy {
     // construction and a rounding error decides the hand, which is what the
     // 28.9% fold-to-river-bet in the tuning log actually was.
     final riverMargin = onRiver ? 0.02 : 0.0;
-    final callBar =
+    var callBar =
         potOdds + riverMargin + 0.06 * deepFactor * betFraction.clamp(0.0, 1.5);
+
+    // Underbluff exploit: recreational players essentially do not bluff the
+    // river, so a bluff-catcher facing one is drawing to a hand they rarely
+    // have. Demand materially more to call. Read-gated, so it never fires on a
+    // hunch.
+    final baseBar = callBar;
+    final underbluff = profile.proficiencyOf('Underbluff_Exploit');
+    if (underbluff > 0 && onRiver && tc.villainIsRecreational) {
+      callBar += 0.18 * underbluff;
+    }
+
+    // Sticky showdown: they simply will not fold a made hand. Lowers the bar
+    // once top pair or better is in hand -- and *only* then, so it produces
+    // paying off the river rather than calling with air. The commitment gates
+    // below are untouched: sticky means one more crying call, not stacking off
+    // 300 BB deep.
+    final sticky = profile.proficiencyOf('Sticky_Showdown');
+    if (sticky > 0 && (tc.hasTopPair || tc.madeAtLeast(HandRank.twoPair))) {
+      callBar -= 0.14 * sticky;
+    }
+
+    // Record only when the move actually *changed the decision*, not merely
+    // when its condition held. A counter that ticks every time a bar shifts by
+    // a hair says nothing about whether the move matters.
+    if (callBar < baseBar && eq >= callBar && eq < baseBar) {
+      _fired('Sticky_Showdown', p);
+    } else if (callBar > baseBar && eq < callBar && eq >= baseBar) {
+      _fired('Underbluff_Exploit', p);
+    }
+
     if (eq >= callBar &&
         _commitOk(p, toCall, eq, deepFactor) &&
         _flushCommitOk(game, p, toCall, eq)) {

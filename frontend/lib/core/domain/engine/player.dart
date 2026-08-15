@@ -67,6 +67,15 @@ class Player {
   /// range toward value + bluffs).
   bool raisedPostflop = false;
 
+  /// Called a bet on the flop (as opposed to checking behind or raising).
+  ///
+  /// A float is built on exactly this: call the flop with little or nothing,
+  /// then take the pot away when the aggressor gives up on the turn. Deliberately
+  /// flop-specific rather than a general "last street called" — `BettingRound`
+  /// lives in `game.dart`, which imports this file, and one bool is not worth an
+  /// import cycle. Generalise if another street ever needs it.
+  bool calledBetOnFlop = false;
+
   /// Eligible to act: still in the hand and has chips behind.
   bool get canAct => !hasFolded && !isAllIn && stack > 0;
 
@@ -87,7 +96,8 @@ class Player {
       ..vpip = vpip
       ..raisedPreflop = raisedPreflop
       ..preflopRaiseLevel = preflopRaiseLevel
-      ..raisedPostflop = raisedPostflop;
+      ..raisedPostflop = raisedPostflop
+      ..calledBetOnFlop = calledBetOnFlop;
     p.hole.addAll(hole);
     return p;
   }
@@ -106,6 +116,7 @@ class Player {
     raisedPreflop = false;
     preflopRaiseLevel = 0;
     raisedPostflop = false;
+    calledBetOnFlop = false;
   }
 
   /// Resets per-round state (called at the start of flop/turn/river).
