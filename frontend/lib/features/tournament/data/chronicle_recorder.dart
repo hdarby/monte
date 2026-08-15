@@ -2,6 +2,7 @@ import 'package:monte/core/domain/ai/player_profile.dart';
 import 'package:monte/core/domain/engine/game.dart';
 import 'package:monte/core/domain/engine/hand_evaluator.dart';
 import 'package:monte/core/domain/hand_history.dart';
+import 'package:monte/core/domain/ai/trigger_observer.dart';
 import 'package:monte/features/tournament/data/replay_builder.dart';
 import 'package:monte/features/tournament/domain/tournament_chronicle.dart';
 import 'package:monte/features/tournament/domain/tournament_snapshot.dart';
@@ -64,6 +65,7 @@ class ChronicleRecorder {
     required int averageStack,
     bool humanTable = false,
     List<ActionRecord> actions = const [],
+    List<FiredTrigger> firedTriggers = const [],
   }) {
     if (!enabled) return;
 
@@ -82,6 +84,7 @@ class ChronicleRecorder {
       preChips: pre,
       bigBlind: game.bigBlind,
       profileForSeat: profileForSeat,
+      firedTriggers: firedTriggers,
     );
 
     chronicle.record(

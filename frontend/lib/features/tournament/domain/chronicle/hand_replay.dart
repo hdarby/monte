@@ -1,4 +1,5 @@
 import 'package:monte/core/domain/engine/actions.dart';
+import 'package:monte/core/domain/ai/trigger_observer.dart';
 import 'package:monte/core/domain/engine/game.dart' show BettingRound;
 import 'package:monte/core/domain/engine/hand_evaluator.dart';
 
@@ -110,6 +111,7 @@ class ReplayStreet {
     required this.boardAfter,
     required this.actions,
     required this.potAfter,
+    this.triggers = const [],
     this.commentary = const [],
   });
 
@@ -124,6 +126,11 @@ class ReplayStreet {
   /// Pot size at the end of the street.
   final int potAfter;
 
+  /// Signature moves that fired on this street (see `TriggerObserver`), so the
+  /// commentary can name the move a player just made rather than describing it
+  /// as an anonymous check or call.
+  final List<FiredTrigger> triggers;
+
   /// Bart's read on this street, added by the narrator.
   final List<String> commentary;
 
@@ -135,6 +142,7 @@ class ReplayStreet {
     boardAfter: boardAfter,
     actions: actions,
     potAfter: potAfter,
+    triggers: triggers,
     commentary: lines,
   );
 }

@@ -50,7 +50,8 @@ class ProfilePostflopPolicy implements DecisionPolicy {
   /// than taken on faith. Null in production.
   late final TriggerObserver? _triggers;
 
-  void _fired(String id, Player p) => _triggers?.onFired(id, p.id);
+  void _fired(String id, Player p, BettingRound street) =>
+      _triggers?.onFired(id, p.id, street);
 
   static const _equityIterations = 160;
 
@@ -261,7 +262,7 @@ class ProfilePostflopPolicy implements DecisionPolicy {
           eq < 0.55 &&
           p.stack > bb &&
           _random.nextDouble() < 0.65 * float) {
-        _fired('Float_And_Take_Away', p);
+        _fired('Float_And_Take_Away', p, game.round);
         final b = betBy((0.55 * sizeScale).clamp(0.33, 0.75));
         final risked = b.amount - p.currentBet;
         if (_commitOk(p, risked, eq, deepFactor, aggressive: true)) return b;
@@ -280,7 +281,7 @@ class ProfilePostflopPolicy implements DecisionPolicy {
           eq > 0.86 &&
           tc.madeAtLeast(HandRank.threeOfAKind) &&
           _random.nextDouble() < 0.55 * trap) {
-        _fired('Slow_Play_Trap', p);
+        _fired('Slow_Play_Trap', p, game.round);
         return const GameAction.check();
       }
 
@@ -399,9 +400,9 @@ class ProfilePostflopPolicy implements DecisionPolicy {
     // when its condition held. A counter that ticks every time a bar shifts by
     // a hair says nothing about whether the move matters.
     if (callBar < baseBar && eq >= callBar && eq < baseBar) {
-      _fired('Sticky_Showdown', p);
+      _fired('Sticky_Showdown', p, game.round);
     } else if (callBar > baseBar && eq < callBar && eq >= baseBar) {
-      _fired('Underbluff_Exploit', p);
+      _fired('Underbluff_Exploit', p, game.round);
     }
 
     if (eq >= callBar &&

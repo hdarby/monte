@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:monte/core/domain/engine/actions.dart';
 import 'package:monte/core/domain/engine/game.dart' show BettingRound;
 import 'package:monte/core/domain/engine/hand_evaluator.dart';
+import 'package:monte/core/domain/ai/trigger_observer.dart';
 import 'package:monte/features/tournament/domain/chronicle/hand_narrator.dart';
 import 'package:monte/features/tournament/domain/chronicle/hand_replay.dart';
 
@@ -834,6 +835,23 @@ void main() {
         .commentary
         .first;
 
+    test('the phrasing seed is stable across processes, not just within one', () {
+      // Dart's String.hashCode is stable within a process but not guaranteed
+      // between runs, so seeding the voice from it produced a hand that read
+      // one way today and another way tomorrow -- which an in-process
+      // determinism check cannot detect. The seed is now derived from the
+      // hand's characters, so this literal is reproducible on any run. If this
+      // fails after a *deliberate* wording change, update the expectation; if it
+      // fails without one, the seed has stopped being stable.
+      final r = shoveWith(const ['Kd', '7s', '2c', '9h', '3d'], 'AcAd', 'KhQs');
+      expect(flopLine(r), startsWith('K♦ 7♠ 2♣'));
+      expect(
+        flopLine(shoveWith(const ['Qh', '8d', '4s', 'Jc', '5h'], 'AcAd', 'KhQs')),
+        isNot(flopLine(r)),
+        reason: 'different hands should still get different phrasing',
+      );
+    });
+
     test('the same hand always narrates identically', () {
       final r = shoveWith(const ['Kd', '7s', '2c', '9h', '3d'], 'AcAd', 'KhQs');
       expect(flopLine(r), flopLine(r));
@@ -857,6 +875,179 @@ void main() {
       };
       expect(lines.length, greaterThan(1),
           reason: 'every hand read the same way — the variation is not firing');
+    });
+  });
+
+  group('signature moves in the commentary', () {
+    /// A signature move only reads as one if somebody says so. Without this the
+    /// commentary describes an anonymous check and the character authored into
+    /// the profile is invisible to whoever is watching.
+    HandReplay withTrigger(String id, BettingRound street) => _replay(
+          board: const ['Kd', '7s', '2c', '9h', '3d'],
+          seats: [
+            _seat('a', 'Ana', ['Ac', 'Ad'], TablePosition.button,
+                won: true, net: 2000, finalRank: HandRank.threeOfAKind),
+            _seat('b', 'Ben', ['Kh', 'Qs'], TablePosition.bigBlind,
+                net: -2000, finalRank: HandRank.pair),
+          ],
+          streets: [
+            ReplayStreet(
+              name: 'Preflop',
+              round: BettingRound.preflop,
+              boardAfter: const [],
+              actions: [
+                _act('a', 'Ana', TablePosition.button, ActionType.raise,
+                    BettingRound.preflop, amount: 300),
+                _act('b', 'Ben', TablePosition.bigBlind, ActionType.call,
+                    BettingRound.preflop, amount: 300),
+              ],
+              potAfter: 700,
+              triggers: street == BettingRound.preflop
+                  ? [FiredTrigger(id, 'a', street)]
+                  : const [],
+            ),
+            ReplayStreet(
+              name: 'Flop',
+              round: BettingRound.flop,
+              boardAfter: const ['Kd', '7s', '2c'],
+              actions: [
+                _act('a', 'Ana', TablePosition.button, ActionType.check,
+                    BettingRound.flop),
+                _act('b', 'Ben', TablePosition.bigBlind, ActionType.check,
+                    BettingRound.flop),
+              ],
+              potAfter: 700,
+              triggers: street == BettingRound.flop
+                  ? [FiredTrigger(id, 'a', street)]
+                  : const [],
+            ),
+          ],
+        );
+
+    test('a trap is called out by name, on the street it happened', () {
+      final narrated =
+          HandNarrator.narrate(withTrigger('Slow_Play_Trap', BettingRound.flop));
+      final flop = narrated.streets
+          .firstWhere((s) => s.round == BettingRound.flop)
+          .commentary
+          .join(' ');
+      expect(flop.toLowerCase(), contains('trap'));
+      expect(flop, contains('Ana'));
+
+      // And it must not leak onto a street it did not happen on.
+      final preflop = narrated.streets
+          .firstWhere((s) => s.round == BettingRound.preflop)
+          .commentary
+          .join(' ');
+      expect(preflop.toLowerCase(), isNot(contains('trap')));
+    });
+
+    test('every move has commentary written for it', () {
+      for (final id in const [
+        'Slow_Play_Trap',
+        'Sticky_Showdown',
+        'Float_And_Take_Away',
+        'Bubble_Predator',
+        'Limp_Reraise',
+        'Underbluff_Exploit',
+      ]) {
+        final narrated = HandNarrator.narrate(withTrigger(id, BettingRound.flop));
+        final flop = narrated.streets
+            .firstWhere((s) => s.round == BettingRound.flop)
+            .commentary;
+        expect(flop.any((l) => l.contains('Ana')), isTrue,
+            reason: '$id produced no commentary — it fires silently');
+      }
+    });
+
+    test('every phrasing of a move names the move', () {
+      // The reader has to be able to tell *which* move they just saw, whichever
+      // variant the voice picked. One trap phrasing used to describe the line
+      // without ever calling it a trap, which only surfaced when the phrasing
+      // seed changed.
+      const marker = {
+        'Slow_Play_Trap': ['trap', 'slow-play'],
+        'Sticky_Showdown': ['never folding', 'crying call', 'pays it off'],
+        'Float_And_Take_Away': ['float'],
+        'Bubble_Predator': ['bubble', 'pay jump', 'pressure'],
+        'Limp_Reraise': ['limp'],
+        'Underbluff_Exploit': ['bluff', 'laydown'],
+      };
+      // Vary the board so a different phrasing is chosen each time.
+      const boards = [
+        ['Kd', '7s', '2c', '9h', '3d'],
+        ['Qh', '8d', '4s', 'Jc', '5h'],
+        ['Ts', '6c', '3h', '2d', '8c'],
+        ['9s', '5d', '2h', 'Kc', '7d'],
+        ['Jh', '4c', '3s', 'Qd', '6h'],
+      ];
+      for (final entry in marker.entries) {
+        for (final b in boards) {
+          final r = _replay(
+            board: b,
+            seats: [
+              _seat('a', 'Ana', ['Ac', 'Ad'], TablePosition.button,
+                  won: true, finalRank: HandRank.threeOfAKind),
+              _seat('b', 'Ben', ['Kh', 'Qs'], TablePosition.bigBlind,
+                  finalRank: HandRank.pair),
+            ],
+            streets: [
+              ReplayStreet(
+                name: 'Flop',
+                round: BettingRound.flop,
+                boardAfter: b.take(3).toList(),
+                actions: [
+                  _act('a', 'Ana', TablePosition.button, ActionType.check,
+                      BettingRound.flop),
+                ],
+                potAfter: 700,
+                triggers: [FiredTrigger(entry.key, 'a', BettingRound.flop)],
+              ),
+            ],
+          );
+          final line = HandNarrator.narrate(r)
+              .streets
+              .first
+              .commentary
+              .first
+              .toLowerCase();
+          expect(entry.value.any(line.contains), isTrue,
+              reason: '${entry.key} phrasing does not name the move: $line');
+        }
+      }
+    });
+
+    test('an unknown move id is ignored rather than crashing', () {
+      final narrated =
+          HandNarrator.narrate(withTrigger('Not_A_Real_Move', BettingRound.flop));
+      expect(narrated.streets, isNotEmpty);
+    });
+
+    test('a hand with no signature moves is unchanged', () {
+      final plain = _replay(
+        seats: [
+          _seat('a', 'Ana', ['Ac', 'Ad'], TablePosition.button,
+              won: true, finalRank: HandRank.threeOfAKind),
+          _seat('b', 'Ben', ['Kh', 'Qs'], TablePosition.bigBlind,
+              finalRank: HandRank.pair),
+        ],
+        streets: [
+          ReplayStreet(
+            name: 'Flop',
+            round: BettingRound.flop,
+            boardAfter: const ['Kd', '7s', '2c'],
+            actions: [
+              _act('a', 'Ana', TablePosition.button, ActionType.bet,
+                  BettingRound.flop, amount: 300),
+            ],
+            potAfter: 1000,
+          ),
+        ],
+      );
+      final narrated = HandNarrator.narrate(plain);
+      final flop = narrated.streets.first.commentary.join(' ');
+      expect(flop.toLowerCase(), isNot(contains('trap')));
+      expect(flop, isNotEmpty);
     });
   });
 }

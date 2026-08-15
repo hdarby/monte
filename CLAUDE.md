@@ -212,6 +212,19 @@ characterful named move over another generic dial.
 - A move shifts *frequencies*; it must never bypass the commitment gates
   (`_commitOk`, the river floors). Sticky means one more crying call, not a
   300 BB stack-off. There is a test for exactly that.
+- **Moves reach the commentary.** `TriggerLog` collects what fired (with the
+  street), the controller drains it per hand into `ReplayBuilder`, and the
+  narrator names the move on the street it happened. A trap only *reads* as a
+  trap if somebody says so — otherwise the character authored into the profile
+  is invisible. Every phrasing variant must name its own move; there's a test.
+- **The recap picks the most *interesting* hand, not the biggest pot**
+  (`TournamentChronicle._featureScore`). Only one hand per level is narrated, and
+  on pot size alone signature moves essentially never got shown — measured over
+  a 27-runner level, moves fired three times and none landed in the biggest pot.
+  Pot stays the multiplicative base so a trivial hand can't win on flags alone.
+  A hand the human *contested* **amplifies** the existing interest rather than
+  adding to it: your own hands shouldn't automatically win the slot, only your
+  good ones.
 
 > The remaining gap to real charts is **profile data, not policy**: the shipped
 > personalities carry PFR targets of 0.12–0.29, below a real Main Event field,
@@ -284,6 +297,10 @@ tool/test.sh all|list      # all / show which files each group resolves to
 - **Two preflop strength metrics.** `HandStrength.preflopOf` = all-in equity
   (push/fold and ICM only). `HandStrength.playabilityOf` = hand selection. Using
   the former to pick starting hands is a real bug that has already shipped once.
+- **`String.hashCode` is not stable across processes.** Anything that must
+  reproduce between runs — the narrator's phrasing seed, for one — has to hash
+  content by hand (`_Voice.of` walks the characters). An in-process determinism
+  test cannot catch this; it looks fine and drifts between sessions.
 - **Antes are tournament-only.** `TableConfig` has no ante field; only the
   tournament path (`TournamentStructure` → `PokerGame(ante:)`) posts one. Driving
   the engine directly is the way to test ante behaviour.

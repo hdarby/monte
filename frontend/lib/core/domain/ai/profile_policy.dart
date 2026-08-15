@@ -195,7 +195,7 @@ class ProfilePolicy implements DecisionPolicy {
         s >= _stackOff &&
         OpenRanges.playersBehind(game, p) >= 4 &&
         _random.nextDouble() < 0.5 * limpTrap) {
-      _triggers?.onFired('Limp_Reraise', p.id);
+      _triggers?.onFired('Limp_Reraise', p.id, game.round);
       return const GameAction.call();
     }
 

@@ -52,8 +52,11 @@ class TournamentChronicle {
   /// The biggest handful of pots this level, best-first, with what was shown.
   final List<NotablePot> _potsThisLevel = [];
 
-  /// The biggest showdown of the level, kept in full for a replay.
+  /// The level's feature hand, kept in full for a replay.
   HandReplay? _biggestReplay;
+
+  /// The feature hand's score (see [_featureScore]), so a later hand can beat it.
+  double _bestFeatureScore = 0;
 
   /// The ids active at the start of the current level — anyone here who isn't
   /// active at level's end busted this level.
@@ -80,6 +83,7 @@ class TournamentChronicle {
       Map<String, StandingKind> kinds, Set<String> personalities) {
     _potsThisLevel.clear();
     _biggestReplay = null;
+    _bestFeatureScore = 0;
     _levelStartIds = activeChips.keys.toSet();
     for (final e in activeChips.entries) {
       final m = _of(e.key, names[e.key] ?? e.key, kinds[e.key] ?? StandingKind.pro);
@@ -154,12 +158,80 @@ class TournamentChronicle {
       if (_potsThisLevel.length > 4) _potsThisLevel.removeLast();
     }
 
-    // Retain the single biggest showdown in full, for the level's hand replay.
-    if (d.replay != null &&
-        d.showdown.length >= 2 &&
-        (_biggestReplay == null || d.pot > _biggestReplay!.pot)) {
-      _biggestReplay = d.replay;
+    // Retain one showdown in full, for the level's hand replay.
+    if (d.replay != null && d.showdown.length >= 2) {
+      final score = _featureScore(d, _humanIdOrNull());
+      if (_biggestReplay == null || score > _bestFeatureScore) {
+        _biggestReplay = d.replay;
+        _bestFeatureScore = score;
+      }
     }
+  }
+
+  /// How much a hand deserves the level's one replay slot — how *interesting*
+  /// it is, not merely how many chips were attached to it.
+  ///
+  /// Only one hand per level is ever narrated, and picking it on pot size alone
+  /// throws away most of what is worth watching. Measured over a level of 27
+  /// runners, signature moves fired three times and not one landed in the
+  /// biggest pot, so a trap or a float was essentially never shown. A bad beat,
+  /// a knockout, a cooler and a four-way showdown are all more worth a minute of
+  /// someone's attention than a slightly larger routine pot.
+  ///
+  /// Pot stays the multiplicative **base**, so a trivial pot can never win the
+  /// slot no matter how many flags it sets: with every bonus at once a hand
+  /// still has to be roughly a third the size of the biggest to beat it. Nothing
+  /// in the recap claims the feature hand *is* the biggest pot of the level.
+  /// The human's seat id, if one of the tracked players is the human.
+  String? _humanIdOrNull() {
+    for (final e in _meta.entries) {
+      if (e.value.isHuman) return e.key;
+    }
+    return null;
+  }
+
+  static double _featureScore(HandDigest d, String? humanId) {
+    final r = d.replay;
+    if (r == null) return 0;
+
+    // What makes this hand worth a minute of someone's attention, over and
+    // above its size.
+    var interest = 0.0;
+
+    // A signature move is the whole reason the personalities have character;
+    // seeing one is the point of having authored it.
+    final moves =
+        r.streets.fold<int>(0, (a, s) => a + s.triggers.length).clamp(0, 2);
+    interest += 0.25 * moves;
+
+    // The hand everyone in the room talks about afterwards.
+    if (r.suckout) interest += 0.60;
+    // Somebody's tournament ended here.
+    if (d.busted.isNotEmpty) interest += 0.40;
+    // Stacks in the middle.
+    if (r.allIn) interest += 0.35;
+    // A cooler: two players both turned up a real hand.
+    if (r.winnerRank.index >= HandRank.twoPair.index &&
+        r.loserRank.index >= HandRank.twoPair.index) {
+      interest += 0.30;
+    }
+    // It went the distance, and not heads-up.
+    if (d.showdown.length >= 3) interest += 0.25;
+    // The player was sitting at the table for it.
+    if (d.humanTable) interest += 0.10;
+
+    // A hand the human actually contested **amplifies** whatever already made
+    // it interesting, rather than adding a bonus of its own. Getting your own
+    // play analysed is the most useful thing the recap does — but only when
+    // there was something to analyse. A pot you happened to be in where nothing
+    // happened is still a boring hand, and multiplying zero leaves it there.
+    // Keyed on the replay roster (everyone who saw the flop), so folding
+    // preflop does not count as playing it.
+    if (humanId != null && r.seats.any((s) => s.playerId == humanId)) {
+      interest *= 1.9;
+    }
+
+    return d.pot * (1 + interest);
   }
 
   /// Builds the recap for the level just completed. [finishPlaces] / [prizes]
@@ -240,9 +312,10 @@ class TournamentChronicle {
     notables.addAll(_comebackLines(currentChips, averageStack));
     notables.addAll(_storylines(currentChips));
 
-    // 10) A full replay of the level's biggest showdown, narrated now that we
-    //     know which hand actually won the slot — narrating every hand at every
-    //     table would be wasted work on a large field.
+    // 10) A full replay of the level's most interesting hand (see
+    //     [_featureScore]), narrated now that we know which hand won the slot —
+    //     narrating every hand at every table would be wasted work on a large
+    //     field.
     final biggest = _biggestReplay;
     final featureHand = biggest == null ? null : HandNarrator.narrate(biggest);
 

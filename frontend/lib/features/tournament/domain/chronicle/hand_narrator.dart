@@ -33,13 +33,84 @@ class HandNarrator {
   static HandReplay narrate(HandReplay replay) {
     final ctx = _HandContext(replay);
     final streets = [
-      for (final s in replay.streets) s.withCommentary(_forStreet(ctx, s)),
+      for (final s in replay.streets)
+        s.withCommentary([..._signatureMoves(ctx, s), ..._forStreet(ctx, s)]),
     ];
     return replay.copyWith(
       streets: streets,
       commentary: _summary(ctx),
       verdicts: _verdicts(ctx),
     );
+  }
+
+  /// Names the signature moves that fired on this street.
+  ///
+  /// This is the point of giving players signature moves at all: a trap only
+  /// reads as a trap if somebody says so. Without this the commentary describes
+  /// an anonymous check, and the character that was carefully authored into the
+  /// profile is invisible to the person watching.
+  static List<String> _signatureMoves(_HandContext ctx, ReplayStreet street) {
+    final out = <String>[];
+    for (final t in street.triggers) {
+      final who = ctx.nameOf(t.playerId);
+      if (who == null) continue;
+      final line = switch (t.triggerId) {
+        'Slow_Play_Trap' => ctx.voice.pick([
+            'And that is the trap — $who has a monster and just checked it. '
+                'They are not trying to win this pot now; they are trying to '
+                'win a much bigger one on the next street.',
+            '$who checks a hand nobody checks — that is a trap, plainly laid: '
+                'give them a card, let them catch something, then charge for '
+                'it.',
+            'Do not read that check as weakness. $who is slow-playing, and the '
+                'trap is set.',
+          ], 71),
+        'Sticky_Showdown' => ctx.voice.pick([
+            '$who is never folding this. Once they have a piece of it the price '
+                'stops mattering — that is the call you were hoping for when '
+                'you bet.',
+            'That is a crying call from $who, and they knew it. They simply do '
+                'not lay down a made hand.',
+            '$who pays it off. You will not bluff this player off a pair.',
+          ], 73),
+        'Float_And_Take_Away' => ctx.voice.pick([
+            'There it is — $who floated the flop with nothing, waiting for '
+                'exactly this. The aggressor gave up, so $who takes it.',
+            'That is a float, and it just got collected. $who never had a hand; '
+                'they had a plan.',
+            '$who bets the moment the initiative is dropped. That flop call '
+                'was a float, and this is the half that collects.',
+          ], 79),
+        'Bubble_Predator' => ctx.voice.pick([
+            '$who is attacking the bubble. Everyone else is trying to survive, '
+                'which is precisely what makes this profitable.',
+            'That raise is about the pay jump, not the cards. $who knows nobody '
+                'here can afford to call.',
+            '$who applies the pressure only a big stack can. This is where '
+                'tournaments are won.',
+          ], 83),
+        'Limp_Reraise' => ctx.voice.pick([
+            '$who limps — and that is not weakness, it is an invitation. They '
+                'want somebody to raise so they can come back over the top.',
+            'An early-position limp from $who. Old school, and there is a very '
+                'good hand behind it.',
+            'Watch what happens if anyone raises here: $who limped in with the '
+                'intention of re-raising.',
+          ], 89),
+        'Underbluff_Exploit' => ctx.voice.pick([
+            '$who folds, and it is a read rather than a hand: recreational '
+                'players almost never bluff the river, so a bluff-catcher is '
+                'catching nothing.',
+            'That is a disciplined laydown by $who. Against this opponent a '
+                'river bet means a river hand.',
+            '$who is not paying this one off. They have decided this player '
+                'does not have a bluff in their range here.',
+          ], 97),
+        _ => null,
+      };
+      if (line != null) out.add(line);
+    }
+    return out;
   }
 
   static List<String> _forStreet(_HandContext ctx, ReplayStreet street) {
@@ -799,14 +870,30 @@ class HandNarrator {
 class _Voice {
   _Voice(this._seed);
 
-  factory _Voice.of(HandReplay r) => _Voice(
-        Object.hashAll([
-          r.board.join(),
-          r.pot,
-          r.bigBlind,
-          for (final s in r.seats) ...[s.playerId, s.cards.join()],
-        ]),
-      );
+  /// Seeds from the hand's *content*, hashed by hand.
+  ///
+  /// Deliberately not `Object.hashAll`: Dart's `String.hashCode` is stable
+  /// within a process but not guaranteed between runs, so that seed produced a
+  /// hand that narrated one way today and another way tomorrow. An in-process
+  /// determinism test cannot see that. This FNV-1a walk over the characters is
+  /// stable everywhere, which is what "the same hand always reads the same way"
+  /// actually requires.
+  factory _Voice.of(HandReplay r) {
+    final buf = StringBuffer()
+      ..write(r.board.join())
+      ..write(r.pot)
+      ..write(r.bigBlind);
+    for (final s in r.seats) {
+      buf
+        ..write(s.playerId)
+        ..write(s.cards.join());
+    }
+    var hash = 0x811C9DC5;
+    for (final unit in buf.toString().codeUnits) {
+      hash = ((hash ^ unit) * 0x01000193) & 0x7FFFFFFF;
+    }
+    return _Voice(hash);
+  }
 
   final int _seed;
 
@@ -828,6 +915,13 @@ class _HandContext {
   final _Voice voice;
 
   List<ReplaySeat> get flopSeats => replay.seats;
+
+  /// The display name for a seat id, or null if they are not in the roster
+  /// (folded preflop, so the replay never listed them).
+  String? nameOf(String playerId) => replay.seats
+      .where((s) => s.playerId == playerId)
+      .map((s) => s.name)
+      .firstOrNull;
 
   int bbOf(int chips) =>
       replay.bigBlind <= 0 ? chips : (chips / replay.bigBlind).round();

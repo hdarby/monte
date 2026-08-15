@@ -7,6 +7,7 @@ import 'package:monte/core/domain/ai/player_profile.dart';
 import 'package:monte/core/domain/ai/player_read.dart';
 import 'package:monte/core/domain/ai/player_stats.dart';
 import 'package:monte/core/domain/ai/profile_decider.dart';
+import 'package:monte/core/domain/ai/trigger_observer.dart';
 import 'package:monte/core/domain/hand_history.dart';
 import 'package:monte/features/reads/data/player_stats_store.dart';
 import 'package:monte/core/domain/ai/tournament_context.dart';
@@ -48,8 +49,10 @@ class TournamentController {
     this.statsService,
     this._identityBySeat = const {},
     this._profileBySeat = const {},
+    TriggerLog? triggerLog,
   })  : _deciders = Map.of(deciders),
-        _enginePlayers = Map.of(enginePlayers);
+        _enginePlayers = Map.of(enginePlayers),
+        _triggerLog = triggerLog ?? TriggerLog();
 
   final TournamentState state;
   final SeatManager seatManager;
@@ -92,6 +95,14 @@ class TournamentController {
   }
 
   final Map<String, DecisionPolicy> _deciders;
+
+  /// Signature moves fired during the hand in progress. Drained into each
+  /// recorded hand so the recap can name the move a player made, then cleared.
+  /// Session-scoped and in-memory: it describes one hand, never persisted.
+  ///
+  /// Created in [create] rather than here because the deciders that write into
+  /// it are built before the controller exists.
+  final TriggerLog _triggerLog;
   final Map<String, Player> _enginePlayers;
 
   /// Metagame chronicle powering the post-level recap. Only fed during
@@ -168,6 +179,9 @@ class TournamentController {
     DecisionPolicy Function(String id, int index)? deciderBuilder,
     OpponentStatsService? statsService,
   }) {
+    // One log per tournament: the deciders write signature moves into it, the
+    // recorder drains it per hand so the recap can name them.
+    final triggerLog = TriggerLog();
     final players = <String, TournamentPlayer>{};
     final engine = <String, Player>{};
     for (var i = 0; i < entrants; i++) {
@@ -221,7 +235,10 @@ class TournamentController {
       final reads = statsService?.readsFor(identityOfSeat,
           observerId: identityBySeat[id]);
       final base = profile != null
-          ? deciderForProfile(profile, random: Random(seed * 1000 + i), reads: reads)
+          ? deciderForProfile(profile,
+              random: Random(seed * 1000 + i),
+              reads: reads,
+              triggers: triggerLog)
           : (deciderBuilder?.call(id, i) ??
               buildDecider(BotType.heuristic, random: Random(seed * 1000 + i)));
       // ICM discipline (short-stack push/fold + bubble caution) is a *skill*:
@@ -231,7 +248,9 @@ class TournamentController {
       final disciplined = profile == null || !isAmateurProfile(profile);
       deciders[id] = (icmAware && disciplined)
           ? IcmAdjustedDecider(base, (g, p) => contextOf(state, p.stack, p.id),
-              profile: profile, random: Random(seed * 977 + i))
+              profile: profile,
+              triggers: triggerLog,
+              random: Random(seed * 977 + i))
           : base;
     }
     final seatManager = SeatManager(Random(seed ^ 0x5f3759df));
@@ -245,6 +264,7 @@ class TournamentController {
       deciders: deciders,
       enginePlayers: engine,
       statsService: statsService,
+      triggerLog: triggerLog,
       identityBySeat: identityBySeat,
       profileBySeat: profileBySeat,
     );
@@ -400,6 +420,7 @@ class TournamentController {
       levelIndex: state.levelIndex,
       averageStack: state.averageStack,
       actions: actions ?? const [],
+      firedTriggers: _triggerLog.drain(),
     );
     // Drop the busted players from *this* table's seats directly — the busts all
     // happened here, so there's no need for the O(tables) scan that made huge
@@ -664,6 +685,7 @@ class TournamentController {
       averageStack: state.averageStack,
       humanTable: true,
       actions: liveActions,
+      firedTriggers: _triggerLog.drain(),
     );
     // Drop busts from the human's table seats locally (avoids the O(tables) scan).
     if (busts.isNotEmpty) {

@@ -1,4 +1,5 @@
 import 'package:monte/core/domain/ai/player_profile.dart';
+import 'package:monte/core/domain/ai/trigger_observer.dart';
 import 'package:monte/core/domain/engine/actions.dart';
 import 'package:monte/core/domain/engine/game.dart';
 import 'package:monte/core/domain/engine/hand_evaluator.dart';
@@ -30,6 +31,7 @@ class ReplayBuilder {
     required Map<String, int> preChips,
     required int bigBlind,
     PlayerProfile? Function(String playerId)? profileForSeat,
+    List<FiredTrigger> firedTriggers = const [],
   }) {
     final positions = _positions(game);
     final foldedOn = _foldStreets(actions);
@@ -70,7 +72,7 @@ class ReplayBuilder {
         ),
     ]..sort((a, b) => a.position.index.compareTo(b.position.index));
 
-    final streets = _streets(game, actions, positions, bigBlind);
+    final streets = _streets(game, actions, positions, bigBlind, firedTriggers);
     if (streets.isEmpty) return null;
 
     final ranked = [
@@ -168,6 +170,7 @@ class ReplayBuilder {
     List<ActionRecord> actions,
     Map<String, TablePosition> positions,
     int bigBlind,
+    List<FiredTrigger> firedTriggers,
   ) {
     final nameOf = {for (final p in game.players) p.id: p.name};
     final allIn = {
@@ -247,6 +250,10 @@ class ReplayBuilder {
           ],
           actions: replayActions,
           potAfter: pot,
+          triggers: [
+            for (final t in firedTriggers)
+              if (t.street == round) t,
+          ],
         ),
       );
       potBefore = pot;

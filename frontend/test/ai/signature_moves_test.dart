@@ -337,9 +337,9 @@ void main() {
       final o = CountingTriggerObserver();
       expect(o.count('Slow_Play_Trap'), 0);
       expect(o.fired, isEmpty);
-      o.onFired('Slow_Play_Trap', 'p1');
-      o.onFired('Slow_Play_Trap', 'p1');
-      o.onFired('Sticky_Showdown', 'p2');
+      o.onFired('Slow_Play_Trap', 'p1', BettingRound.flop);
+      o.onFired('Slow_Play_Trap', 'p1', BettingRound.flop);
+      o.onFired('Sticky_Showdown', 'p2', BettingRound.river);
       expect(o.count('Slow_Play_Trap'), 2);
       expect(o.countFor('Slow_Play_Trap', 'p1'), 2);
       expect(o.countFor('Slow_Play_Trap', 'p2'), 0);

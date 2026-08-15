@@ -129,4 +129,58 @@ void main() {
       b.streets.map((s) => s.commentary).toList(),
     );
   }, timeout: const Timeout(Duration(minutes: 5)));
+
+  test('a signature move reaches the recap text on real dealt hands', () {
+    // The whole point of the trigger plumbing: a move fired by a real bot in a
+    // real hand has to survive ReplayBuilder and come out the other side as
+    // words. Seat a field of players who all carry signature moves so at least
+    // one fires and lands in a feature hand.
+    const entrants = 27;
+    final movers = [
+      for (final id in const [
+        'Scotty Nguyen', 'Doyle Brunson', 'Jennifer Tilly', 'Eric Persson',
+        'Doug Polk', 'Daniel Cates', 'Shaun Deeb', 'Vanessa Selbst',
+        'Bill Perkins', 'Martin Kabrhel', 'Johnny Chan', 'Eli Elezra',
+      ])
+        builtInProfiles.firstWhere((p) => p.name == id),
+    ];
+    var sawMove = false;
+    for (final seed in [3, 11, 17, 23]) {
+      final c = TournamentController.create(
+        structure: TournamentStructure.wsopMainEvent(
+          clockMode: LevelClockMode.hands,
+        ),
+        entrants: entrants,
+        buyIn: 10000,
+        tableSize: 9,
+        seed: seed,
+        humanSeat: true,
+        names: ['You', for (var i = 1; i < entrants; i++) 'Bot $i'],
+        botProfiles: [
+          for (var i = 0; i < entrants - 1; i++) movers[i % movers.length],
+        ],
+      );
+      var guard = 0;
+      while (c.lastRecap == null && guard++ < 20000) {
+        if (c.state.status.name == 'finished') break;
+        c.step();
+      }
+      final hand = c.lastRecap?.featureHand;
+      if (hand == null) continue;
+      final text = [
+        for (final s in hand.streets) ...s.commentary,
+        ...hand.commentary,
+      ].join(' ').toLowerCase();
+      // Any of the six moves' signature phrasings.
+      if (const [
+        'trap', 'slow-play', 'never folding', 'crying call', 'pays it off',
+        'float', 'bubble', 'limps', 'read rather than a hand', 'laydown',
+      ].any(text.contains)) {
+        sawMove = true;
+        break;
+      }
+    }
+    expect(sawMove, isTrue,
+        reason: 'no signature move survived into the recap across four seeds');
+  }, timeout: const Timeout(Duration(minutes: 5)));
 }

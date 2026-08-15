@@ -69,7 +69,7 @@ class IcmAdjustedDecider implements DecisionPolicy {
         _random.nextDouble() < 0.35 * predator * (ctx.bubbleFactor - 1).clamp(0.0, 1.0)) {
       final to = game.minRaiseTo(p);
       if (to <= game.maxRaiseTo(p) && to > p.currentBet) {
-        triggers?.onFired('Bubble_Predator', p.id);
+        triggers?.onFired('Bubble_Predator', p.id, game.round);
         return GameAction.raise(to);
       }
     }
