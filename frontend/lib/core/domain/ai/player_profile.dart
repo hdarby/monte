@@ -81,6 +81,62 @@ class PlayerProfile {
         generated: generated,
       );
 
+  /// A copy of this player as they play at a **bigger buy-in**, where
+  /// [pressure] runs 0 (a small local event) to 1 (the Main Event).
+  ///
+  /// Nobody plays a $10,000 seat the way they play a $100 one. The money is real
+  /// enough to change behaviour, and the standard shape that change takes is
+  /// *tighter and more aggressive*: fewer hands entered, but the ones that are
+  /// entered are raised rather than limped or flat-called, mistakes are cut, and
+  /// sizings are more controlled. Hence the pfr:vpip ratio rising even as vpip
+  /// falls — that is the "aggression dial up, ranges down" combination.
+  ///
+  /// This is only half the effect; the other half is that a big buy-in draws a
+  /// tougher field in the first place, which `FieldBuilder` handles by weighting
+  /// the pro pool. Both are needed: the same player tightens up, *and* there are
+  /// fewer recreational players to begin with.
+  PlayerProfile atStakes(double pressure) {
+    final t = pressure.clamp(0.0, 1.0);
+    if (t <= 0) return this;
+    final b = strategicBaseline;
+    final vpip = (b.vpipTarget * (1 - 0.28 * t)).clamp(0.02, 1.0);
+    // PFR shrinks more slowly than VPIP, so the *share* of entered hands that
+    // are raised goes up: fewer hands, played harder.
+    final pfr = (b.pfrTarget * (1 - 0.10 * t)).clamp(0.01, vpip);
+    final threeBet = (b.threeBetFrequency * (1 + 0.15 * t)).clamp(0.0, pfr);
+    final m = behavioralModifiers;
+    return PlayerProfile(
+      id: id,
+      name: name,
+      archetype: archetype,
+      strategicBaseline: StrategicBaseline(
+        vpipTarget: vpip,
+        pfrTarget: pfr,
+        threeBetFrequency: threeBet,
+        // Sharper: the gap to perfect adherence closes by up to a third.
+        gtoAdherenceWeight:
+            (b.gtoAdherenceWeight + (1 - b.gtoAdherenceWeight) * 0.30 * t)
+                .clamp(0.0, 1.0),
+      ),
+      behavioralModifiers: BehavioralModifiers(
+        // Steadier under pressure, and more controlled sizings.
+        tiltResistance: (m.tiltResistance + (1 - m.tiltResistance) * 0.25 * t)
+            .clamp(0.0, 1.0),
+        exploitativeWeight: m.exploitativeWeight,
+        riskPremiumCoefficient:
+            (m.riskPremiumCoefficient * (1 - 0.12 * t)).clamp(0.1, 3.0),
+        weightOnOpponentHistory: m.weightOnOpponentHistory,
+      ),
+      engineTriggers: engineTriggers,
+      // A player is simply better when they are concentrating on a big buy-in.
+      skill: (skill + (1 - skill) * 0.20 * t).clamp(0.0, 1.0),
+      generalTraits: generalTraits,
+      characteristics: characteristics,
+      description: description,
+      generated: generated,
+    );
+  }
+
   /// A copy with [strategicBaseline] replaced — used to apply a tuned baseline
   /// override while keeping the profile's identity, skill, and modifiers.
   PlayerProfile withStrategicBaseline(StrategicBaseline baseline) =>

@@ -1,7 +1,9 @@
 import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:monte/core/domain/ai/opponent_reads.dart';
 import 'package:monte/core/domain/ai/player_profile.dart';
+import 'package:monte/core/domain/ai/player_stats.dart';
 import 'package:monte/core/domain/ai/player_profiles.dart';
 import 'package:monte/core/domain/ai/profile_postflop_policy.dart';
 import 'package:monte/core/domain/engine/actions.dart';
@@ -16,11 +18,13 @@ List<Card> _stack({
   required List<Card> p0,
   required List<Card> p1,
   required List<Card> flop,
+  List<Card> turnRiver = const [],
 }) {
   final placed = <int, Card>{
     0: p0[0], 2: p0[1],
     1: p1[0], 3: p1[1],
     5: flop[0], 6: flop[1], 7: flop[2],
+    if (turnRiver.length == 2) ...{9: turnRiver[0], 11: turnRiver[1]},
   };
   final used = placed.values.toSet();
   final rest = [
@@ -32,10 +36,10 @@ List<Card> _stack({
   return [for (var i = 0; i < 52; i++) placed[i] ?? rest[r++]];
 }
 
-PokerGame _game(List<Card> order) => PokerGame(
+PokerGame _game(List<Card> order, {int stack = 1000}) => PokerGame(
       players: [
-        Player(id: 'p0', name: 'P0', stack: 1000, isHuman: true),
-        Player(id: 'p1', name: 'P1', stack: 1000),
+        Player(id: 'p0', name: 'P0', stack: stack, isHuman: true),
+        Player(id: 'p1', name: 'P1', stack: stack),
       ],
       deck: Deck.stacked(order),
     )..startHand();
@@ -45,6 +49,15 @@ void _toFlop(PokerGame g) {
     final p = g.currentPlayer!;
     g.applyAction(g.canCheck(p) ? const GameAction.check() : const GameAction.call());
   }
+}
+
+/// Hands the same read back for every seat, so a test can pin an opponent
+/// profile without wiring the stats book.
+class _FixedReads implements OpponentReads {
+  _FixedReads(this.stats);
+  final PlayerStats stats;
+  @override
+  PlayerStats? forSeat(String seatPlayerId) => stats;
 }
 
 Player _p(PokerGame g, String id) => g.players.firstWhere((x) => x.id == id);
@@ -75,6 +88,39 @@ PokerGame _facingBet({
   final villain = g.currentPlayer!; // p0
   g.applyAction(GameAction.bet(villain.currentBet + (g.pot * potFraction).round()));
   return g;
+}
+
+// Advance all the way to the river with checks, then have villain (p0) bet
+// [potFraction], leaving hero (p1) to act facing that river bet.
+PokerGame _facingRiverBet({
+  required List<Card> p0,
+  required List<Card> p1,
+  required List<Card> flop,
+  required List<Card> turnRiver,
+  required double potFraction,
+  int stack = 1000,
+}) {
+  final g = _game(
+    _stack(p0: p0, p1: p1, flop: flop, turnRiver: turnRiver),
+    stack: stack,
+  );
+  _toFlop(g);
+  while (g.round != BettingRound.river) {
+    g.applyAction(const GameAction.check());
+    g.applyAction(const GameAction.check());
+  }
+  g.applyAction(const GameAction.check()); // p1
+  final villain = g.currentPlayer!; // p0
+  g.applyAction(GameAction.bet(villain.currentBet + (g.pot * potFraction).round()));
+  return g;
+}
+
+double _foldRate(ProfilePostflopPolicy pol, PokerGame g, Player hero, int n) {
+  var f = 0;
+  for (var i = 0; i < n; i++) {
+    if (pol.decide(g, hero).type == ActionType.fold) f++;
+  }
+  return f / n;
 }
 
 void main() {
@@ -208,6 +254,111 @@ void main() {
         ActionType.fold,
         reason: 'a low flush multiway into heavy action should fold',
       );
+    });
+
+    test('bigger river bets fold out more of a bluff-catcher', () {
+      // Size discipline, stated as monotonicity rather than a single verdict.
+      // A given spot's absolute call/fold answer depends on how well the board
+      // fits the villain's range, which this model only approximates; that a
+      // larger bet folds out more is the property that must always hold. The
+      // *frequencies* are gated properly, in aggregate, by
+      // test/ai/postflop_discipline_test.dart.
+      double foldAt(double potFraction) {
+        final g = _facingRiverBet(
+          p0: cards('Ah Qd'),
+          p1: cards('9c 9d'),
+          flop: cards('Kh 8s 3c'),
+          turnRiver: cards('4d 2h'),
+          potFraction: potFraction,
+        );
+        return _foldRate(_pol(isaacHaxton), g, _p(g, 'p1'), trials);
+      }
+
+      expect(foldAt(3.0), greaterThan(foldAt(0.5)),
+          reason: 'an overbet must fold out more than a small bet');
+      expect(foldAt(3.0), greaterThan(0.8),
+          reason: 'a 3x-pot river overbet beats a third-pair bluff-catcher');
+    });
+
+    test('a hero call takes a read, not a hunch', () {
+      // Hero-calling without exploit information is a punt, so the licence to do
+      // it comes from [rSuspect] — zero until an opponent's aggression is
+      // established. Asserted across sizings so it does not hinge on one spot.
+      final maniac = PlayerStats()
+        ..hands = 120
+        ..postAggr = 90
+        ..postCalls = 30 // aggression factor 3.0 — bets far too often
+        ..betFaced = 60
+        ..foldToBet = 36
+        ..cbetFaced = 40
+        ..foldToCbet = 24;
+
+      double foldAt(double potFraction, {PlayerStats? read}) {
+        final g = _facingRiverBet(
+          p0: cards('Ah Qd'),
+          p1: cards('9c 9d'),
+          flop: cards('Kh 8s 3c'),
+          turnRiver: cards('4d 2h'),
+          potFraction: potFraction,
+        );
+        final pol = ProfilePostflopPolicy(
+          danielNegreanu,
+          random: Random(11),
+          reads: read == null ? null : _FixedReads(read),
+        );
+        return _foldRate(pol, g, _p(g, 'p1'), trials);
+      }
+
+      var looserWithRead = 0;
+      var sizes = 0;
+      for (final f in const [1.5, 2.0, 2.5, 3.0]) {
+        final blind = foldAt(f);
+        final read = foldAt(f, read: maniac);
+        expect(read, lessThanOrEqualTo(blind),
+            reason: 'a read may only ever loosen a bluff-catch, never tighten');
+        if (blind > 0 && blind < 1) sizes++;
+        if (read < blind) looserWithRead++;
+      }
+      expect(sizes, greaterThan(0), reason: 'need a non-degenerate spot to judge');
+      expect(looserWithRead, greaterThan(0),
+          reason: 'a proven over-bettor should get looked up somewhere');
+    });
+
+    test('the commitment gate bites at tournament depth, not just 300 BB deep', () {
+      // 40 BB effective — normal mid-tournament — hero (p1) holds third pair on
+      // K-8-3-4-2 facing a river shove for nearly the whole stack. This is the
+      // spot that produced the bustouts: `deepFactor` is 0 below 100 BB, so the
+      // gate was dormant and the bot called off on raw pot odds.
+      final g = _facingRiverBet(
+        p0: cards('Ah Qd'),
+        p1: cards('9c 9d'),
+        flop: cards('Kh 8s 3c'),
+        turnRiver: cards('4d 2h'),
+        potFraction: 6.0, // a shove relative to the small checked-down pot
+        stack: 120,
+      );
+      final hero = _p(g, 'p1');
+      expect(g.callAmount(hero), greaterThan(hero.stack ~/ 2),
+          reason: 'the spot must actually threaten the stack');
+      for (var i = 0; i < 20; i++) {
+        expect(_pol(isaacHaxton).decide(g, hero).type, ActionType.fold,
+            reason: 'never call off a short stack with a bluff-catcher');
+      }
+    });
+
+    test('a river raise with a weak made hand is a rare move, not routine', () {
+      // On the river the old `isDraw` equity band held no draws at all — just
+      // weak made hands — so semibluff-raising it fired constantly (15.6% of
+      // river actions in the log). It should now be an occasional move.
+      final g = _facingRiverBet(
+        p0: cards('Ah Qd'),
+        p1: cards('9c 9d'),
+        flop: cards('Kh 8s 3c'),
+        turnRiver: cards('4d 2h'),
+        potFraction: 0.5,
+      );
+      final rate = _aggressiveRate(_pol(danielNegreanu), g, _p(g, 'p1'), trials);
+      expect(rate, lessThan(0.15), reason: 'river bluff-raises stay rare');
     });
 
     test('an exploitative pro semibluff-raises a draw more than the GTO anchor', () {

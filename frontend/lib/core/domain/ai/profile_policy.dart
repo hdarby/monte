@@ -4,6 +4,7 @@ import 'package:monte/core/domain/ai/opponent_reads.dart';
 import 'package:monte/core/domain/ai/player_profile.dart';
 import 'package:monte/core/domain/ai/player_stats.dart';
 import 'package:monte/core/domain/ai/preflop_ranges.dart';
+import 'package:monte/core/domain/ai/stack_context.dart';
 import 'package:monte/core/domain/engine/actions.dart';
 import 'package:monte/core/domain/engine/bet_snap.dart';
 import 'package:monte/core/domain/engine/bot.dart';
@@ -60,7 +61,7 @@ class ProfilePolicy implements DecisionPolicy {
       game.board.isEmpty ? _preflop(game, p) : _postflop.decide(game, p);
 
   GameAction _preflop(PokerGame game, Player p) {
-    final s = HandStrength.preflop(p);
+    final s = HandStrength.playability(p);
     final toCall = game.callAmount(p);
     final bb = game.bigBlind;
     final raises = game.raiseCountThisRound;
@@ -126,11 +127,7 @@ class ProfilePolicy implements DecisionPolicy {
     // hundred BB (early in a tournament) only the very top continues a raise war
     // to stacks — nobody ships 600 BB in the first orbit with AK/QQ. 0 at
     // ≤100 BB (normal play, and every existing test, is unchanged).
-    final liveOpps = game.players.where((x) => x.inHand && !identical(x, p));
-    final deepestOpp =
-        liveOpps.isEmpty ? 0 : liveOpps.map((x) => x.stack).reduce(max);
-    final effBb = bb > 0 ? min(p.stack, deepestOpp) / bb : 100.0;
-    final deepFactor = ((effBb - 100.0) / 200.0).clamp(0.0, 1.0);
+    final deepFactor = StackContext.of(game, p).depthPressure;
     final stackOff = (_stackOff + 0.12 * deepFactor).clamp(0.0, 1.0);
     final vs3betCall = (_vs3betCall + 0.08 * deepFactor).clamp(0.0, 1.0);
 

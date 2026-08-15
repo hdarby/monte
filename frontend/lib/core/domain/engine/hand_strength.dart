@@ -24,6 +24,52 @@ class HandStrength {
 
   static double preflop(Player p) => preflopOf(p.hole[0], p.hole[1]);
 
+  /// Preflop strength for **hand selection** — which hands to open, call and
+  /// 3-bet with. Use this everywhere except all-in decisions.
+  ///
+  /// [preflopOf] measures heads-up all-in equity against a random hand. That is
+  /// exactly right when the chips are going in preflop and there is nothing left
+  /// to play, and exactly *wrong* for choosing a starting hand, because it can
+  /// only reward high cards — it has no way to see a hand's ability to actually
+  /// realise its equity across three streets.
+  ///
+  /// The consequence was severe and visible in play: ranked by raw equity, K4o
+  /// (top 45%) beat 76s (top 68%), so a 30% opening range was full of
+  /// disconnected offsuit junk and contained no suited connector below 98s.
+  /// Those hands flop the top pair that cannot fold and is usually dominated,
+  /// which is why the biggest pots kept featuring garbage.
+  ///
+  /// The adjustments are the standard ones:
+  /// - **suited** — flush equity, and much better equity realisation;
+  /// - **connectedness** — straight equity, by gap;
+  /// - **pairs** — set-mining value and trivially easy to play;
+  /// - **domination** — an offsuit high card with a weak, disconnected kicker is
+  ///   penalised precisely because it *does* flop top pair.
+  static double playabilityOf(Card x, Card y) {
+    final hi = max(x.rank.value, y.rank.value);
+    final lo = min(x.rank.value, y.rank.value);
+    final base = preflopOf(x, y);
+    if (hi == lo) return base + 0.025;
+
+    var v = base;
+    if (x.suit == y.suit) v += 0.060;
+    final gap = hi - lo - 1;
+    v += switch (gap) {
+      0 => 0.038,
+      1 => 0.014,
+      2 => 0.000,
+      3 => -0.018,
+      _ => -0.032,
+    };
+    // The hands that make dominated top pairs: offsuit, big card, small and
+    // disconnected kicker (K4o, Q7o, J5o).
+    if (x.suit != y.suit && gap >= 3 && lo <= 8 && hi >= 10) v -= 0.040;
+    return v;
+  }
+
+  /// [playabilityOf] for a seated player's hole cards.
+  static double playability(Player p) => playabilityOf(p.hole[0], p.hole[1]);
+
   /// Preflop strength for any two cards, independent of a [Player] — used both
   /// by [preflop] and by range calibration that enumerates all starting hands.
   ///

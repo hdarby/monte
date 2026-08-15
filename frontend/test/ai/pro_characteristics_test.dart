@@ -68,7 +68,8 @@ bool _opens(ProfilePolicy pol, int buttonIndex, List<Card> hand) {
 
 // Heads-up on the flop, hero (p1) first to act with no bet to face. Returns the
 // fraction of [trials] the hero takes an aggressive (bet) line.
-double _flopBetRate(PlayerProfile profile, {required int trials}) {
+double _flopBetRate(PlayerProfile profile,
+    {required int trials, int stack = 1000}) {
   var bets = 0;
   for (var t = 0; t < trials; t++) {
     final order = _headsUpFlop(
@@ -78,8 +79,8 @@ double _flopBetRate(PlayerProfile profile, {required int trials}) {
     );
     final game = PokerGame(
       players: [
-        Player(id: 'p0', name: 'P0', stack: 1000),
-        Player(id: 'p1', name: 'P1', stack: 1000, isHuman: true),
+        Player(id: 'p0', name: 'P0', stack: stack),
+        Player(id: 'p1', name: 'P1', stack: stack, isHuman: true),
       ],
       deck: Deck.stacked(order),
     )..startHand();
@@ -264,15 +265,28 @@ void main() {
   });
 
   group('Leverage_Pressure', () {
-    test('a pressure pro bets a mediocre hand heads-up more than a baseline pro', () {
+    final pressurePro =
+        _pro([const PlayerCharacteristic(id: 'Leverage_Pressure', proficiency: 0.9)]);
+
+    test('fires where a bet genuinely threatens a stack', () {
+      // Short enough that a pot-sized bet puts the opponent all-in to continue —
+      // a real leverage spot, which is what the characteristic is for.
       const trials = 200;
-      final pressure = _flopBetRate(
-        _pro([const PlayerCharacteristic(id: 'Leverage_Pressure', proficiency: 0.9)]),
-        trials: trials,
-      );
-      final baseline = _flopBetRate(_pro(const []), trials: trials);
+      final pressure = _flopBetRate(pressurePro, trials: trials, stack: 30);
+      final baseline = _flopBetRate(_pro(const []), trials: trials, stack: 30);
       expect(pressure, greaterThan(baseline),
-          reason: 'leverage pressure should fire more aggression heads-up');
+          reason: 'leverage pressure should fire when it can threaten a stack');
+    });
+
+    test('does not fire just because the pot is heads-up', () {
+      // Heads-up is the ordinary state of a poker hand, not a leverage spot.
+      // Ramping on it alone made every pressure pro shove at everything; deep
+      // heads-up they must play their baseline.
+      const trials = 200;
+      final pressure = _flopBetRate(pressurePro, trials: trials);
+      final baseline = _flopBetRate(_pro(const []), trials: trials);
+      expect(pressure, equals(baseline),
+          reason: 'no pressure ramp without a stack to threaten');
     });
   });
 

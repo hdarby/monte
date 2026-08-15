@@ -57,6 +57,9 @@ class _LobbyScreenState extends State<LobbyScreen> {
           field: _builder.build(
             selectedIds: _selected,
             entrants: _entrants,
+            // The buy-in shapes the field: a $10k Main draws a tougher mix, and
+            // everyone in it plays tighter and harder than they would for $100.
+            buyIn: _buyIn,
           ),
           buyIn: _buyIn,
           tableSize: _tableSize,

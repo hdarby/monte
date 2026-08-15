@@ -57,10 +57,25 @@ class FieldBuilder {
 
   /// Builds the `entrants - 1` bot profiles, shuffled so the selected players
   /// aren't clustered at one table.
+  /// Maps a [buyIn] to a 0–1 "stakes pressure": how much this event's price
+  /// tightens the players and thins out the recreationals.
+  ///
+  /// Log-scaled, because the step from $100 to $1,000 means far more than the
+  /// step from $9,000 to $10,000. 0 at a $100 event, 1 at the $10,000 Main.
+  static double stakesPressure(int buyIn) {
+    if (buyIn <= 100) return 0.0;
+    if (buyIn >= 10000) return 1.0;
+    return (log(buyIn / 100) / log(100)).clamp(0.0, 1.0);
+  }
+
   List<PlayerProfile> build({
     required Set<String> selectedIds,
     required int entrants,
+    int buyIn = 0,
   }) {
+    // Both halves of the buy-in effect: a tougher *mix* (fewer recreationals as
+    // the price climbs), and every player sharpening up (`atStakes`).
+    final pressure = buyIn > 0 ? stakesPressure(buyIn) : 0.0;
     final field = [
       for (final id in selectedIds) byId(id),
     ].whereType<PlayerProfile>().toList();
@@ -70,15 +85,20 @@ class FieldBuilder {
 
     var i = 0;
     while (field.length < botsNeeded) {
-      // Alternate the pools so the field stays a believable mix.
-      final preferred = (i % 2 == 0) ? recreational : pros;
+      // Alternate the pools so the field stays a believable mix. At a big
+      // buy-in the rotation is weighted toward pros: a $10k field is roughly
+      // three-quarters regulars, a $100 field roughly half recreational.
+      final proShare = 0.5 + 0.25 * pressure;
+      final preferred = ((i * proShare) % 1.0) >= proShare ? recreational : pros;
       i++;
       final src = preferred.isNotEmpty
           ? preferred
           : (recreational.isNotEmpty ? recreational : pros);
       if (src.isEmpty) break;
-      final profile = src[_rng.nextInt(src.length)];
-      field.add(profile.renamed(uniqueName(used), generated: true));
+      final profile = src[_rng.nextInt(src.length)]
+          .atStakes(pressure)
+          .renamed(uniqueName(used), generated: true);
+      field.add(profile);
     }
     return field.take(botsNeeded).toList()..shuffle(_rng);
   }

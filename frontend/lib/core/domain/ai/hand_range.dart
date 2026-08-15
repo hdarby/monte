@@ -2,6 +2,7 @@ import 'dart:math';
 
 import 'package:monte/core/domain/engine/card.dart';
 import 'package:monte/core/domain/engine/game.dart';
+import 'package:monte/core/domain/engine/hand_evaluator.dart';
 import 'package:monte/core/domain/engine/hand_strength.dart';
 
 /// A plausible set of two-card holdings a villain could have — the "range" a
@@ -30,8 +31,8 @@ class HandRange {
   /// i.e. a villain who continues with roughly the top `fraction` of hands.
   factory HandRange.top(double fraction, {Set<Card> dead = const {}}) {
     final all = _combos(dead)
-      ..sort((a, b) => HandStrength.preflopOf(b.$1, b.$2)
-          .compareTo(HandStrength.preflopOf(a.$1, a.$2)));
+      ..sort((a, b) => HandStrength.playabilityOf(b.$1, b.$2)
+          .compareTo(HandStrength.playabilityOf(a.$1, a.$2)));
     final n = (all.length * fraction.clamp(0.0, 1.0)).round().clamp(1, all.length);
     return HandRange(all.sublist(0, n));
   }
@@ -57,13 +58,68 @@ class HandRange {
     // Each bet/raise this street tightens the range hard (a villain who puts in
     // money is far stronger than their preflop continuing range).
     var factor = pow(0.5, max(0, raiseCount)).toDouble();
-    if (street == BettingRound.turn) factor *= 0.85;
-    if (street == BettingRound.river) factor *= 0.7;
+    // Mild, because `polarisedOn` now does the board-aware tightening. These
+    // used to be the only thing narrowing a later-street range, so they were set
+    // hard; leaving them there double-counts and over-folds the turn and river.
+    if (street == BettingRound.turn) factor *= 0.92;
+    if (street == BettingRound.river) factor *= 0.85;
     // Bet-size discipline: small sizings (≤½ pot) are unchanged, larger bets
     // reciprocally shrink the range — pot ⇒ ×0.67, 2× pot ⇒ ×0.40, 3× ⇒ ×0.29.
     if (betFraction > 0.5) factor *= 1.0 / (1.0 + (betFraction - 0.5));
     final n = (combos.length * factor).round().clamp(1, combos.length);
     return HandRange(combos.sublist(0, n));
+  }
+
+  /// The subset of this range a villain would actually **bet** on [board]:
+  /// their strongest made hands (value) plus a tail of their weakest
+  /// (air and draws), with the middling hands — the ones a real player checks
+  /// back — removed.
+  ///
+  /// This corrects the single biggest hand-reading error in a pot-odds bot.
+  /// [top] and [narrowedBy] rank combos by *preflop* strength only and never
+  /// look at the board, so a "tight" river range stays dense with unpaired big
+  /// cards that lose to any pair. A bluff-catcher then measures huge equity
+  /// against it and calls on pot odds essentially forever. Filtering by made
+  /// strength **on this board** makes a bluff-catcher's equity converge on the
+  /// range's actual bluff share — which is the honest number a call has to beat.
+  ///
+  /// [bluffFraction] is the share of the betting range that is air/draws (the
+  /// caller derives it from the bet size — see `ProfilePostflopPolicy`).
+  ///
+  /// [betRangeFraction] is how wide the represented betting range is. It is
+  /// deliberately generous, and calibrated rather than derived: because the
+  /// value slice is taken from the *top* of an already preflop-strong range, a
+  /// narrow slice is effectively "villain always has the nuts" and a
+  /// bluff-catcher folds every river. Widening it admits the thin value real
+  /// players bet — hands a marginal holding actually beats. Measured over 400
+  /// simulated hands, 0.85 puts fold-to-bet at roughly 47/52/56% on
+  /// flop/turn/river, which is where real play sits; 0.55 pushed the river to
+  /// 83%. Retune with `test/ai/postflop_discipline_test.dart`.
+  ///
+  /// Note the bottom slice is the right home for semibluffs too: on the flop and
+  /// turn a flush draw evaluates as high-card, so it lands in the bluff tail
+  /// naturally, without a separate draw model.
+  HandRange polarisedOn(
+    List<Card> board, {
+    required double bluffFraction,
+    double betRangeFraction = 0.85,
+  }) {
+    if (board.isEmpty || combos.length < 4) return this;
+    // Score once per combo, then sort — evaluating inside the comparator would
+    // cost O(n log n) seven-card evaluations on every decision.
+    final scored = [
+      for (final c in combos)
+        (c, HandEvaluator.evaluate([c.$1, c.$2, ...board])),
+    ]..sort((a, b) => b.$2.compareTo(a.$2));
+    final keep = (scored.length * betRangeFraction.clamp(0.1, 1.0))
+        .round()
+        .clamp(2, scored.length);
+    final bluffs = (keep * bluffFraction.clamp(0.0, 1.0)).round().clamp(0, keep);
+    final value = keep - bluffs;
+    return HandRange([
+      for (final s in scored.take(value)) s.$1,
+      for (final s in scored.sublist(scored.length - bluffs)) s.$1,
+    ]);
   }
 
   static List<(Card, Card)> _combos(Set<Card> dead) {

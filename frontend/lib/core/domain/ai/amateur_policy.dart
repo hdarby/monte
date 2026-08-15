@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:monte/core/domain/ai/hand_range.dart';
 import 'package:monte/core/domain/ai/player_profile.dart';
 import 'package:monte/core/domain/ai/postflop_equity.dart';
+import 'package:monte/core/domain/ai/stack_context.dart';
 import 'package:monte/core/domain/ai/preflop_ranges.dart';
 import 'package:monte/core/domain/engine/actions.dart';
 import 'package:monte/core/domain/engine/bet_snap.dart';
@@ -97,7 +98,17 @@ class AmateurPolicy implements DecisionPolicy {
       game.board.isEmpty ? _preflop(game, p) : _postflop(game, p);
 
   GameAction _preflop(PokerGame game, Player p) {
-    final s = HandStrength.preflop(p);
+    // Recreational hand selection: the classic leak is overvaluing raw high
+    // cards — "K4 is two big cards" — which is precisely what ranking by all-in
+    // equity ([HandStrength.preflopOf]) does. So a rec's ranking is blended back
+    // toward that naive metric in proportion to their incompetence, while the
+    // *cutoffs* stay where they are. The result is that they let K4o in and fold
+    // 76s, which is the mistake real recreational players actually make. A
+    // skill-1.0 player would use pure playability and pick hands like a pro.
+    final naive = HandStrength.preflop(p);
+    final skilled = HandStrength.playability(p);
+    final bias = (_k * 0.8).clamp(0.0, 1.0);
+    final s = skilled * (1 - bias) + naive * bias;
     final toCall = game.callAmount(p);
     final bb = game.bigBlind;
     final raises = game.raiseCountThisRound;
@@ -114,11 +125,7 @@ class AmateurPolicy implements DecisionPolicy {
     // Deep-stack discipline (dormant at ≤100 BB): even a loose amateur doesn't
     // ship hundreds of BB in preflop — the deeper the stack, the tighter the
     // range that keeps raising toward a stack-off.
-    final liveOpps = game.players.where((x) => x.inHand && !identical(x, p));
-    final deepestOpp =
-        liveOpps.isEmpty ? 0 : liveOpps.map((x) => x.stack).reduce(max);
-    final effBb = bb > 0 ? min(p.stack, deepestOpp) / bb : 100.0;
-    final deepFactor = ((effBb - 100.0) / 200.0).clamp(0.0, 1.0);
+    final deepFactor = StackContext.of(game, p).depthPressure;
 
     // Facing a 3-bet+: only premiums keep raising; loose amateurs cold-call a
     // touch wider than a pro, but nobody raise-wars junk to all-in.
@@ -161,8 +168,8 @@ class AmateurPolicy implements DecisionPolicy {
     // hundreds of BB in with a marginal hand. deepFactor 0 at ≤100 BB → normal
     // (leaky) play; ramps by ~300 BB. Kept lighter than the pro gate so recs
     // still stack off a touch lighter (they remain the losers).
-    final effBb = bb > 0 ? (p.totalContributed + p.stack) / bb : 100.0;
-    final deepFactor = ((effBb - 100.0) / 200.0).clamp(0.0, 1.0);
+    final ctx = StackContext.of(game, p);
+    final deepFactor = ctx.depthPressure;
 
     // NB: recreational players are deliberately left overvaluing hands multiway
     // and splashing in deep pots — that's a realistic leak and a big part of why
@@ -303,8 +310,15 @@ class AmateurPolicy implements DecisionPolicy {
     // bounded so it stays a believable leak, not a spew.
     final callThreshold =
         (potOdds + 0.10 * _k * _tight - 0.10 * _k * _loose).clamp(0.0, 1.0);
-    if (noisy >= callThreshold) return const GameAction.call();
-    return const GameAction.fold();
+    if (noisy < callThreshold) return const GameAction.fold();
+    // The commitment gate applies to *every* call, not just one that crosses the
+    // 40%-of-stack branch above. `commit` measures this single call against the
+    // remaining stack, so a pot built up over three streets — each call under
+    // the threshold — walked past the check entirely and ended in a 300 BB
+    // stack-off with trips-and-a-bad-kicker. `_deepCommitOk` measures the
+    // *cumulative* commitment, which is the number that actually matters.
+    if (!_deepCommitOk(p, toCall, eq, deepFactor)) return const GameAction.fold();
+    return const GameAction.call();
   }
 
   /// Deep-stack commitment gate: the larger the fraction of a deep stack an

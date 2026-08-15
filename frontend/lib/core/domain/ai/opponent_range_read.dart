@@ -108,7 +108,7 @@ class OpponentRangeRead {
             : '${hi.label}${lo.label}${suited ? 's' : 'o'}';
 
         final combos = _combosOf(hi, lo, pair: pair, suited: suited, dead: dead);
-        final s = HandStrength.preflopOf(
+        final s = HandStrength.playabilityOf(
             Card(hi, Suit.spades), Card(lo, suited ? Suit.spades : Suit.hearts));
         final superPrem = _isSuperPremium(hi, lo, pair);
 

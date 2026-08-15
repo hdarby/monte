@@ -47,7 +47,7 @@ class PersonalityPolicy implements DecisionPolicy {
   /// 3-bet the top / flat a controlled band vs a single raise, premiums-only vs
   /// a 3-bet+. Aggression widens 3-bets and sizes; bluff adds the odd steal.
   GameAction _preflop(PokerGame game, Player p) {
-    final s = HandStrength.preflop(p);
+    final s = HandStrength.playability(p);
     final toCall = game.callAmount(p);
     final raises = game.raiseCountThisRound;
     final aggr = profile.aggression;

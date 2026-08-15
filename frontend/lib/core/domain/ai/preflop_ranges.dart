@@ -52,7 +52,7 @@ class PreflopRanges {
     final out = <double>[];
     for (var i = 0; i < cards.length; i++) {
       for (var j = i + 1; j < cards.length; j++) {
-        out.add(HandStrength.preflopOf(cards[i], cards[j]));
+        out.add(HandStrength.playabilityOf(cards[i], cards[j]));
       }
     }
     out.sort((a, b) => b.compareTo(a));
