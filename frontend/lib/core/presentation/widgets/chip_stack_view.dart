@@ -64,7 +64,7 @@ class ChipStackView extends StatelessWidget {
     this.maxHeight = 34,
     this.chipWidth = 13,
     this.chipHeight = 3.2,
-    this.maxColumns = 5,
+    this.maxColumns = 7,
     this.maxChips = 60,
   });
 
