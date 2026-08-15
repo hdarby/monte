@@ -34,11 +34,18 @@ slider.
 
 - **Style** — poker-native frequency targets (VPIP / PFR / 3-bet). A closed-loop
   calibrator turns them into real preflop ranges, so a profile actually *hits its
-  stats*. Recreate real players' tendencies; three calibrated pros ship built-in.
-- **Skill** — an **ISMCTS** search drives postflop play, depth scaled by a
-  `gto_adherence` knob so disciplined pros *out-decide* weaker styles. A
-  *progressive-bias* search defaults to sound play at low iteration counts and
-  strengthens with more.
+  stats*. 154 calibrated pros and 30 recreational players ship built-in, and
+  `tool/create_player.dart` adds your own.
+- **Skill** — two brains. An **ISMCTS** search (the "Monte" in Monte Carlo) with
+  progressive bias, and a faster range-aware policy that the named personalities
+  use. Both express the same `gto_adherence` dial, so disciplined pros
+  *out-decide* weaker styles.
+- **Poker judgement**, not just search — hands are picked by *playability*
+  (suitedness, connectedness, domination) rather than raw all-in equity; bet
+  sizing targets a stack-to-pot ratio instead of a blind pot fraction; opening
+  ranges widen by seat and by the dead money a steal is playing for. Recreational
+  players keep the leaks — including overvaluing raw high cards — which is why
+  they stay net losers to the pro field.
 
 Full design + phased roadmap: [`docs/personality-model.md`](docs/personality-model.md).
 The **Analytics** screen simulates any number of hands (with progress) and reports
@@ -80,8 +87,11 @@ it can't be committed as a binary here.
 | Hand-history recording + analytics (VPIP/PFR/AF) | ✅ done |
 | Client-only single-player game | ✅ playable |
 | MVVM + Clean Architecture (feature-first, Riverpod) | ✅ done |
+| Multi-table tournaments (structures, ICM, seating, payouts) | ✅ done, client-side |
+| Tournament recaps + per-hand analysis ("Bart") | ✅ done |
+| Persistent opponent reads across sessions | ✅ done |
 | Ktor backend | 🟡 scaffold (routes/sockets/DB stubbed with TODOs) |
-| Real-time multiplayer + persistence + MTTs | ⬜ TODO |
+| Real-time multiplayer + server-side persistence | ⬜ TODO |
 
 ## Layout
 

@@ -149,6 +149,47 @@ pure Dart (Kotlin-portable).
   MCTS brain is much slower than heuristic — fine for the live table, heavy for
   large batch runs.
 
+### Poker judgement the profile bots apply
+
+The named personalities (pros and recreationals) don't use the search — they run
+`ProfilePolicy` preflop and `ProfilePostflopPolicy` after, and this is where most
+play quality lives. Four shared concepts, each of which used to be duplicated
+per-policy and drifted:
+
+- **Two preflop metrics, and mixing them up is a real bug.**
+  `HandStrength.preflopOf` is heads-up all-in equity vs a random hand — correct
+  for push/fold and ICM shoves only. `HandStrength.playabilityOf` is for *hand
+  selection* everywhere else. Ranking selection by raw equity puts K4o above 76s
+  and fills opening ranges with disconnected offsuit junk that flops dominated
+  top pairs. Recreational players deliberately blend *back* toward raw equity in
+  proportion to `1 − skill` — "K4 is two big cards" is their actual leak, and it
+  is part of why they stay net losers.
+- **`StackContext` (`stack_context.dart`)** — the one reader for stack depth and
+  SPR. Depth (`depthBb`, `StackRegime`) is a *preflop* concept taken from
+  start-of-hand stacks and constant through the hand; SPR (`spr`, `SprBand`) is a
+  *postflop* commitment concept that falls as the pot grows. Reading depth off
+  the *remaining* stack is the bug to watch for: it makes deep-stack discipline
+  fade out exactly as a pot bloats.
+- **SPR-targeted sizing** — bets are not a blind pot fraction. A hand picks the
+  SPR it wants to face when the money goes in and solves for the per-street size.
+  Targets are *proportional* to the current SPR, since an absolute target demands
+  an enormous bet when deep, which is backwards.
+- **`OpenRanges` (`open_ranges.dart`)** — opening frequency by seat and dead
+  money. Position is ranked by players left to act *preflop* (the small blind is
+  second-to-last, not first — that is postflop order), and big-blind antes widen
+  ranges because a steal is playing for more. The multiplier is **normalised to
+  average 1.0 across the table**, which is what keeps each profile's calibrated
+  VPIP/PFR on target; anything that raises the mean will break
+  `profile_calibration_test`.
+- **Buy-in dial** — `PlayerProfile.atStakes` tightens ranges while raising the
+  pfr:vpip ratio (fewer hands, played harder), and `FieldBuilder` weights the pro
+  pool by buy-in. A $10k field is both tougher players *and* better ones.
+
+> The remaining gap to real charts is **profile data, not policy**: the shipped
+> personalities carry PFR targets of 0.12–0.29, below a real Main Event field,
+> and the mean-1.0 constraint centres the positional curve on whatever they are
+> set to. Widening the button means editing the profiles.
+
 ## Dev commands (run from `frontend/`)
 
 ```bash
@@ -173,6 +214,17 @@ tool/test.sh all|list      # all / show which files each group resolves to
   assertions; cover engine rules, ViewModels/use cases, analytics). But running
   the suite costs tokens — **ask before running tests**, and prefer a targeted
   run (`tool/test.sh new`, or a single file) over the full suite.
+- **Scope the run to what changed.** Recap/narrator edits need only the recap
+  tests, not the ~4-minute suite. Reserve the full run for shared domain code
+  (engine, policies, `StackContext`, `HandStrength`) where the blast radius is
+  wide. `flutter analyze` always.
+- **Some gates are calibration, not unit tests.** `postflop_discipline_test`,
+  `deep_stack_discipline_test`, `profile_calibration_test` and
+  `amateur_strength_test` simulate hundreds of hands and assert *measured
+  frequencies* land in a band. When one fails, decide honestly whether the
+  behaviour regressed or the band now measures the wrong thing — e.g.
+  fold-to-bet is only meaningful relative to the bet size being faced, so a
+  sizing change legitimately moves it.
 - **TDD when it fits.** For well-specified logic (rules, evaluator, analytics,
   tournament structures) we often write the test first.
 - **Verify, don't assume.** Iterate in small steps: change → `flutter analyze`
@@ -194,4 +246,16 @@ tool/test.sh all|list      # all / show which files each group resolves to
   tuning record (all cards, positions, model per seat), captured at the same
   `_finalizeHand` seam via `TableConfig.onEvalHandRecorded` and written only to the
   on-disk JSONL store. Never route an `EvalHand` to a `DecisionPolicy`/`OpponentModel`.
-  Analytics → **Wipe tuning history** clears the file *and* in-session reads.
+- **Two separate wipes, and they clear different things.** Analytics → **Wipe
+  tuning history** deletes the `EvalHand` JSONL and resets *in-session* reads.
+  Settings → **Clear all opponent reads** deletes the persisted
+  `opponent_stats.json` (`OpponentStatsService.wipe()`). Neither does the other's
+  job. After changing decision logic, clear the reads — statistics gathered under
+  the old behaviour describe a game that no longer exists, and an exploitative
+  bot will keep acting on them.
+- **Two preflop strength metrics.** `HandStrength.preflopOf` = all-in equity
+  (push/fold and ICM only). `HandStrength.playabilityOf` = hand selection. Using
+  the former to pick starting hands is a real bug that has already shipped once.
+- **Antes are tournament-only.** `TableConfig` has no ante field; only the
+  tournament path (`TournamentStructure` → `PokerGame(ante:)`) posts one. Driving
+  the engine directly is the way to test ante behaviour.

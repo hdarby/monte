@@ -56,7 +56,7 @@ can reuse it as the rules authority in phase 2.
 | `game.dart` | `PokerGame` — the state machine for one hand. Betting rounds, side pots, showdown. The single source of truth; even the bot search plays *this* forward rather than a second rulebook. |
 | `card.dart`, `deck.dart` | Cards and the deck. `Deck.stacked` gives preset decks that survive reset/shuffle — the basis of every reproducible test. |
 | `hand_evaluator.dart` | 5-from-7 best-hand evaluation → `HandValue` / `HandRank`. |
-| `hand_strength.dart` | Cheap heuristic strength, used where a full evaluation is too slow. |
+| `hand_strength.dart` | Two **different** preflop metrics, and the difference matters. `preflopOf` is heads-up all-in equity vs a random hand — right for push/fold and ICM shoves, and nothing else. `playabilityOf` adds suitedness, connectedness, pair value and a domination penalty, and is what every *hand-selection* path uses. Ranking selection by raw equity put K4o (top 45%) above 76s (top 68%) and filled opening ranges with disconnected offsuit junk. |
 | `board_texture.dart` | Reads the board against the six textures — **dry, wet, monochrome, dynamic, static, paired** — plus suitedness, connectedness, live draws, and whether the board favours the raiser or the caller. Not mutually exclusive: a board is usually several at once. |
 | `actions.dart` | `GameAction` / `ActionType` / `BettingRound`. |
 | `bet_snap.dart` | Rounding bets to legal chip denominations. |
@@ -92,12 +92,32 @@ This is the "Monte" in Monte Carlo. Also pure Dart.
 - `decider_factory.dart` — **`buildDecider(BotType, profile, iterations)`**, the
   one factory. `BotType` lives here.
 
+**Stack depth, SPR and position** — the shared readers. Each of these existed
+as duplicated logic inside three separate policies before, and every copy
+carried the same bug, so they live in one place now:
+- `stack_context.dart` — **`StackContext`**: `depthBb` / `StackRegime`
+  (pushFold → veryDeep) and `spr` / `SprBand` (committed → veryHigh). They are
+  different quantities and both are needed: depth is a *preflop* concept, taken
+  from start-of-hand stacks and constant through the hand; SPR is a *postflop*
+  commitment concept that **falls** as the pot grows. Also does SPR-targeted bet
+  sizing — pick the SPR you want to face when the money goes in, solve for the
+  per-street bet.
+- `open_ranges.dart` — **`OpenRanges`**: how much wider a seat opens an unopened
+  pot, driven by players left to act *preflop* (not postflop order — the small
+  blind is second-to-last preflop) and by dead money, so big-blind antes widen
+  ranges. Normalised to average 1.0 across the table, which is what keeps each
+  profile's calibrated VPIP/PFR on target.
+
 **Reads & equity:**
 - `player_stats.dart`, `player_read.dart`, `opponent_model.dart`,
   `opponent_reads.dart`, `opponent_range_read.dart` — what a bot has observed
   about an opponent, and what an opponent perceives about you.
 - `hand_range.dart`, `preflop_ranges.dart`, `postflop_equity.dart`,
   `push_fold_chart.dart` — range and equity machinery, shared by bots and coach.
+  `HandRange.polarisedOn` is the important one: it builds the range a villain
+  would actually *bet* (value plus a bluff tail, middle removed) rather than
+  their whole continuing range, which is what stops a bluff-catcher measuring
+  huge equity against a pile of unpaired big cards and calling forever.
 - `tournament_context.dart`, `icm_adjusted_decider.dart` — ICM pressure applied
   to a decision.
 - `profile_calibrator.dart` — nudges a profile toward target stats.
@@ -266,6 +286,12 @@ seat), captured at the same `_finalizeHand` seam via
 |---|---|
 | change the rules of poker | `core/domain/engine/game.dart` |
 | change how a bot thinks | `core/domain/ai/` — `ismcts.dart` for search, `*_policy.dart` for style |
+| change which hands a bot plays | `core/domain/engine/hand_strength.dart` (`playabilityOf`) |
+| change opening ranges by seat, or ante/steal maths | `core/domain/ai/open_ranges.dart` |
+| change deep-stack or SPR behaviour, or bet sizing | `core/domain/ai/stack_context.dart` |
+| change how a villain's range is read | `core/domain/ai/hand_range.dart` |
+| change tournament payouts | `features/tournament/domain/payout_structure.dart` |
+| create or edit a player from the CLI | `tool/create_player.dart` |
 | add or edit a personality | `core/domain/ai/famous_pros.dart` / `home_game_profiles.dart` |
 | change what the felt looks like | `features/table/presentation/` |
 | change the tournament HUD | `features/tournament/presentation/widgets/tournament_hud.dart` |
@@ -317,6 +343,16 @@ tool/test.sh new         # only recent-feature tests
 tool/test.sh old|all|list
 ```
 
-> Known pre-existing failure: `test/show_behavior_test.dart` fails on `main`
-> (an `ensureVisible` ambiguity in the settings widget test), unrelated to the
-> layering above.
+**Scope the run to what you changed.** The full suite is ~4 minutes, dominated
+by simulation gates (`amateur_strength_test`, `profile_calibration_test`,
+`deep_stack_discipline_test`, `postflop_discipline_test`). Recap/narrator edits
+only need `test/features/tournament/hand_narrator_test.dart` and friends.
+Reserve the full suite for shared domain code — engine, policies,
+`StackContext`, `HandStrength` — where the blast radius is genuinely wide.
+
+**The simulation gates are calibration, not unit tests.** They run hundreds of
+hands and assert measured frequencies land in a band (fold-to-bet by bet size,
+bust-outs per 100 hands, pot percentiles, VPIP/PFR vs target). When one fails,
+work out whether the *behaviour* regressed or the band is now measuring the
+wrong thing — a change in bet sizing legitimately moves fold-to-bet, because
+fold-to-bet is only meaningful relative to the size being faced.
