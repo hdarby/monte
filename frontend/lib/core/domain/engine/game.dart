@@ -45,6 +45,18 @@ class HandResult {
   /// Chips actually won from opponents this hand (excludes a returned uncalled
   /// bet). Zero when the player only got their own uncalled money back.
   int get netWon => amountWon - uncalledReturn;
+
+  /// What the player actually **made** on the hand: everything they took out of
+  /// the pot, less everything they put in. Exactly the change in their stack.
+  ///
+  /// [amountWon] is the pot they collected, most of which is usually their own
+  /// money coming back — winning a 200 pot after betting 100 into it is a gain
+  /// of 100, not 200. This is the number to show a player, since it is the one
+  /// they can check against their own stack.
+  ///
+  /// Can be zero or negative: a player who wins a chop, or takes a side pot
+  /// while losing the main, can collect chips and still be down on the hand.
+  int get netGain => amountWon - player.totalContributed;
 }
 
 /// A self-contained No-Limit Texas Hold'em hand engine.

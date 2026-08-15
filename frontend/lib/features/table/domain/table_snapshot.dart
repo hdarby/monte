@@ -28,6 +28,7 @@ class SeatView {
     this.holeCards,
     this.handLabel,
     this.wonAmount = 0,
+    this.wonNet = 0,
     this.wonIsChop = false,
     this.behavior,
     this.kind,
@@ -72,6 +73,13 @@ class SeatView {
   /// Excludes a returned uncalled bet, so a player who only got their own
   /// over-bet back shows nothing.
   final int wonAmount;
+
+  /// What the seat actually **made** on the hand: chips collected less chips
+  /// contributed — the change in their stack. [wonAmount] is mostly the
+  /// player's own money coming back, so this is the figure worth showing them.
+  /// Zero or negative is possible (a chop, or a side pot won while losing the
+  /// main), which [wonAmount] can never express.
+  final int wonNet;
 
   /// Whether [wonAmount] was a split pot (a chop) — labels the tag "CHOP".
   final bool wonIsChop;

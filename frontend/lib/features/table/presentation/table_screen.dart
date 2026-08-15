@@ -224,13 +224,22 @@ class _TableScreenState extends State<TableScreen> {
     if (winners.isEmpty) return null;
     final money = MoneyScope.of(context);
     final chop = winners.length > 1 || winners.first.wonIsChop;
+
+    // Report what the player *made*, not the pot they scooped. Most of a pot is
+    // the winner's own money coming back — "wins $200" after betting $100 into
+    // it overstates the result twofold, and doesn't match the stack change the
+    // player can see. A chop can even be a net loss, which the pot figure could
+    // never show, so the sign is explicit.
+    String net(int gain) =>
+        '${gain < 0 ? '−' : '+'}${money.format(gain.abs())}';
+
     final String text;
     if (winners.length == 1) {
       final w = winners.first;
-      text = '${w.name} ${chop ? 'chops' : 'wins'} ${money.format(w.wonAmount)}';
+      text = '${w.name} ${chop ? 'chops' : 'wins'} — ${net(w.wonNet)}';
     } else {
       final parts =
-          winners.map((w) => '${w.name} ${money.format(w.wonAmount)}').join('  ·  ');
+          winners.map((w) => '${w.name} ${net(w.wonNet)}').join('  ·  ');
       text = 'Chop — $parts';
     }
     return Align(

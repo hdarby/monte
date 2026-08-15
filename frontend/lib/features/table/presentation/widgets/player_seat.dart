@@ -350,8 +350,13 @@ class _PlayerSeatState extends State<PlayerSeat> {
   /// the tag below (human) so both read the same colours and wording.
   ({String text, Color bg, Color fg})? _moneyStatus(MoneyFormat money) {
     if (seat.wonAmount > 0) {
+      // The net figure, matching the winner banner — showing the pot here and
+      // the gain there would put two different numbers for the same hand on
+      // screen at once. Signed, because a chop can be a net loss.
+      final gain = seat.wonNet;
       return (
-        text: '${seat.wonIsChop ? 'CHOP' : 'WON'} +${money.format(seat.wonAmount)}',
+        text: '${seat.wonIsChop ? 'CHOP' : 'WON'} '
+            '${gain < 0 ? '−' : '+'}${money.format(gain.abs())}',
         bg: AppTheme.gold,
         fg: Colors.black,
       );

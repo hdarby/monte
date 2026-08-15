@@ -26,6 +26,7 @@ TableSnapshot projectTableSnapshot(
 }) {
   final showdownHappened = game.results.any((r) => r.handValue != null);
   final wonByPlayer = {for (final r in game.results) r.player: r.netWon};
+  final netByPlayer = {for (final r in game.results) r.player: r.netGain};
   final chopByPlayer = {for (final r in game.results) r.player: r.isSplit};
   final current = game.currentPlayer;
 
@@ -57,6 +58,7 @@ TableSnapshot projectTableSnapshot(
         holeCards: reveal ? List.of(p.hole) : null,
         handLabel: label,
         wonAmount: wonByPlayer[p] ?? 0,
+        wonNet: netByPlayer[p] ?? 0,
         wonIsChop: chopByPlayer[p] ?? false,
         behavior: behaviorLabels[p.id],
         kind: PlayerKind.of(seatProfiles[p.id], isHuman: p.isHuman),

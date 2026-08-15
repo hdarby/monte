@@ -134,6 +134,7 @@ void main() {
         stack: 250000,
         currentBet: 0,
         wonAmount: 987654,
+        wonNet: 987654,
         folded: false,
         allIn: false,
         isButton: false,
@@ -204,7 +205,10 @@ void main() {
         isHuman: false,
         stack: 1120,
         currentBet: 0,
+        // Collected a 120 pot, but 50 of it was their own money going in, so
+        // the hand made them 70. The banner must report the 70.
         wonAmount: 120,
+        wonNet: 70,
         folded: false,
         allIn: false,
         isButton: false,
@@ -240,6 +244,8 @@ void main() {
     await tester.pump();
 
     expect(tester.takeException(), isNull);
-    expect(find.text('Ivey wins \$120'), findsOneWidget);
+    expect(find.text('Ivey wins — +\$70'), findsOneWidget);
+    expect(find.text('Ivey wins \$120'), findsNothing,
+        reason: 'the pot collected is mostly the winner\'s own money back');
   });
 }
