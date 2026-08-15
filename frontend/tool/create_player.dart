@@ -134,6 +134,17 @@ PlayerProfile _createPro(String name, String id) {
   final tilt = _score('Tilt control (0–100)');
   final opp = _score('Reading opponents / tendencies (0–100)');
 
+  // The recreational flow has always asked these; the pro flow did not, so every
+  // custom pro was written out with the same defaults (0.30 / 1.0) no matter how
+  // they were described — an "aggressive bully" came out identical to a "GTO
+  // standard". Ask, the same way.
+  final deviate = _askChoice('How much do they deviate to attack an opponent?',
+      ['Barely — plays their own game', 'Some', 'A lot', 'Constantly hunting']);
+  final sizing = _askChoice('Typical bet sizing',
+      ['Small / controlled', 'Normal', 'Big / overbets']);
+  final exploitWeight = [0.10, 0.30, 0.55, 0.80][deviate];
+  final risk = [0.85, 1.0, 1.25][sizing];
+
   print('\nSpecial characteristics — which apply to $name?');
   print('(answer the % they use each; leave blank / 0 to skip)\n');
   final chosen = <PlayerCharacteristic>[];
@@ -151,6 +162,8 @@ PlayerProfile _createPro(String name, String id) {
     vpip: vpip,
     pfr: pfr,
     threeBet: threeBet,
+    exploitativeWeight: exploitWeight,
+    riskPremium: risk,
     tiltResistance: tilt,
     opponentReading: opp,
     characteristics: chosen,
@@ -191,12 +204,23 @@ int _askInt(String prompt, {required int min, required int max}) {
 }
 
 /// A 0–100 score returned as a 0–1 fraction. Blank = 0.
+///
+/// Values strictly between 0 and 1 are rejected rather than accepted. The prompt
+/// asks for a percentage, but `num.tryParse` happily took `0.85` and returned
+/// 0.0085 — that silent hundred-fold error is how Jeremy Ausmus ended up with a
+/// GTO adherence of 0.0085 instead of 0.85. Nobody means "0.85%", so treating it
+/// as a typo and asking again is always right.
 double _score(String prompt) {
   while (true) {
     stdout.write('$prompt: ');
     final line = stdin.readLineSync()?.trim() ?? '';
     if (line.isEmpty) return 0.0;
     final n = num.tryParse(line);
+    if (n != null && n > 0 && n < 1) {
+      print('  That looks like a fraction — enter ${(n * 100).round()} for '
+          '${(n * 100).round()}%, not $n.');
+      continue;
+    }
     if (n != null && n >= 0 && n <= 100) return (n / 100).toDouble();
     print('  Enter a number 0–100 (or blank for 0).');
   }
