@@ -3,6 +3,16 @@ import 'package:monte/core/domain/ai/home_game_profiles.dart';
 import 'package:monte/core/domain/ai/player_profiles.dart';
 import 'package:monte/features/tournament/data/tournament_controller.dart';
 import 'package:monte/features/tournament/domain/tournament_chronicle.dart';
+import 'dart:math';
+
+import 'package:monte/core/domain/ai/trigger_observer.dart';
+import 'package:monte/core/domain/engine/actions.dart';
+import 'package:monte/core/domain/engine/deck.dart';
+import 'package:monte/core/domain/engine/game.dart';
+import 'package:monte/core/domain/engine/player.dart';
+import 'package:monte/core/domain/hand_history.dart';
+import 'package:monte/features/tournament/data/replay_builder.dart';
+import 'package:monte/features/tournament/domain/chronicle/hand_narrator.dart';
 import 'package:monte/features/tournament/domain/tournament_structure.dart';
 
 /// Proves the whole commentary pipeline works on hands the *engine* actually
@@ -130,57 +140,78 @@ void main() {
     );
   }, timeout: const Timeout(Duration(minutes: 5)));
 
-  test('a signature move reaches the recap text on real dealt hands', () {
-    // The whole point of the trigger plumbing: a move fired by a real bot in a
-    // real hand has to survive ReplayBuilder and come out the other side as
-    // words. Seat a field of players who all carry signature moves so at least
-    // one fires and lands in a feature hand.
-    const entrants = 27;
-    final movers = [
-      for (final id in const [
-        'Scotty Nguyen', 'Doyle Brunson', 'Jennifer Tilly', 'Eric Persson',
-        'Doug Polk', 'Daniel Cates', 'Shaun Deeb', 'Vanessa Selbst',
-        'Bill Perkins', 'Martin Kabrhel', 'Johnny Chan', 'Eli Elezra',
-      ])
-        builtInProfiles.firstWhere((p) => p.name == id),
+  test('a signature move survives the replay rebuild into recap text', () {
+    // The integration risk is `ReplayBuilder`: it reconstructs a hand from the
+    // engine's action log, and the fired moves have to come through it attached
+    // to the right street and out the other side as words.
+    //
+    // Deliberately *not* "play a tournament and hope a move lands in the recap".
+    // Only one hand per level is narrated, moves fire around eight times in a
+    // level of 150 hands, and a rare event competing against the maximum over
+    // 150 draws is a coin toss dressed up as a test. That the recap *prefers*
+    // move-carrying hands is pinned deterministically in
+    // `feature_hand_choice_test`; that the words are right is pinned in
+    // `hand_narrator_test`. This is the seam between them.
+    final players = [
+      Player(id: 'p0', name: 'Ana', stack: 10000),
+      Player(id: 'p1', name: 'Ben', stack: 10000),
     ];
-    var sawMove = false;
-    for (final seed in [3, 11, 17, 23]) {
-      final c = TournamentController.create(
-        structure: TournamentStructure.wsopMainEvent(
-          clockMode: LevelClockMode.hands,
-        ),
-        entrants: entrants,
-        buyIn: 10000,
-        tableSize: 9,
-        seed: seed,
-        humanSeat: true,
-        names: ['You', for (var i = 1; i < entrants; i++) 'Bot $i'],
-        botProfiles: [
-          for (var i = 0; i < entrants - 1; i++) movers[i % movers.length],
-        ],
-      );
-      var guard = 0;
-      while (c.lastRecap == null && guard++ < 20000) {
-        if (c.state.status.name == 'finished') break;
-        c.step();
-      }
-      final hand = c.lastRecap?.featureHand;
-      if (hand == null) continue;
-      final text = [
-        for (final s in hand.streets) ...s.commentary,
-        ...hand.commentary,
-      ].join(' ').toLowerCase();
-      // Any of the six moves' signature phrasings.
-      if (const [
-        'trap', 'slow-play', 'never folding', 'crying call', 'pays it off',
-        'float', 'bubble', 'limps', 'read rather than a hand', 'laydown',
-      ].any(text.contains)) {
-        sawMove = true;
-        break;
-      }
+    final game = PokerGame(
+      players: players,
+      smallBlind: 50,
+      bigBlind: 100,
+      deck: Deck(random: Random(9)),
+    )..startHand();
+
+    final actions = <ActionRecord>[];
+    void act(GameAction a) {
+      final p = game.currentPlayer!;
+      actions.add(ActionRecord(
+        playerId: p.id,
+        street: game.round,
+        type: a.type,
+        amount: a.amount,
+        potAfter: game.pot,
+      ));
+      game.applyAction(a);
     }
-    expect(sawMove, isTrue,
-        reason: 'no signature move survived into the recap across four seeds');
-  }, timeout: const Timeout(Duration(minutes: 5)));
+
+    var guard = 0;
+    while (!game.isHandOver && guard++ < 60) {
+      final p = game.currentPlayer;
+      if (p == null) break;
+      act(game.canCheck(p)
+          ? const GameAction.check()
+          : const GameAction.call());
+    }
+
+    final replay = ReplayBuilder.build(
+      game: game,
+      actions: actions,
+      preChips: {'p0': 10000, 'p1': 10000},
+      bigBlind: 100,
+      firedTriggers: const [
+        FiredTrigger('Slow_Play_Trap', 'p0', BettingRound.flop),
+      ],
+    );
+    expect(replay, isNotNull, reason: 'both players saw the flop');
+
+    // Attached to the street it happened on, and nowhere else.
+    final flop =
+        replay!.streets.firstWhere((s) => s.round == BettingRound.flop);
+    expect(flop.triggers, hasLength(1));
+    for (final s in replay.streets.where((s) => s.round != BettingRound.flop)) {
+      expect(s.triggers, isEmpty, reason: '${s.name} picked up a stray move');
+    }
+
+    // And it comes out as words naming the move, on that street.
+    final narrated = HandNarrator.narrate(replay);
+    final text = narrated.streets
+        .firstWhere((s) => s.round == BettingRound.flop)
+        .commentary
+        .join(' ')
+        .toLowerCase();
+    expect(text, contains('trap'));
+    expect(text, contains('ana'));
+  });
 }

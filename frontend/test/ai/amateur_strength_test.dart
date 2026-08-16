@@ -4,31 +4,18 @@ library;
 import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:monte/core/domain/ai/amateur_policy.dart';
+import 'package:monte/core/domain/ai/bot_spec.dart';
+import 'package:monte/core/domain/ai/player_stats.dart';
+import 'package:monte/features/reads/data/player_stats_store.dart';
 import 'package:monte/core/domain/ai/home_game_profiles.dart';
 import 'package:monte/core/domain/ai/player_profile.dart';
 import 'package:monte/core/domain/ai/player_profiles.dart';
-import 'package:monte/core/domain/ai/profile_calibrator.dart';
-import 'package:monte/core/domain/ai/profile_policy.dart';
-import 'package:monte/core/domain/ai/profile_postflop_policy.dart';
 import 'package:monte/core/domain/engine/deck.dart';
-import 'package:monte/core/domain/engine/decision_policy.dart';
 import 'package:monte/features/analytics/domain/analytics.dart';
 import 'package:monte/features/table/data/local_game_repository.dart';
 
 /// The app's decider for a seated profile: the degraded [AmateurPolicy] for
 /// amateurs (skill < 1), the calibrated pro brain otherwise. Seeded for repro.
-DecisionPolicy _policyFor(PlayerProfile p, int seed) {
-  final isAmateur =
-      p.skill < 1.0 || homeGameProfiles.any((a) => a.id == p.id);
-  if (isAmateur) return AmateurPolicy(p, random: Random(seed));
-  return ProfilePolicy(
-    p,
-    ranges: const ProfileCalibrator().rangesFor(p),
-    postflop: ProfilePostflopPolicy(p, random: Random(seed)),
-    random: Random(seed),
-  );
-}
 
 /// The pro field an amateur is measured against: a 6-max table of the built-in
 /// pros (the strong ones doubled), which is the table size their ranges are
@@ -70,13 +57,24 @@ _Standing _seatAmongPros(
       for (var i = 0; i < lineup.length; i++)
         lineup[(i + seed) % lineup.length],
     ];
+    // Seat the profiles properly rather than injecting bare policies, so the
+    // repository wires each seat's **opponent reads**. Without them the pros
+    // play the entire run blind, and a maximally aggressive amateur who barrels
+    // every street is unbeatable by construction — no amount of discipline
+    // helps if you can never notice who you are playing. Noticing is exactly
+    // what separates a pro from a rec, so denying it measures the wrong thing.
+    final stats = OpponentStatsService(
+      const NoopPlayerStatsStore(),
+      PlayerStatsBook(),
+    );
     final repo = LocalGameRepository(
+      statsService: stats,
       config: TableConfig(
         allBots: true,
         playerCount: seated.length,
         botThinkTime: Duration.zero,
         deckBuilder: () => Deck(random: Random(seed)),
-        deciderBuilder: (i) => _policyFor(seated[i], seed * 100 + i),
+        seatBots: [for (final p in seated) BotSpec(profile: p)],
       ),
     );
     repo.simulate(hands);

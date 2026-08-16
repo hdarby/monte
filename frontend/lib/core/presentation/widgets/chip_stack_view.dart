@@ -111,7 +111,6 @@ class ChipStackView extends StatefulWidget {
 }
 
 class _ChipStackViewState extends State<ChipStackView> {
-  final LayerLink _link = LayerLink();
   final OverlayPortalController _legend = OverlayPortalController();
 
   @override
@@ -196,32 +195,28 @@ class _ChipStackViewState extends State<ChipStackView> {
 
     if (!widget.showLegendOnHover) return stack;
 
-    return CompositedTransformTarget(
-      link: _link,
-      child: MouseRegion(
-        onEnter: (_) => _legend.show(),
-        onExit: (_) => _legend.hide(),
-        child: OverlayPortal(
-          controller: _legend,
-          overlayChildBuilder: (context) => Positioned(
-            // Anchored above the stack, and non-interactive so it can never
-            // swallow a click meant for the felt underneath.
-            child: CompositedTransformFollower(
-              link: _link,
-              targetAnchor: Alignment.topCenter,
-              followerAnchor: Alignment.bottomCenter,
-              offset: const Offset(0, -6),
-              child: IgnorePointer(
-                child: ChipLegend(
-                  denominations: denominations,
-                  minDenomination: minDenomination,
-                  amount: amount,
-                ),
+    return MouseRegion(
+      onEnter: (_) => _legend.show(),
+      onExit: (_) => _legend.hide(),
+      child: OverlayPortal(
+        controller: _legend,
+        // Centred on screen rather than anchored to the stack. A seat-anchored
+        // popup runs off the edge for the seats around the rim of the felt —
+        // which is most of them — and there is no good side to flip to when the
+        // seat is in a corner. Non-interactive, so it can never swallow a click
+        // meant for the felt underneath.
+        overlayChildBuilder: (context) => Positioned.fill(
+          child: IgnorePointer(
+            child: Center(
+              child: ChipLegend(
+                denominations: denominations,
+                minDenomination: minDenomination,
+                amount: amount,
               ),
             ),
           ),
-          child: stack,
         ),
+        child: stack,
       ),
     );
   }

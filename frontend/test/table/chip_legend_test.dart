@@ -88,6 +88,75 @@ void main() {
       expect(find.textContaining('×'), findsWidgets);
     });
 
+    testWidgets('stays on screen even for a stack in the corner',
+        (tester) async {
+      // Anchoring the popup to the stack ran it off the edge for the seats
+      // around the rim of the felt — which is most of them — and there is no
+      // good side to flip to when a seat is in a corner. It is centred instead.
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Stack(
+              children: [
+                Positioned(
+                  left: 0,
+                  top: 0,
+                  child: ChipStackView(
+                    amount: 275000,
+                    denominations: wsop,
+                    reference: 275000,
+                    minDenomination: 1000,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      await hoverStack(tester);
+
+      final screen = tester.getRect(find.byType(MaterialApp));
+      final legend = tester.getRect(find.byType(ChipLegend));
+      expect(legend.left, greaterThanOrEqualTo(screen.left));
+      expect(legend.top, greaterThanOrEqualTo(screen.top));
+      expect(legend.right, lessThanOrEqualTo(screen.right));
+      expect(legend.bottom, lessThanOrEqualTo(screen.bottom));
+    });
+
+    testWidgets('does not swallow clicks meant for the felt', (tester) async {
+      var tapped = false;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Stack(
+              children: [
+                Positioned.fill(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => tapped = true,
+                  ),
+                ),
+                Center(
+                  child: ChipStackView(
+                    amount: 275000,
+                    denominations: wsop,
+                    reference: 275000,
+                    minDenomination: 1000,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      await hoverStack(tester);
+      expect(find.byType(ChipLegend), findsOneWidget);
+      // A click through the middle of the visible legend must reach the felt.
+      await tester.tapAt(const Offset(20, 20));
+      await tester.pumpAndSettle();
+      expect(tapped, isTrue);
+    });
+
     testWidgets('can be switched off', (tester) async {
       await tester.pumpWidget(
         MaterialApp(

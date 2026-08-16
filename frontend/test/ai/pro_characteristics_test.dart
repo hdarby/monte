@@ -231,9 +231,15 @@ ActionType _facingBetAction(PlayerProfile profile, double potFraction) {
 
 void main() {
   // A spread of marginal offsuit/broadway/suited hands around the open threshold.
+  // Hands spanning the band the positional spread actually covers — roughly a
+  // 19% opening range under the gun against 45% on the button. Premiums open
+  // from everywhere and trash folds everywhere, so neither tells you anything
+  // about position.
   final hands = [
-    'As 9d', 'Kh Td', 'Qc Jd', 'Ks 9h', 'Qh 9s', 'Jc Td', 'Ah 5s',
-    'Kd Jc', 'Tc 9c', 'Qd Ts', 'Jh 9h', 'Ad 8d',
+    'Ks 9h', 'Kd 7c', 'Kh 5s', 'Qh 9s', 'Qd 7c', 'Jc 9d', 'Jh 8s',
+    'Tc 9c', 'Td 7d', '9h 8h', '9c 6c', '8d 7d', '8s 5s', '7h 6h',
+    'Ad 4d', 'Ah 2h', 'As 7c', 'Ac 5c', 'Kc 6c', 'Qs 8s', 'Js 7s',
+    'Th 8h', '6d 5d', '5h 4h', 'Qc Td', 'Jd Tc',
   ].map(cards).toList();
 
   group('Positional_Warfare', () {

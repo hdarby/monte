@@ -158,8 +158,16 @@ class TournamentChronicle {
       if (_potsThisLevel.length > 4) _potsThisLevel.removeLast();
     }
 
-    // Retain one showdown in full, for the level's hand replay.
-    if (d.replay != null && d.showdown.length >= 2) {
+    // Retain one hand in full, for the level's replay.
+    //
+    // A showdown is the usual requirement — you cannot narrate cards nobody
+    // turned over — but a hand containing a **signature move** qualifies without
+    // one. The most characterful hands end precisely *because* nobody showed:
+    // a float that works takes the pot down uncontested, and requiring a
+    // showdown filtered every one of them out. Measured over a level, moves
+    // fired eight times and not one hand was even eligible.
+    final hasMove = d.replay?.streets.any((s) => s.triggers.isNotEmpty) ?? false;
+    if (d.replay != null && (d.showdown.length >= 2 || hasMove)) {
       final score = _featureScore(d, _humanIdOrNull());
       if (_biggestReplay == null || score > _bestFeatureScore) {
         _biggestReplay = d.replay;

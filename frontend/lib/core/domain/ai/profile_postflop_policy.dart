@@ -452,6 +452,31 @@ class ProfilePostflopPolicy implements DecisionPolicy {
         _flushCommitOk(game, p, toCall, eq)) {
       return const GameAction.call();
     }
+    // Float: call a flop bet in position with nothing, *intending* to take the
+    // pot when the aggressor gives up on the turn.
+    //
+    // This is the first half of `Float_And_Take_Away`, and without it the move
+    // could never fire. The take-away half was there from the start, but the
+    // ordinary call logic only continues with equity — so a floater never
+    // arrived on the turn holding the air a float is defined by, and the move
+    // sat silent through 1,500 hands. Measured: 71 spots met every structural
+    // condition and not one had a weak enough hand.
+    //
+    // A losing call taken alone; it pays only because of the street after it,
+    // which is why it is gated on position, heads-up, and a price worth paying.
+    final floatProf = profile.proficiencyOf('Float_And_Take_Away');
+    if (floatProf > 0 &&
+        tc.onFlop &&
+        tc.inPosition &&
+        tc.headsUp &&
+        !tc.madeAtLeast(HandRank.pair) &&
+        betFraction <= 0.75 &&
+        canRaise &&
+        _random.nextDouble() < 0.5 * floatProf &&
+        _commitOk(p, toCall, eq, deepFactor)) {
+      return const GameAction.call();
+    }
+
     // Hero call. Against a balanced betting range a bluff-catcher is close to
     // indifferent by construction — equity lands near the price — so only a
     // *read* can break the tie in favour of calling. It is therefore driven

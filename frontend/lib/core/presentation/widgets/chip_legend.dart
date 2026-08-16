@@ -13,7 +13,7 @@ import 'package:monte/core/util/format.dart';
 /// distinguishes a 100 from a 500,000 — both are black, and only the spots tell
 /// them apart.
 class ChipSwatch extends StatelessWidget {
-  const ChipSwatch({super.key, required this.denomination, this.size = 18});
+  const ChipSwatch({super.key, required this.denomination, this.size = 14});
 
   final int denomination;
   final double size;
@@ -139,7 +139,7 @@ class ChipLegend extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
           color: const Color(0xF01B1B1B),
           borderRadius: BorderRadius.circular(10),
@@ -156,35 +156,35 @@ class ChipLegend extends StatelessWidget {
               title ?? 'Chips in play',
               style: TextStyle(
                 color: AppTheme.gold.withValues(alpha: 0.85),
-                fontSize: 10,
+                fontSize: 9,
                 fontWeight: FontWeight.w700,
-                letterSpacing: 1.1,
+                letterSpacing: 1.0,
               ),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 5),
             for (final d in inPlay)
               Padding(
-                padding: const EdgeInsets.only(bottom: 3),
+                padding: const EdgeInsets.only(bottom: 2),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     ChipSwatch(denomination: d),
-                    const SizedBox(width: 7),
+                    const SizedBox(width: 6),
                     Text(
                       formatChips(d),
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 12,
+                        fontSize: 11,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
                     if (held.containsKey(d)) ...[
-                      const SizedBox(width: 6),
+                      const SizedBox(width: 5),
                       Text(
                         '× ${held[d]}',
                         style: const TextStyle(
                           color: Colors.white54,
-                          fontSize: 11,
+                          fontSize: 10,
                         ),
                       ),
                     ],
