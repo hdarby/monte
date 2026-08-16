@@ -9,6 +9,10 @@ import 'package:monte/features/tournament/presentation/widgets/color_up_dialog.d
 import 'package:monte/features/tournament/presentation/widgets/recap_dialog.dart';
 import 'package:monte/features/tournament/presentation/widgets/results_overlay.dart';
 import 'package:monte/features/tournament/presentation/widgets/sim_progress_bar.dart';
+import 'package:monte/core/di/game_providers.dart';
+import 'package:monte/features/tournament/data/tournament_controller.dart';
+import 'package:monte/features/tournament/domain/tournament_save.dart';
+import 'package:monte/features/tournament/presentation/widgets/saved_tournaments_dialog.dart';
 import 'package:monte/features/tournament/presentation/widgets/standings_panel.dart';
 import 'package:monte/features/tournament/presentation/widgets/tournament_hud.dart';
 
@@ -27,6 +31,7 @@ class TournamentScreen extends ConsumerStatefulWidget {
     required this.buyIn,
     required this.tableSize,
     required this.humanName,
+    this.restore,
   });
 
   final TournamentStructure structure;
@@ -37,6 +42,9 @@ class TournamentScreen extends ConsumerStatefulWidget {
   final int buyIn;
   final int tableSize;
   final String humanName;
+
+  /// When set, the tournament resumes from this save instead of starting fresh.
+  final TournamentSave? restore;
 
   @override
   ConsumerState<TournamentScreen> createState() => _TournamentScreenState();
@@ -53,7 +61,64 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
       tableSize: widget.tableSize,
       humanName: widget.humanName,
     ),
+    createController: widget.restore == null
+        ? null
+        : () => TournamentController.restore(
+              widget.restore!,
+              statsService: ref.read(opponentStatsServiceProvider),
+            ),
   );
+
+  /// Saves the tournament as it stands, prompting for a name.
+  Future<void> _save() async {
+    final controller = ref.read(_vm.notifier).controller;
+    final name = await promptForSaveName(
+      context,
+      initial: '${widget.structure.name} · level '
+          '${controller.state.levelIndex + 1}',
+    );
+    if (name == null || name.isEmpty || !mounted) return;
+    final save = controller.saveAs(name);
+    await ref.read(tournamentSaveStoreProvider).save(save);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Saved "\${save.name}"')),
+    );
+  }
+
+  /// Opens the browser, and replaces this screen with the chosen tournament.
+  Future<void> _openSaves() async {
+    final chosen = await SavedTournamentsDialog.show(
+      context,
+      ref.read(tournamentSaveStoreProvider),
+    );
+    if (chosen == null || !mounted) return;
+    final structure = chosen.structure;
+    if (structure == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('That save uses an unknown blind structure '
+              '("${chosen.structureName}") and cannot be loaded.'),
+        ),
+      );
+      return;
+    }
+    // Replace rather than stack: the controller owns timers and streams, and
+    // two live tournaments running behind one another is not a state worth
+    // supporting.
+    await Navigator.of(context).pushReplacement(
+      MaterialPageRoute<void>(
+        builder: (_) => TournamentScreen(
+          structure: structure,
+          field: const [],
+          buyIn: chosen.buyIn,
+          tableSize: chosen.tableSize,
+          humanName: chosen.humanName,
+          restore: chosen,
+        ),
+      ),
+    );
+  }
 
   /// Guards against re-showing a dialog for an event we've already announced —
   /// the snapshot stream rebuilds on every tick, but each event fires once.
@@ -126,6 +191,32 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
               ),
             ),
           ),
+          // Save / load, top-right, clear of the HUD.
+          Positioned(
+            top: 0,
+            right: 0,
+            child: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.only(right: 8, top: 4),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _chromeButton(
+                      icon: Icons.save_outlined,
+                      tooltip: 'Save this tournament',
+                      onPressed: tour.finished ? null : _save,
+                    ),
+                    const SizedBox(width: 4),
+                    _chromeButton(
+                      icon: Icons.folder_open_outlined,
+                      tooltip: 'Saved tournaments',
+                      onPressed: _openSaves,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
           if (state.sim != null && !tour.finished)
             Positioned(
               left: 0,
@@ -140,4 +231,30 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
   }
 
   static void _noop() {}
+
+  /// A small, unobtrusive round button for the tournament's own chrome.
+  Widget _chromeButton({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback? onPressed,
+  }) =>
+      Tooltip(
+        message: tooltip,
+        child: Material(
+          color: Colors.black54,
+          shape: const CircleBorder(),
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: onPressed,
+            child: Padding(
+              padding: const EdgeInsets.all(8),
+              child: Icon(
+                icon,
+                size: 18,
+                color: onPressed == null ? Colors.white24 : Colors.white70,
+              ),
+            ),
+          ),
+        ),
+      );
 }

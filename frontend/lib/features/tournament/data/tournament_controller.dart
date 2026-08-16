@@ -25,6 +25,9 @@ import 'package:monte/features/tournament/domain/icm.dart';
 import 'package:monte/features/tournament/domain/payout_structure.dart';
 import 'package:monte/features/tournament/domain/seat_manager.dart';
 import 'package:monte/features/tournament/domain/tournament_snapshot.dart';
+import 'package:monte/core/domain/ai/home_game_profiles.dart';
+import 'package:monte/core/domain/ai/player_profiles.dart';
+import 'package:monte/features/tournament/domain/tournament_save.dart';
 import 'package:monte/features/tournament/domain/tournament_state.dart';
 import 'package:monte/features/tournament/domain/tournament_structure.dart';
 
@@ -74,6 +77,39 @@ class TournamentController {
   /// Seat id → its personality, for computing how that opponent (through their
   /// own style bias) reads the human.
   final Map<String, PlayerProfile> _profileBySeat;
+
+  /// Seat id → the personality seated there, for saving and restoring a field.
+  Map<String, PlayerProfile> get profileBySeat =>
+      Map.unmodifiable(_profileBySeat);
+
+  /// Captures the tournament so it can be resumed later.
+  ///
+  /// Taken at a hand boundary: the hand in flight is not part of the save (see
+  /// [TournamentSave]), so a reload deals fresh from these chip counts.
+  TournamentSave saveAs(String name, {DateTime? at, String? structureName}) =>
+      TournamentSave.from(
+        name: name,
+        savedAt: at ?? DateTime.now(),
+        state: state,
+        seed: seed,
+        tableSize: tableSize,
+        humanId: humanId,
+        humanName: humanId == null
+            ? 'You'
+            : (state.players[humanId!]?.name ?? 'You'),
+        structureName: structureName ?? _presetNameFor(state.structure),
+        profileIds: {
+          for (final e in _profileBySeat.entries) e.key: e.value.id,
+        },
+      );
+
+  /// Which preset a structure came from, by matching its name.
+  static String _presetNameFor(TournamentStructure s) {
+    for (final key in const ['turbo', 'standard', 'deep', 'circuit', 'wsop']) {
+      if (TournamentStructure.presetByName(key)?.name == s.name) return key;
+    }
+    return 'standard';
+  }
 
   /// The two-way read on a seat for the HUD, or null when untracked.
   SeatRead? readForSeat(String seatId) {
@@ -166,6 +202,51 @@ class TournamentController {
   /// Builds a tournament: seats [entrants] players across tables of [tableSize],
   /// each with a decider (defaults to the fast heuristic brain). Seat 0 is the
   /// human if [humanSeat] (still bot-played until the live facade lands).
+  /// Resumes a saved tournament.
+  ///
+  /// The personalities are looked up by id so the same field comes back, rather
+  /// than a fresh random one wearing the saved names. Anyone whose profile has
+  /// since been deleted is seated with the default brain rather than dropping
+  /// the save — an unreadable save is worse than an approximate one.
+  factory TournamentController.restore(
+    TournamentSave save, {
+    OpponentStatsService? statsService,
+    bool icmAware = true,
+  }) {
+    final structure = save.structure;
+    if (structure == null) {
+      throw StateError('unknown blind structure "${save.structureName}"');
+    }
+    final byId = {
+      for (final p in [...builtInProfiles, ...homeGameProfiles]) p.id: p,
+    };
+    // Seats are `e0`, `e1`, ... so they must be ordered *numerically*. Sorting
+    // the ids as strings puts `e10` before `e2` and hands every seat past the
+    // ninth somebody else's personality.
+    int seatIndex(String id) =>
+        int.tryParse(id.replaceFirst(RegExp('^[^0-9]*'), '')) ?? 0;
+    final humanFirst = [...save.players]
+      ..sort((a, b) => seatIndex(a.id).compareTo(seatIndex(b.id)));
+    final hasHuman = humanFirst.isNotEmpty && humanFirst.first.isHuman;
+    final bots = <PlayerProfile>[
+      for (final p in humanFirst.skip(hasHuman ? 1 : 0))
+        byId[save.profileIds[p.id]] ?? builtInProfiles.first,
+    ];
+    return TournamentController.create(
+      structure: structure,
+      entrants: save.players.length,
+      buyIn: save.buyIn,
+      seed: save.seed,
+      tableSize: save.tableSize,
+      names: [for (final p in humanFirst) p.name],
+      botProfiles: bots,
+      humanSeat: hasHuman,
+      icmAware: icmAware,
+      statsService: statsService,
+      restoreFrom: save,
+    );
+  }
+
   factory TournamentController.create({
     required TournamentStructure structure,
     required int entrants,
@@ -178,28 +259,66 @@ class TournamentController {
     bool icmAware = true,
     DecisionPolicy Function(String id, int index)? deciderBuilder,
     OpponentStatsService? statsService,
+    TournamentSave? restoreFrom,
   }) {
     // One log per tournament: the deciders write signature moves into it, the
     // recorder drains it per hand so the recap can name them.
     final triggerLog = TriggerLog();
     final players = <String, TournamentPlayer>{};
     final engine = <String, Player>{};
-    for (var i = 0; i < entrants; i++) {
-      final id = 'e$i';
-      final name = (names != null && i < names.length) ? names[i] : 'P${i + 1}';
-      final isHuman = humanSeat && i == 0;
-      players[id] = TournamentPlayer(
-          id: id, name: name, isHuman: isHuman, chips: structure.startingStack);
-      engine[id] = Player(
-          id: id, name: name, stack: structure.startingStack, isHuman: isHuman);
+    if (restoreFrom != null) {
+      // Rebuild the field exactly as it was left: chips, seats, who is out.
+      for (final sp in restoreFrom.players) {
+        final p = sp.toPlayer();
+        players[p.id] = p;
+        engine[p.id] =
+            Player(id: p.id, name: p.name, stack: p.chips, isHuman: p.isHuman);
+      }
+    } else {
+      for (var i = 0; i < entrants; i++) {
+        final id = 'e$i';
+        final name =
+            (names != null && i < names.length) ? names[i] : 'P${i + 1}';
+        final isHuman = humanSeat && i == 0;
+        players[id] = TournamentPlayer(
+            id: id,
+            name: name,
+            isHuman: isHuman,
+            chips: structure.startingStack);
+        engine[id] = Player(
+            id: id, name: name, stack: structure.startingStack, isHuman: isHuman);
+      }
     }
-    final state = TournamentState(
-      structure: structure,
-      payouts: PayoutStructure.forFieldSize(entrants),
-      buyIn: buyIn,
-      players: players,
-      tables: const [],
-    );
+    // Built in one go rather than mutated afterwards: the active-player count is
+    // derived at construction, so restoring statuses after the fact would leave
+    // it stale and every "players remaining" reading wrong.
+    final state = restoreFrom == null
+        ? TournamentState(
+            structure: structure,
+            payouts: PayoutStructure.forFieldSize(entrants),
+            buyIn: buyIn,
+            players: players,
+            tables: const [],
+          )
+        : TournamentState(
+            structure: structure,
+            payouts: restoreFrom.payouts,
+            buyIn: buyIn,
+            players: players,
+            tables: [
+              for (final t in restoreFrom.tables)
+                TournamentTable(id: t.id, playerIds: List.of(t.playerIds)),
+            ],
+            levelIndex: restoreFrom.levelIndex,
+            handsThisLevel: restoreFrom.handsThisLevel,
+            clockElapsed: Duration(milliseconds: restoreFrom.clockElapsedMs),
+            finishOrder: List.of(restoreFrom.finishOrder),
+            prizePool: restoreFrom.prizePool,
+            status: TournamentStatus.values.firstWhere(
+              (v) => v.name == restoreFrom.status,
+              orElse: () => TournamentStatus.running,
+            ),
+          );
     // Stable identity per seat (for accumulating/reading opponent stats): the
     // human is 'human'; a profiled bot is its personality's profile.id (so the
     // same personality pools reads across seats and events).
@@ -254,7 +373,9 @@ class TournamentController {
           : base;
     }
     final seatManager = SeatManager(Random(seed ^ 0x5f3759df));
-    seatManager.seatDraw(state, tableSize);
+    // A restored tournament already has its seating; drawing again would
+    // reshuffle everyone and throw away the table dynamics that were saved.
+    if (restoreFrom == null) seatManager.seatDraw(state, tableSize);
     return TournamentController._(
       state: state,
       seatManager: seatManager,

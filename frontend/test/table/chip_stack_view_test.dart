@@ -172,21 +172,14 @@ void main() {
           ),
         ),
       );
-      // Each column is a Tooltip labelled with its denomination.
+      // Each column exposes the denomination it is made of.
       return find
           .descendant(
             of: find.byType(ChipStackView),
-            matching: find.byType(Tooltip),
+            matching: find.byType(ChipColumnView),
           )
           .evaluate()
-          .map((e) => (e.widget as Tooltip).message ?? '')
-          .map(
-            (m) => m.endsWith('M')
-                ? (double.parse(m.substring(0, m.length - 1)) * 1000000).round()
-                : m.endsWith('k')
-                ? (double.parse(m.substring(0, m.length - 1)) * 1000).round()
-                : int.parse(m),
-          )
+          .map((e) => (e.widget as ChipColumnView).denomination)
           .toList();
     }
 
@@ -233,24 +226,21 @@ void main() {
           ),
         ),
       );
-      final tooltips = find
+      final columns = find
           .descendant(
             of: find.byType(ChipStackView),
-            matching: find.byType(Tooltip),
+            matching: find.byType(ChipColumnView),
           )
           .evaluate()
           .toList();
       // Count chips per denomination across all columns.
-      final perDenom = <String, int>{};
-      for (final e in tooltips) {
-        final t = e.widget as Tooltip;
-        final chips = find
-            .descendant(of: find.byWidget(t), matching: find.byType(Container))
-            .evaluate()
-            .length;
-        perDenom[t.message ?? ''] = (perDenom[t.message ?? ''] ?? 0) + chips;
+      final perDenom = <int, int>{};
+      for (final e in columns) {
+        final c = e.widget as ChipColumnView;
+        perDenom[c.denomination] =
+            (perDenom[c.denomination] ?? 0) + c.column.count;
       }
-      expect(perDenom['1k'], greaterThan(perDenom['25k'] ?? 0));
+      expect(perDenom[1000], greaterThan(perDenom[25000] ?? 0));
     });
   });
 

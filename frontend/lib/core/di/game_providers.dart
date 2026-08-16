@@ -8,11 +8,18 @@ import 'package:monte/features/settings/presentation/settings_controller.dart';
 import 'package:monte/features/reads/data/player_stats_store.dart';
 import 'package:monte/features/table/data/local_game_repository.dart';
 import 'package:monte/features/table/domain/game_repository.dart';
+import 'package:monte/features/tournament/data/tournament_save_store.dart';
 
 /// The persistent per-opponent reads model, or null (no accumulation) in tests
 /// and headless runs. `main` overrides it with a file-backed, loaded service.
 final opponentStatsServiceProvider =
     Provider<OpponentStatsService?>((ref) => null);
+
+/// Where tournaments are saved. Defaults to a no-op so tests and headless runs
+/// need no disk; `main` overrides it with a file-backed store.
+final tournamentSaveStoreProvider = Provider<TournamentSaveStore>(
+  (ref) => const NoopTournamentSaveStore(),
+);
 
 /// The human player's chosen display name. `main` seeds it with the value
 /// persisted from the last session; changing it (a different player) is the

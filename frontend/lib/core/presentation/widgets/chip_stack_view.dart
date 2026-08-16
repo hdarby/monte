@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:monte/core/domain/engine/chip_breakdown.dart';
+import 'package:monte/core/presentation/widgets/chip_legend.dart';
 
 /// Casino chip colours by denomination: body plus edge spots.
 ///
@@ -54,7 +55,7 @@ const _chipColors = <int, ({Color body, Color? spot})>{
 /// Deliberately a *view of the stack*, not a replacement for the number — the
 /// numeric total stays on the seat. This is table flavour: you should be able to
 /// glance at the felt and see who is deep and who is short without reading.
-class ChipStackView extends StatelessWidget {
+class ChipStackView extends StatefulWidget {
   const ChipStackView({
     super.key,
     required this.amount,
@@ -66,6 +67,7 @@ class ChipStackView extends StatelessWidget {
     this.chipHeight = 3.2,
     this.maxColumns = 7,
     this.maxChips = 60,
+    this.showLegendOnHover = true,
   });
 
   /// The chip count to draw.
@@ -96,8 +98,33 @@ class ChipStackView extends StatelessWidget {
   /// Chips drawn for a stack equal to [reference].
   final int maxChips;
 
+  /// Whether hovering the stack pops a legend of the chips in play.
+  ///
+  /// A tournament's denominations are its private language — a colour-up
+  /// silently retires the small chips and brings in new ones, and nothing on the
+  /// felt says which is which. The legend is how you learn that the orange ones
+  /// are 5,000.
+  final bool showLegendOnHover;
+
+  @override
+  State<ChipStackView> createState() => _ChipStackViewState();
+}
+
+class _ChipStackViewState extends State<ChipStackView> {
+  final LayerLink _link = LayerLink();
+  final OverlayPortalController _legend = OverlayPortalController();
+
   @override
   Widget build(BuildContext context) {
+    final amount = widget.amount;
+    final denominations = widget.denominations;
+    final reference = widget.reference;
+    final minDenomination = widget.minDenomination;
+    final maxHeight = widget.maxHeight;
+    final chipWidth = widget.chipWidth;
+    final chipHeight = widget.chipHeight;
+    final maxColumns = widget.maxColumns;
+    final maxChips = widget.maxChips;
     final breakdown = ChipBreakdown.of(
       amount,
       denominations: denominations,
@@ -148,7 +175,7 @@ class ChipStackView extends StatelessWidget {
       if (drawn.length >= maxColumns) break;
     }
 
-    return SizedBox(
+    final stack = SizedBox(
       height: maxHeight,
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -157,7 +184,7 @@ class ChipStackView extends StatelessWidget {
           for (final column in drawn)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 1),
-              child: _Column(
+              child: ChipColumnView(
                 column: column,
                 chipWidth: chipWidth,
                 chipHeight: chipHeight,
@@ -166,16 +193,56 @@ class ChipStackView extends StatelessWidget {
         ],
       ),
     );
+
+    if (!widget.showLegendOnHover) return stack;
+
+    return CompositedTransformTarget(
+      link: _link,
+      child: MouseRegion(
+        onEnter: (_) => _legend.show(),
+        onExit: (_) => _legend.hide(),
+        child: OverlayPortal(
+          controller: _legend,
+          overlayChildBuilder: (context) => Positioned(
+            // Anchored above the stack, and non-interactive so it can never
+            // swallow a click meant for the felt underneath.
+            child: CompositedTransformFollower(
+              link: _link,
+              targetAnchor: Alignment.topCenter,
+              followerAnchor: Alignment.bottomCenter,
+              offset: const Offset(0, -6),
+              child: IgnorePointer(
+                child: ChipLegend(
+                  denominations: denominations,
+                  minDenomination: minDenomination,
+                  amount: amount,
+                ),
+              ),
+            ),
+          ),
+          child: stack,
+        ),
+      ),
+    );
   }
 }
 
 /// One denomination's column of chips, seen edge-on.
-class _Column extends StatelessWidget {
-  const _Column({
+///
+/// Public so a test can find the columns and read what they represent. It used
+/// to carry its own `Tooltip`, which tests scraped for the denomination — but a
+/// per-column tooltip and the whole-stack legend both fire on the same hover,
+/// so the tooltip went and the denomination is exposed directly instead.
+class ChipColumnView extends StatelessWidget {
+  const ChipColumnView({
+    super.key,
     required this.column,
     required this.chipWidth,
     required this.chipHeight,
   });
+
+  /// The denomination this column is made of.
+  int get denomination => column.denomination;
 
   final ChipColumn column;
   final double chipWidth;
@@ -185,40 +252,24 @@ class _Column extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = chipColorFor(column.denomination);
 
-    return Tooltip(
-      message: _short(column.denomination),
-      waitDuration: const Duration(milliseconds: 400),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          for (var i = 0; i < column.count; i++)
-            _Chip(
-              width: chipWidth,
-              height: chipHeight,
-              body: colors.body,
-              edge: colors.edge,
-              spot: colors.spot,
-              // The top chip of a column catches the light.
-              highlight: i == column.count - 1,
-            ),
-        ],
-      ),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.end,
+      children: [
+        for (var i = 0; i < column.count; i++)
+          _Chip(
+            width: chipWidth,
+            height: chipHeight,
+            body: colors.body,
+            edge: colors.edge,
+            spot: colors.spot,
+            // The top chip of a column catches the light.
+            highlight: i == column.count - 1,
+          ),
+      ],
     );
   }
 
-  /// 25000 -> "25k", 1000000 -> "1M".
-  static String _short(int v) {
-    if (v >= 1000000) {
-      final m = v / 1000000;
-      return '${m == m.roundToDouble() ? m.round() : m}M';
-    }
-    if (v >= 1000) {
-      final k = v / 1000;
-      return '${k == k.roundToDouble() ? k.round() : k}k';
-    }
-    return '$v';
-  }
 }
 
 /// A single chip seen from the side: a thin rounded slab with a darker rim.

@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:monte/core/di/game_providers.dart';
+import 'package:monte/features/tournament/data/tournament_save_store.dart';
 import 'package:monte/core/domain/ai/bot_spec.dart';
 import 'package:monte/core/domain/ai/decider_factory.dart';
 import 'package:monte/features/reads/data/player_stats_store.dart';
@@ -55,6 +56,8 @@ Future<void> main() async {
     overrides: [
       evalHistoryStoreProvider.overrideWithValue(store),
       opponentStatsServiceProvider.overrideWithValue(statsService),
+      tournamentSaveStoreProvider
+          .overrideWithValue(FileTournamentSaveStore(dir)),
     ],
   );
   // Seed the human's name from the last session so the UI can address them by

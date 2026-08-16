@@ -76,6 +76,10 @@ class TournamentViewModel extends Notifier<TournamentUiState> {
   final TournamentController Function()? createController;
 
   late final TournamentController _controller;
+
+  /// The live controller, for the few things the View genuinely needs it for —
+  /// capturing a save is a snapshot of the whole tournament, not a projection.
+  TournamentController get controller => _controller;
   final List<StreamSubscription<void>> _subs = [];
 
   @override
