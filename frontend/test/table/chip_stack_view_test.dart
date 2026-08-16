@@ -52,6 +52,34 @@ void main() {
     expect(await chipsDrawn(tester, amount: amount), expected.chipCount);
   });
 
+  testWidgets('draws every chip exactly, at every level of a Main Event',
+      (tester) async {
+    // The point of seven columns: show 1x1,000 and 8x100 rather than round it
+    // off to 2x1,000. Chips overlap so the density is there to do it.
+    for (final (unit, amount) in const [
+      (25, 60000),
+      (100, 123400),
+      (500, 301500),
+      (1000, 812000),
+      (5000, 3105000),
+      (25000, 12450000),
+    ]) {
+      final expected = ChipBreakdown.of(
+        amount,
+        denominations: wsop,
+        minDenomination: unit,
+        maxColumns: ChipStackView.defaultMaxColumns,
+      );
+      expect(expected.value, amount,
+          reason: 'the breakdown itself rounded $amount at unit $unit');
+      expect(
+        await chipsDrawn(tester, amount: amount, minDenomination: unit),
+        expected.chipCount,
+        reason: 'a $amount stack at unit $unit lost chips in the drawing',
+      );
+    }
+  });
+
   testWidgets('a bigger stack shows a bigger top denomination', (tester) async {
     // Size is carried by colour, not height: only a monster has a plaque in it.
     Future<int> topDenom(int amount) async {
@@ -160,7 +188,7 @@ void main() {
     });
   });
 
-  group('four columns, coloured by what they actually hold', () {
+  group('seven columns, coloured by what they actually hold', () {
     Future<List<int>> columnDenoms(WidgetTester tester, int amount) async {
       await tester.pumpWidget(
         MaterialApp(
@@ -187,17 +215,17 @@ void main() {
           .toList();
     }
 
-    testWidgets('a full stack spreads over four denominations, not one',
+    testWidgets('a full stack spreads over many denominations, not one',
         (tester) async {
-      expect((await columnDenoms(tester, 1275000)).length, 4);
+      expect((await columnDenoms(tester, 1275000)).length, greaterThan(4));
     });
 
-    testWidgets('never exceeds four columns however mixed the stack',
+    testWidgets('never exceeds seven columns however mixed the stack',
         (tester) async {
       for (final amount in [1275000, 60000, 987654, 5000000]) {
         expect(
           (await columnDenoms(tester, amount)).length,
-          lessThanOrEqualTo(4),
+          lessThanOrEqualTo(7),
           reason: 'amount $amount used too many columns',
         );
       }
@@ -318,7 +346,7 @@ void main() {
   // The seat gives the graphic a fixed width (`_cardWidth * 2 + 4` in
   // PlayerSeat), so adding columns can silently overflow it. These pin the
   // widths the seat actually passes.
-  group('four columns fit the seat they are drawn in', () {
+  group('seven columns fit the seat they are drawn in', () {
     // The seat derives its width from the hole cards: _cardWidth * 2 + 4.
     Future<double> renderedWidth(WidgetTester tester,
         {required double chipWidth, required double maxHeight}) async {
@@ -338,13 +366,13 @@ void main() {
       return tester.getSize(find.byType(ChipStackView)).width;
     }
 
-    testWidgets('the normal seat has room for the wider chip', (tester) async {
-      final w = await renderedWidth(tester, chipWidth: 13, maxHeight: 32);
+    testWidgets('seven columns fit the normal seat', (tester) async {
+      final w = await renderedWidth(tester, chipWidth: 12, maxHeight: 32);
       expect(w, lessThanOrEqualTo(60.0 * 2 + 4));
     });
 
-    testWidgets('the compact seat has room for the wider chip', (tester) async {
-      final w = await renderedWidth(tester, chipWidth: 10, maxHeight: 22);
+    testWidgets('seven columns fit the compact seat', (tester) async {
+      final w = await renderedWidth(tester, chipWidth: 8, maxHeight: 22);
       expect(w, lessThanOrEqualTo(34.0 * 2 + 4));
     });
   });

@@ -256,11 +256,10 @@ class _PlayerSeatState extends State<PlayerSeat> {
               maxHeight: compact ? 22 : 32,
               // Width budget: the stack draws `maxColumns` columns of
               // `chipWidth + 2` (1px padding a side), and must stay inside
-              // `_contentWidth` or it overflows the seat. At 4 columns that is
-              // 4x15 = 60 of 124 normally and 4x12 = 48 of 72 compact, which
-              // leaves room for a wider chip than the seven-column layout could
-              // afford.
-              chipWidth: compact ? 10 : 13,
+              // `_contentWidth` or it overflows the seat. At 7 columns that is
+              // 7x14 = 98 of 124 normally, and 7x10 = 70 of 72 compact — which
+              // is why the compact chip is 8 wide rather than 9.
+              chipWidth: compact ? 8 : 12,
               chipHeight: compact ? 2.6 : 3.2,
             ),
           ],
