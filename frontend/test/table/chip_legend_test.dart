@@ -23,7 +23,6 @@ void main() {
             child: ChipStackView(
               amount: amount,
               denominations: wsop,
-              reference: amount,
               minDenomination: minDenomination,
             ),
           ),
@@ -82,7 +81,7 @@ void main() {
 
     testWidgets('shows how many of each this stack actually holds',
         (tester) async {
-      // 275,000 with 1k+ chips in play is 1 x 250k + 1 x 25k.
+      // The legend prints the same spread the stack draws beside it.
       await pumpStack(tester, amount: 275000, minDenomination: 1000);
       await hoverStack(tester);
       expect(find.textContaining('×'), findsWidgets);
@@ -104,7 +103,6 @@ void main() {
                   child: ChipStackView(
                     amount: 275000,
                     denominations: wsop,
-                    reference: 275000,
                     minDenomination: 1000,
                   ),
                 ),
@@ -140,7 +138,6 @@ void main() {
                   child: ChipStackView(
                     amount: 275000,
                     denominations: wsop,
-                    reference: 275000,
                     minDenomination: 1000,
                   ),
                 ),
@@ -165,7 +162,6 @@ void main() {
               child: ChipStackView(
                 amount: 275000,
                 denominations: wsop,
-                reference: 275000,
                 minDenomination: 1000,
                 showLegendOnHover: false,
               ),

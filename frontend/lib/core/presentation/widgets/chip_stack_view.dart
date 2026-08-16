@@ -15,7 +15,9 @@ const _chipColors = <int, ({Color body, Color? spot})>{
   1: (body: Color(0xFFF5F5F5), spot: null), // white
   5: (body: Color(0xFFD32F2F), spot: null), // red
   25: (body: Color(0xFF2E7D32), spot: null), // green
-  100: (body: Color(0xFF1A1A1A), spot: Color(0xFF1565C0)), // black / blue
+  // Solid black, deliberately: the 500,000 is also black, and leaving the 100
+  // unspotted is what tells the cheapest chip on the table from the dearest.
+  100: (body: Color(0xFF1A1A1A), spot: null), // black
   500: (body: Color(0xFF6A1B9A), spot: Color(0xFFF57C00)), // purple / orange
   1000: (body: Color(0xFFFDD835), spot: Color(0xFF757575)), // yellow / gray
   5000: (body: Color(0xFFF4511E), spot: Color(0xFFFFFFFF)), // blaze / white
@@ -60,13 +62,11 @@ class ChipStackView extends StatefulWidget {
     super.key,
     required this.amount,
     required this.denominations,
-    required this.reference,
     this.minDenomination = 1,
     this.maxHeight = 34,
     this.chipWidth = 13,
     this.chipHeight = 3.2,
-    this.maxColumns = 7,
-    this.maxChips = 60,
+    this.maxColumns = defaultMaxColumns,
     this.showLegendOnHover = true,
   });
 
@@ -76,15 +76,6 @@ class ChipStackView extends StatefulWidget {
   /// The denominations in play, ascending.
   final List<int> denominations;
 
-  /// The stack that fills the graphic — normally the biggest stack at the table.
-  ///
-  /// Height has to mean something *comparable across seats*, so it is scaled
-  /// against a shared reference rather than drawn as literal chip counts. Drawn
-  /// literally, greedy denominations invert the picture: a 500,000 stack is one
-  /// plaque and a 5,000 stack is one chip, so the chip leader would look
-  /// identical to the short stack.
-  final int reference;
-
   /// The smallest chip actually on the table at this level.
   final int minDenomination;
 
@@ -93,10 +84,12 @@ class ChipStackView extends StatefulWidget {
 
   final double chipWidth;
   final double chipHeight;
+
+  /// How many denominations the stack is spread across (see [ChipBreakdown]).
   final int maxColumns;
 
-  /// Chips drawn for a stack equal to [reference].
-  final int maxChips;
+  /// Shared with [ChipLegend] so the legend's counts are the chips on screen.
+  static const defaultMaxColumns = 4;
 
   /// Whether hovering the stack pops a legend of the chips in play.
   ///
@@ -117,87 +110,38 @@ class _ChipStackViewState extends State<ChipStackView> {
   Widget build(BuildContext context) {
     final amount = widget.amount;
     final denominations = widget.denominations;
-    final reference = widget.reference;
     final minDenomination = widget.minDenomination;
     final maxHeight = widget.maxHeight;
     final chipWidth = widget.chipWidth;
     final chipHeight = widget.chipHeight;
-    final maxColumns = widget.maxColumns;
-    final maxChips = widget.maxChips;
+
+    // Drawn exactly as broken down — the legend shows these same counts, and a
+    // legend that disagrees with the picture beside it is worse than none.
+    //
+    // Height is therefore literal chip count, not a scale against the chip
+    // leader. The scaled version made the two disagree by construction, and it
+    // bought less than it looked: the size signal is really carried by *colour*,
+    // since only a big stack has the top denominations in it at all. The exact
+    // number stays on the seat regardless.
     final breakdown = ChipBreakdown.of(
       amount,
       denominations: denominations,
       minDenomination: minDenomination,
-      maxColumns: maxColumns,
+      maxColumns: widget.maxColumns,
     );
     if (breakdown.isEmpty) return SizedBox(height: maxHeight);
 
-    // Capacity is fixed by the space available: chips per column x columns.
-    // Deriving the total from this (rather than clipping each column afterwards)
-    // keeps height monotonic in stack size — clipping per column made a
-    // single-denomination monster draw *shorter* than a mixed one.
+    // Tall columns are clipped to what the seat has room for rather than
+    // spilling sideways, so a pile of small change can't crowd out the
+    // denominations above it.
     final perColumn = (maxHeight / (chipHeight + 0.6)).floor().clamp(1, 40);
-    final capacity = (perColumn * maxColumns).clamp(1, maxChips);
-
-    final ref = reference > 0 ? reference : amount;
-    final total = (capacity * amount / ref).round().clamp(1, capacity);
-
-    // A stack worth less than the smallest chip on the table is drawn as a
-    // single chip, never scaled up. Scaling the fallback is what let a 60,000
-    // stack render as several columns of 500,000 chips: the breakdown has to
-    // name *some* denomination, and multiplying it by the height scale turned
-    // "less than one chip" into a tower of plaques.
-    if (breakdown.columns.length == 1 &&
-        amount < breakdown.columns.first.denomination) {
-      return SizedBox(
-        height: maxHeight,
-        child: Align(
-          alignment: Alignment.bottomLeft,
-          child: ChipColumnView(
-            column: breakdown.columns.first,
-            chipWidth: chipWidth,
-            chipHeight: chipHeight,
-          ),
+    final drawn = [
+      for (final c in breakdown.columns)
+        ChipColumn(
+          denomination: c.denomination,
+          count: c.count > perColumn ? perColumn : c.count,
         ),
-      );
-    }
-
-    // Allocate the drawn chips across denominations by each one's share of the
-    // stack's **value**, not of its chip count.
-    //
-    // By count, a couple of odd change chips take up half the picture: a player
-    // holding 2x100k and 3x25k — 73% of their money in the big ones — was drawn
-    // 60% small, and the colours stopped meaning anything. Money is what a stack
-    // is read for across a table, and it is where your money is that shows.
-    final held = breakdown.columns
-        .fold<int>(0, (a, c) => a + c.count * c.denomination);
-    final alloc = <int, int>{};
-    var assigned = 0;
-    for (var i = 0; i < breakdown.columns.length; i++) {
-      final c = breakdown.columns[i];
-      final isLast = i == breakdown.columns.length - 1;
-      var n = isLast
-          ? total - assigned
-          : (total * (held <= 0 ? 0 : c.count * c.denomination / held)).round();
-      if (n < 1 && !isLast) n = 1;
-      if (assigned + n > total) n = total - assigned;
-      if (n <= 0) continue;
-      alloc[c.denomination] = n;
-      assigned += n;
-    }
-
-    // Lay them out largest denomination first, spilling into a fresh column of
-    // the same colour whenever one fills up — the way a real stack is set down.
-    final drawn = <ChipColumn>[];
-    for (final entry in alloc.entries) {
-      var remaining = entry.value;
-      while (remaining > 0 && drawn.length < maxColumns) {
-        final n = remaining > perColumn ? perColumn : remaining;
-        drawn.add(ChipColumn(denomination: entry.key, count: n));
-        remaining -= n;
-      }
-      if (drawn.length >= maxColumns) break;
-    }
+    ];
 
     final stack = SizedBox(
       height: maxHeight,

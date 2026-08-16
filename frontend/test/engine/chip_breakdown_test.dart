@@ -18,12 +18,35 @@ void main() {
   );
 
   group('decomposition', () {
-    test('is greedy from the largest denomination down', () {
-      // 60,000 is 2x25,000 + 2x5,000 (not sixty 1,000s).
-      final b = of(60000);
+    test('spreads across denominations rather than making minimal change', () {
+      // Greedy from the top makes 60,000 out of 2x25,000 + 2x5,000, and no real
+      // stack looks like that — chips arrive from blinds, antes and dragged
+      // pots, not from a cashier. The spread is 1x25,000, 6x5,000, 4x1,000 and
+      // change: one of the biggest, a working pile of the next, more as they
+      // get smaller.
+      final b = of(60000, min: 100);
       expect(b.columns.first.denomination, 25000);
-      expect(b.columns.first.count, 2);
-      expect(b.value, 60000);
+      expect(b.columns.first.count, 1);
+      expect(b.columns.length, 4);
+      expect(b.value, 60000, reason: 'a spread still adds up exactly');
+
+      // Counts grow as the chips get smaller — that shape is the whole point.
+      expect(b.columns[1].count, greaterThan(b.columns.first.count));
+    });
+
+    test('keeps the biggest denomination the player holds', () {
+      // Colour is what says who is deep: only a monster stack has a plaque in
+      // it at all. Spreading must not spend the top chip away.
+      final b = of(1200000, min: 100);
+      expect(b.columns.first.denomination, 1000000);
+      expect(b.value, 1200000);
+    });
+
+    test('reaches four denominations for realistic stacks', () {
+      for (final amount in [239400, 735300, 2869600, 60000]) {
+        expect(of(amount, min: 100).columns.length, 4,
+            reason: '$amount collapsed onto too few colours');
+      }
     });
 
     test('the drawn chips always add up to at least the real amount', () {
@@ -68,7 +91,7 @@ void main() {
       expect(b.columns.length, lessThanOrEqualTo(3));
     });
 
-    test('folds the unrepresented remainder into the smallest kept column', () {
+    test('the last column kept absorbs the remainder', () {
       final b = of(1126525, maxColumns: 2);
       expect(b.columns.length, 2);
       // Still covers the full amount despite dropping denominations.
@@ -88,16 +111,21 @@ void main() {
 
   group('chipCount', () {
     test('counts physical chips, not value', () {
-      final b = of(75000); // 3 x 25,000
-      expect(b.chipCount, 3);
+      final b = of(75000, min: 100);
+      expect(b.chipCount, b.columns.fold<int>(0, (a, c) => a + c.count));
+      expect(b.chipCount, lessThan(75000));
     });
 
-    test('does NOT track stack size — which is why the view scales instead', () {
-      // Greedy denominations invert the picture: 500,000 is a single plaque
-      // while 5,000 is a single chip, so literal chip counts would draw the
-      // chip leader and the short stack identically. ChipStackView therefore
-      // scales height against the table's biggest stack rather than using this.
+    test('an exact multiple of one chip really is that one chip', () {
+      // The degenerate case the spread cannot fix: 500,000 is a single plaque
+      // and 5,000 is a single chip, so a round number draws the chip leader and
+      // the short stack the same height. Size is carried by *colour* (only the
+      // leader has a plaque at all) and by the number printed on the seat;
+      // height was never a reliable signal and pretending otherwise is what
+      // made the graphic disagree with its own legend.
       expect(of(500000).chipCount, of(5000).chipCount);
+      expect(of(500000).columns.first.denomination,
+          greaterThan(of(5000).columns.first.denomination));
     });
   });
 

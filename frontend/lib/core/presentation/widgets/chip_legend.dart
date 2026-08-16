@@ -125,7 +125,9 @@ class ChipLegend extends StatelessWidget {
         total,
         denominations: denominations,
         minDenomination: minDenomination,
-        maxColumns: inPlay.length,
+        // The same spread the stack draws, so the counts here are the chips
+        // you can see beside them rather than a second, different answer.
+        maxColumns: ChipStackView.defaultMaxColumns,
       );
       for (final c in breakdown.columns) {
         held[c.denomination] = (held[c.denomination] ?? 0) + c.count;

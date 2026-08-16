@@ -23,7 +23,6 @@ class PlayerSeat extends StatefulWidget {
     this.showBehavior = false,
     this.showChips = true,
     this.chipUnit = 1,
-    this.chipReference = 0,
     this.denominations = const [1, 5, 25, 100, 500, 1000, 5000, 25000],
     this.onCoach,
     this.onTap,
@@ -67,10 +66,6 @@ class PlayerSeat extends StatefulWidget {
   /// The denominations in play, ascending.
   final List<int> denominations;
 
-  /// The biggest stack at the table, which fills the chip graphic. 0 falls back
-  /// to this seat's own stack (so a lone seat still draws something sensible).
-  final int chipReference;
-
   @override
   State<PlayerSeat> createState() => _PlayerSeatState();
 }
@@ -84,7 +79,6 @@ class _PlayerSeatState extends State<PlayerSeat> {
   bool get showBehavior => widget.showBehavior;
   bool get showChips => widget.showChips;
   int get chipUnit => widget.chipUnit;
-  int get chipReference => widget.chipReference;
   List<int> get denominations => widget.denominations;
 
   /// One hole-card's width; the seat's whole footprint is derived from this so
@@ -258,17 +252,15 @@ class _PlayerSeatState extends State<PlayerSeat> {
             ChipStackView(
               amount: seat.stack,
               denominations: denominations,
-              // Scaled against the table's biggest stack, so the tallest stack
-              // on the felt really is the chip leader.
-              reference: chipReference,
               minDenomination: chipUnit,
               maxHeight: compact ? 22 : 32,
               // Width budget: the stack draws `maxColumns` columns of
               // `chipWidth + 2` (1px padding a side), and must stay inside
-              // `_contentWidth` or it overflows the seat. At 7 columns that is
-              // 7x14 = 98 of 124 normally, and 7x10 = 70 of 72 compact — which
-              // is why the compact chip is 8 wide rather than 9.
-              chipWidth: compact ? 8 : 12,
+              // `_contentWidth` or it overflows the seat. At 4 columns that is
+              // 4x15 = 60 of 124 normally and 4x12 = 48 of 72 compact, which
+              // leaves room for a wider chip than the seven-column layout could
+              // afford.
+              chipWidth: compact ? 10 : 13,
               chipHeight: compact ? 2.6 : 3.2,
             ),
           ],
