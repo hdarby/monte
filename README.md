@@ -43,9 +43,17 @@ slider.
 - **Poker judgement**, not just search — hands are picked by *playability*
   (suitedness, connectedness, domination) rather than raw all-in equity; bet
   sizing targets a stack-to-pot ratio instead of a blind pot fraction; opening
-  ranges widen by seat and by the dead money a steal is playing for. Recreational
-  players keep the leaks — including overvaluing raw high cards — which is why
-  they stay net losers to the pro field.
+  ranges run from ~13% under the gun to ~42% on the button, scaled by how
+  position-aware each player is, and widen further for the dead money a steal is
+  playing for. Recreational players keep the leaks — including overvaluing raw
+  high cards — which is why they stay net losers to the pro field.
+- **Character, not just competence** — shared "correct poker" makes everyone
+  better *and* more alike, so each personality also carries **signature moves**:
+  slow-play traps, floats, check-raises, bubble attacks, limp-reraises, refusing
+  to fold a made hand. And they **tilt** — after a beat one player sprays, the
+  next gets sticky, a third clams up — with `tilt_resistance` deciding who is
+  susceptible and the *shape* coming from the player. Bart names the moves as
+  they happen.
 
 Full design + phased roadmap: [`docs/personality-model.md`](docs/personality-model.md).
 The **Analytics** screen simulates any number of hands (with progress) and reports
@@ -81,7 +89,9 @@ it can't be committed as a binary here.
 | Heuristic + personality bots (bet-level discipline, no spew) | ✅ done |
 | ISMCTS search (progressive bias; strong, usable at low iters) | ✅ done |
 | Player profiles: calibrated style + MCTS skill (`gto_adherence`) | ✅ done (Phase 0–2) |
-| Behavioral modifiers (exploit/opponent reads, risk, tilt) | 🟡 in progress (Phase 3) |
+| Behavioral modifiers (exploit / opponent reads / risk) | ✅ done (Phase 3) |
+| Signature moves per personality, named in the commentary | ✅ done |
+| Tilt: stateful, per-player, three distinct styles | ✅ done |
 | Table UI (felt, seats, board, action bar, hand log) | ✅ done |
 | Settings (2–10 players, $/BB toggle, all-bots), persisted | ✅ done |
 | Hand-history recording + analytics (VPIP/PFR/AF) | ✅ done |
@@ -90,6 +100,7 @@ it can't be committed as a binary here.
 | Multi-table tournaments (structures, ICM, seating, payouts) | ✅ done, client-side |
 | Tournament recaps + per-hand analysis ("Bart") | ✅ done |
 | Persistent opponent reads across sessions | ✅ done |
+| Save / load a tournament in progress | ✅ done (at hand boundaries) |
 | Ktor backend | 🟡 scaffold (routes/sockets/DB stubbed with TODOs) |
 | Real-time multiplayer + server-side persistence | ⬜ TODO |
 

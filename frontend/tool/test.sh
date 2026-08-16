@@ -17,14 +17,27 @@ cd "$(dirname "$0")/.."
 
 # Tests covering recently added features (bots, personalities, analytics sim, …).
 NEW_TESTS=(
-  test/show_behavior_test.dart
-  test/table/bust_out_test.dart
-  test/table/seat_personalities_test.dart
-  test/table/button_rotation_test.dart
-  test/analytics/personality_effect_test.dart
-  test/ai/player_profile_test.dart
-  test/ai/profile_calibration_test.dart
-  test/ai/opponent_model_test.dart
+  # Poker judgement: stack depth / SPR, opening ranges, hand selection.
+  test/ai/stack_context_test.dart
+  test/ai/open_ranges_test.dart
+  test/ai/preflop_playability_test.dart
+  test/ai/hand_range_test.dart
+  test/ai/amateur_position_test.dart
+  test/ai/stakes_pressure_test.dart
+  # Character: signature moves and tilt.
+  test/ai/signature_moves_test.dart
+  test/ai/tilt_test.dart
+  test/ai/profile_data_test.dart
+  # Calibration gates — slow, and the ones most likely to move.
+  test/ai/postflop_discipline_test.dart
+  test/ai/deep_stack_discipline_test.dart
+  # Tournament: saving, and which hand the recap picks.
+  test/features/tournament/tournament_save_test.dart
+  test/features/tournament/saved_tournaments_dialog_test.dart
+  test/features/tournament/feature_hand_choice_test.dart
+  # Table UI.
+  test/table/chip_legend_test.dart
+  test/reads/clear_reads_test.dart
 )
 
 # Resolve the "old" set: every *_test.dart not in NEW_TESTS.

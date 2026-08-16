@@ -120,6 +120,14 @@ carried the same bug, so they live in one place now:
   something. Non-negotiable: two earlier data models (`GeneralTraits`,
   `EngineTriggers`) are authored on every profile and read by nothing.
 
+**Tilt** — the one stateful piece:
+- `mental_state.dart` — `MentalState` (tilt pressure + a boredom counter),
+  `MentalModel` (pure update rules), `MentalReads` (the seam, shaped like
+  `OpponentReads`) and `MentalTable` (per-session tracking). Never persisted:
+  nobody sits down still steaming about a pot from last week. `tilt_resistance`
+  drives it, and the *shape* of the deviation is a characteristic —
+  `Tilt_Blowup` / `Tilt_Chase` / `Tilt_Shutdown`.
+
 **Reads & equity:**
 - `player_stats.dart`, `player_read.dart`, `opponent_model.dart`,
   `opponent_reads.dart`, `opponent_range_read.dart` — what a bot has observed
@@ -282,6 +290,19 @@ seat), captured at the same `_finalizeHand` seam via
 > leaks folded cards. Analytics → "Wipe tuning history" clears the file *and*
 > in-session reads.
 
+### Saving a tournament
+
+- `tournament/domain/tournament_save.dart` — `TournamentSave`: the whole
+  tournament as serialisable data (chips, seats, tables, level, prize pool,
+  finish order, and the profile id at each seat). Taken **at a hand boundary**;
+  the live hand and every bot's RNG position are deliberately not stored, so a
+  load deals fresh from the saved chips.
+- `tournament/data/tournament_save_store.dart` — one file per save, so a corrupt
+  one costs that tournament rather than all of them. `TournamentController`
+  gains `saveAs()` and a `restore()` factory.
+- `tournament/presentation/widgets/saved_tournaments_dialog.dart` — the browser
+  (select, then load / delete / delete all) plus the save-name prompt.
+
 ### `features/reads/`, `features/history/`, `features/settings/`
 
 - `reads/data/player_stats_store.dart` — persistent per-opponent stats
@@ -304,6 +325,10 @@ seat), captured at the same `_finalizeHand` seam via
 | change opening ranges by seat, or ante/steal maths | `core/domain/ai/open_ranges.dart` |
 | change deep-stack or SPR behaviour, or bet sizing | `core/domain/ai/stack_context.dart` |
 | change how a villain's range is read | `core/domain/ai/hand_range.dart` |
+| change how players tilt | `core/domain/ai/mental_state.dart` |
+| change the chip graphic or its hover legend | `core/presentation/widgets/chip_stack_view.dart`, `chip_legend.dart` |
+| change tournament saving/loading | `features/tournament/domain/tournament_save.dart` |
+| change which hand the recap narrates | `features/tournament/domain/chronicle/tournament_chronicle.dart` (`_featureScore`) |
 | change tournament payouts | `features/tournament/domain/payout_structure.dart` |
 | create or edit a player from the CLI | `tool/create_player.dart` |
 | add or edit a personality | `core/domain/ai/famous_pros.dart` / `home_game_profiles.dart` |

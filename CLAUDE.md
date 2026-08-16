@@ -174,13 +174,38 @@ per-policy and drifted:
   SPR it wants to face when the money goes in and solves for the per-street size.
   Targets are *proportional* to the current SPR, since an absolute target demands
   an enormous bet when deep, which is backwards.
-- **`OpenRanges` (`open_ranges.dart`)** — opening frequency by seat and dead
-  money. Position is ranked by players left to act *preflop* (the small blind is
-  second-to-last, not first — that is postflop order), and big-blind antes widen
-  ranges because a steal is playing for more. The multiplier is **normalised to
-  average 1.0 across the table**, which is what keeps each profile's calibrated
-  VPIP/PFR on target; anything that raises the mean will break
-  `profile_calibration_test`.
+- **`OpenRanges` (`open_ranges.dart`)** — open-raising frequency by seat and
+  dead money, as **additive percentage points, not a multiplier**. Anchored to
+  real 9/10-handed data: ~13% under the gun rising to ~42% on the button, which
+  is six positions apart, so ~4.8 points a seat *in a straight line*. An
+  exponential in players-behind gets the middle seats right and then compounds
+  at the top (+2,+2,+3,+5,+5,+5 measured), overshooting exactly where ranges are
+  widest and hardest to play.
+  - The slope is scaled by **`position_awareness`** — another field authored on
+    every profile and read by nothing until it got this job. That published
+    curve belongs to a *fully* aware player; pros carry 0.9 and land 15→40,
+    recreationals default to 0.5 and play visibly flatter. The population
+    average falls out near 3 points a seat, which is what aggregate data shows.
+  - Position is ranked by players left to act **preflop** — the small blind is
+    second-to-last, not first; that is postflop order — and big-blind antes
+    widen every seat, because a steal is playing for more.
+  - The adjustment is **mean-zero across the table**, which is what keeps each
+    profile's calibrated VPIP/PFR on target; anything that shifts the mean will
+    break `profile_calibration_test`.
+  - **PFR is not RFI.** PFR counts raises against every hand *dealt*; an
+    open-raise only happens on the rarer occasions the pot is folded to you, and
+    there you raise far more freely. Treating a 20% PFR as a 20% opening
+    frequency put the whole curve a third too low.
+  - Anchor the shift on the **calibrated** cut (`_ranges.pfr`), never the raw
+    target. Deriving it from `pfrTarget` bypasses whatever `ProfileCalibrator`
+    tuned, leaving the calibration loop unable to move opening frequency at all
+    — that bug had Negreanu 3-betting 1.5% against a 9.5% target.
+- **Check-raising** — measured at 0.6% of check-then-face-a-bet spots against a
+  real 8–15%, and the cause was not a missing action. With a strong hand the
+  policy always bet, so anybody facing a bet after checking necessarily held
+  something weak. Players need a *reason to check strong*; the same shape of bug
+  hid `Float_And_Take_Away` entirely. **If a two-part move never fires, look for
+  the missing first half before touching the second.**
 - **Buy-in dial** — `PlayerProfile.atStakes` tightens ranges while raising the
   pfr:vpip ratio (fewer hands, played harder), and `FieldBuilder` weights the pro
   pool by buy-in. A $10k field is both tougher players *and* better ones.
@@ -255,10 +280,13 @@ else decides from the hand in front of it; tilt carries across hands.
 - **Evaluation runs do not accumulate it** (the `_evaluating` gate), or a
   profile's calibrated stats would drift as a simulation wears on.
 
-> The remaining gap to real charts is **profile data, not policy**: the shipped
-> personalities carry PFR targets of 0.12–0.29, below a real Main Event field,
-> and the mean-1.0 constraint centres the positional curve on whatever they are
-> set to. Widening the button means editing the profiles.
+> **Pushing the button wider still is not free.** Published charts put it near
+> 40–45%; forcing that by hand cost the pro field real money — at a 1.22x button
+> premium a recreational player went from −8 to +12…+20 bb/100 against a pro
+> field. That is a fact about poker rather than a bug: a wide steal is only
+> profitable when the players behind fold, and these pros fold *postflop*, so
+> opening wider and giving up is how a station gets paid. Widening belongs where
+> it is conditional on a read.
 
 ## Dev commands (run from `frontend/`)
 
