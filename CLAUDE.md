@@ -226,6 +226,35 @@ characterful named move over another generic dial.
   adding to it: your own hands shouldn't automatically win the slot, only your
   good ones.
 
+### Tilt — the stateful layer
+
+`mental_state.dart` is the one piece of the model that **remembers**. Everything
+else decides from the hand in front of it; tilt carries across hands.
+
+- **`MentalState`** — `tiltPressure` (0–1, decays every hand) and
+  `handsSinceVpip` (the boredom counter). Session-scoped and **never
+  persisted**: nobody sits down still steaming about a pot from last week.
+- **`MentalReads`** is a seam shaped exactly like `OpponentReads`, and for the
+  same reason — the state has to outlive the policies, which are rebuilt
+  whenever the lineup changes.
+- **`tilt_resistance` is finally the field that decides who tilts.** Authored on
+  all 184 profiles and read by nothing until now; it sets both how much pressure
+  a beat adds and how fast it fades. No profile data needed editing.
+- **The *shape* is a characteristic, not a dial.** `Tilt_Blowup` (wider *and*
+  raising), `Tilt_Chase` (wider but passive — the extra hands call), and
+  `Tilt_Shutdown` (tighter; the reaction nobody models, because tilt is assumed
+  to mean aggression). A profile with no tilt style accumulates pressure and
+  expresses none of it, so the pros who were never given one play exactly as
+  before — there's a test for that.
+- **Where each style can express itself differs.** First-in on the button it is
+  raise or fold, so a chaser's widened *entry* range has nowhere to go; its
+  character lives in the cold-call facing a raise, and postflop. Getting this
+  wrong makes a chaser look like a blow-up.
+- Tilt shifts *frequencies*; it never touches the commitment gates. A rattled
+  player must lose money believably, not absurdly.
+- **Evaluation runs do not accumulate it** (the `_evaluating` gate), or a
+  profile's calibrated stats would drift as a simulation wears on.
+
 > The remaining gap to real charts is **profile data, not policy**: the shipped
 > personalities carry PFR targets of 0.12–0.29, below a real Main Event field,
 > and the mean-1.0 constraint centres the positional curve on whatever they are

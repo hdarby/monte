@@ -8,6 +8,7 @@ import 'package:monte/core/domain/ai/opponent_reads.dart';
 import 'package:monte/core/domain/ai/player_read.dart';
 import 'package:monte/core/domain/ai/player_stats.dart';
 import 'package:monte/core/domain/ai/personality.dart';
+import 'package:monte/core/domain/ai/mental_state.dart';
 import 'package:monte/core/domain/ai/profile_decider.dart';
 import 'package:monte/core/domain/engine/actions.dart';
 import 'package:monte/core/domain/engine/decision_policy.dart';
@@ -93,6 +94,10 @@ class LocalGameRepository extends GameRepository {
   /// Per-session opponent reads, fed every finished hand and consulted by
   /// exploitative profile bots' search.
   final OpponentModel _opponentModel = OpponentModel();
+
+  /// How rattled each seat is. Session-scoped and never persisted — nobody sits
+  /// down still steaming about a pot from last week.
+  final MentalTable _mental = MentalTable();
 
   PokerGame? _game;
   bool _botsRunning = false;
@@ -237,7 +242,8 @@ class LocalGameRepository extends GameRepository {
         // via [deciderForProfile] so a personality plays identically everywhere.
         // Reads are bound to *this* bot's perspective (its read of the human is
         // only the hands it saw — see [OpponentStatsService.readsFor]).
-        return deciderForProfile(pro, reads: _readsAs(playerId));
+        return deciderForProfile(pro,
+            reads: _readsAs(playerId), mental: _mental);
       }
       return buildDecider(
         spec.brain,
@@ -530,6 +536,11 @@ class LocalGameRepository extends GameRepository {
     );
     _history.add(hand);
     _opponentModel.observe(hand); // legacy in-session model (ISMCTS path)
+    // Tilt is part of playing, not of measuring: an evaluation run must not
+    // accumulate it, or a profile's calibrated stats drift as the sim wears on.
+    if (!_evaluating) {
+      _mental.observe(hand, (seatId) => _specByPlayer[seatId]?.profile);
+    }
     // Persistent per-opponent reads, keyed by stable identity (profile.id /
     // 'human'), for the exploitative pros — accumulated across sessions.
     if (!_evaluating) statsService?.record(hand, _identityOf);

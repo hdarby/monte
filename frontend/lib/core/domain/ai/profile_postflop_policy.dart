@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'package:monte/core/domain/ai/hand_range.dart';
+import 'package:monte/core/domain/ai/mental_state.dart';
 import 'package:monte/core/domain/ai/opponent_reads.dart';
 import 'package:monte/core/domain/ai/player_profile.dart';
 import 'package:monte/core/domain/ai/player_stats.dart';
@@ -35,9 +36,11 @@ class ProfilePostflopPolicy implements DecisionPolicy {
     Random? random,
     OpponentReads? reads,
     TriggerObserver? triggers,
+    MentalReads? mental,
   }) : _random = random ?? Random() {
     _reads = reads;
     _triggers = triggers;
+    _mental = mental;
   }
 
   final PlayerProfile profile;
@@ -49,6 +52,9 @@ class ProfilePostflopPolicy implements DecisionPolicy {
   /// Records signature moves when they fire, so they can be verified rather
   /// than taken on faith. Null in production.
   late final TriggerObserver? _triggers;
+
+  /// How rattled each seat is (see [MentalReads]). Null = nobody tilts.
+  late final MentalReads? _mental;
 
   void _fired(String id, Player p, BettingRound street) =>
       _triggers?.onFired(id, p.id, street);
@@ -246,10 +252,21 @@ class ProfilePostflopPolicy implements DecisionPolicy {
       // pot with the worst of it, so real players bluff less the deeper they
       // are. This is the other half of the pot-bloat fix: without it, smaller
       // sizings just mean more streets of betting.
-      final bluffChance = ((0.10 + 0.35 * exploit + 0.30 * pv + 0.30 * sr) *
-                  ((1 - eq) * 0.6 + (isDraw ? 0.4 : 0.0)) +
-              0.4 * rBluffMore) *
-          (1 - 0.45 * deepFactor);
+      // A blow-up fires at pots they have no business firing at; a player who
+      // has shut down stops bluffing altogether.
+      final mood = _mental?.stateFor(p.id);
+      final tiltBluff = mood == null || !mood.isTilted
+          ? 1.0
+          : (1 +
+                  0.9 * mood.tiltPressure * profile.proficiencyOf('Tilt_Blowup') -
+                  0.7 * mood.tiltPressure *
+                      profile.proficiencyOf('Tilt_Shutdown'))
+              .clamp(0.1, 2.5);
+      final bluffChance = tiltBluff *
+          ((0.10 + 0.35 * exploit + 0.30 * pv + 0.30 * sr) *
+                      ((1 - eq) * 0.6 + (isDraw ? 0.4 : 0.0)) +
+                  0.4 * rBluffMore) *
+              (1 - 0.45 * deepFactor);
       final wantsBluff = _random.nextDouble() < bluffChance;
       // Float and take it away: we called their flop bet in position with
       // little, they have surrendered the turn, so we take it. Fires on air --
@@ -436,6 +453,17 @@ class ProfilePostflopPolicy implements DecisionPolicy {
     final sticky = profile.proficiencyOf('Sticky_Showdown');
     if (sticky > 0 && (tc.hasTopPair || tc.madeAtLeast(HandRank.twoPair))) {
       callBar -= 0.14 * sticky;
+    }
+
+    // Tilt, postflop. A chaser calls down to prove a point; a player who has
+    // shut down folds anything marginal and waits. The commitment gates below
+    // are untouched — tilt shifts *frequencies*, and a rattled player should
+    // lose money believably rather than absurdly.
+    final mind = _mental?.stateFor(p.id);
+    if (mind != null && mind.isTilted) {
+      final t = mind.tiltPressure;
+      callBar -= 0.16 * t * profile.proficiencyOf('Tilt_Chase');
+      callBar += 0.14 * t * profile.proficiencyOf('Tilt_Shutdown');
     }
 
     // Record only when the move actually *changed the decision*, not merely

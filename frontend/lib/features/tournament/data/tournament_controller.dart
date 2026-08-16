@@ -26,6 +26,7 @@ import 'package:monte/features/tournament/domain/payout_structure.dart';
 import 'package:monte/features/tournament/domain/seat_manager.dart';
 import 'package:monte/features/tournament/domain/tournament_snapshot.dart';
 import 'package:monte/core/domain/ai/home_game_profiles.dart';
+import 'package:monte/core/domain/ai/mental_state.dart';
 import 'package:monte/core/domain/ai/player_profiles.dart';
 import 'package:monte/features/tournament/domain/tournament_save.dart';
 import 'package:monte/features/tournament/domain/tournament_state.dart';
@@ -53,7 +54,9 @@ class TournamentController {
     this._identityBySeat = const {},
     this._profileBySeat = const {},
     TriggerLog? triggerLog,
+    MentalTable? mental,
   })  : _deciders = Map.of(deciders),
+        _mental = mental ?? MentalTable(),
         _enginePlayers = Map.of(enginePlayers),
         _triggerLog = triggerLog ?? TriggerLog();
 
@@ -139,6 +142,9 @@ class TournamentController {
   /// Created in [create] rather than here because the deciders that write into
   /// it are built before the controller exists.
   final TriggerLog _triggerLog;
+
+  /// Per-tournament tilt, fed every finished hand.
+  final MentalTable _mental;
   final Map<String, Player> _enginePlayers;
 
   /// Metagame chronicle powering the post-level recap. Only fed during
@@ -264,6 +270,9 @@ class TournamentController {
     // One log per tournament: the deciders write signature moves into it, the
     // recorder drains it per hand so the recap can name them.
     final triggerLog = TriggerLog();
+    // One mental table per tournament: seats accumulate tilt across the whole
+    // event, which is the only timescale on which it means anything.
+    final mental = MentalTable();
     final players = <String, TournamentPlayer>{};
     final engine = <String, Player>{};
     if (restoreFrom != null) {
@@ -357,7 +366,8 @@ class TournamentController {
           ? deciderForProfile(profile,
               random: Random(seed * 1000 + i),
               reads: reads,
-              triggers: triggerLog)
+              triggers: triggerLog,
+              mental: mental)
           : (deciderBuilder?.call(id, i) ??
               buildDecider(BotType.heuristic, random: Random(seed * 1000 + i)));
       // ICM discipline (short-stack push/fold + bubble caution) is a *skill*:
@@ -386,6 +396,7 @@ class TournamentController {
       enginePlayers: engine,
       statsService: statsService,
       triggerLog: triggerLog,
+      mental: mental,
       identityBySeat: identityBySeat,
       profileBySeat: profileBySeat,
     );
@@ -533,6 +544,19 @@ class TournamentController {
       state.players[p.id]!.chips = p.stack;
       if (p.stack == 0 && state.players[p.id]!.isActive) busts[p.id] = pre[p.id]!;
     }
+    // Tilt accumulates at every table, not just the human's — a player moved to
+    // your table part-way through a level should arrive in whatever state their
+    // last hour put them in, not freshly calm.
+    _mental.observeResults(
+      seatIds: [for (final p in enginePlayers) p.id],
+      bigBlind: level.bigBlind,
+      profileOf: (id) => _profileBySeat[id],
+      netOf: (id) =>
+          (state.players[id]?.chips ?? 0) - (pre[id] ?? 0),
+      enteredPot: (id) => enginePlayers
+          .firstWhere((p) => p.id == id, orElse: () => enginePlayers.first)
+          .vpip,
+    );
     _recorder.recordHand(
       game,
       pre: pre,

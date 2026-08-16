@@ -2,6 +2,7 @@ import 'dart:math';
 
 import 'package:monte/core/domain/ai/hand_range.dart';
 import 'package:monte/core/domain/ai/player_profile.dart';
+import 'package:monte/core/domain/ai/mental_state.dart';
 import 'package:monte/core/domain/ai/open_ranges.dart';
 import 'package:monte/core/domain/ai/postflop_equity.dart';
 import 'package:monte/core/domain/ai/stack_context.dart';
@@ -34,8 +35,12 @@ import 'package:monte/core/domain/engine/player.dart';
 /// limping via the VPIP≫PFR gap, wider raise-calling, under-3-betting) rather
 /// than ad-hoc thresholds, so the style stays a real poker profile.
 class AmateurPolicy implements DecisionPolicy {
-  AmateurPolicy(this.profile, {Random? random, PreflopRanges? ranges})
-    : _random = random ?? Random(),
+  AmateurPolicy(
+    this.profile, {
+    Random? random,
+    PreflopRanges? ranges,
+    this.mental,
+  }) : _random = random ?? Random(),
       _k = (1.0 - profile.skill).clamp(0.0, 1.0),
       _loose = ((profile.strategicBaseline.vpipTarget - 0.24) / 0.30).clamp(
         0.0,
@@ -58,6 +63,9 @@ class AmateurPolicy implements DecisionPolicy {
   final double _tight;
 
   final PreflopRanges _ranges;
+
+  /// How rattled each seat is (see [MentalReads]). Null = nobody tilts.
+  final MentalReads? mental;
 
   /// Amateurs "think" less than the pros' 160 — cheaper and thematically right;
   /// the shortfall also adds a little natural read noise.
@@ -192,7 +200,21 @@ class AmateurPolicy implements DecisionPolicy {
       final open = OpenRanges.forSeat(game, p,
           base: baseFrac,
           positionAwareness: profile.generalTraits.positionAwareness);
-      final shift = open - baseFrac;
+      var shift = open - baseFrac;
+      // Tilt and boredom. A recreational player is where this bites hardest —
+      // low tilt resistance is most of what makes them recreational — and the
+      // *shape* still comes from their tilt characteristic, so a rec with none
+      // accumulates pressure and plays exactly as before.
+      final mind = mental?.stateFor(p.id);
+      if (mind != null) {
+        shift += MentalModel.boredom(mind) * 0.06;
+        if (mind.isTilted) {
+          final t = mind.tiltPressure;
+          shift += 0.24 * t * profile.proficiencyOf('Tilt_Blowup');
+          shift += 0.22 * t * profile.proficiencyOf('Tilt_Chase');
+          shift -= 0.15 * t * profile.proficiencyOf('Tilt_Shutdown');
+        }
+      }
       if (shift != 0) {
         final vpipFrac = PreflopRanges.fractionForThreshold(_ranges.vpip);
         pfrCut = PreflopRanges.thresholdForFraction(open.clamp(0.02, 0.90));
@@ -377,8 +399,16 @@ class AmateurPolicy implements DecisionPolicy {
 
     // Discipline leak: stations call a bit below pot odds, nits overfold above —
     // bounded so it stays a believable leak, not a spew.
-    final callThreshold =
+    var callThreshold =
         (potOdds + 0.10 * _k * _tight - 0.10 * _k * _loose).clamp(0.0, 1.0);
+    final mood = mental?.stateFor(p.id);
+    if (mood != null && mood.isTilted) {
+      final t = mood.tiltPressure;
+      callThreshold = (callThreshold -
+              0.18 * t * profile.proficiencyOf('Tilt_Chase') +
+              0.15 * t * profile.proficiencyOf('Tilt_Shutdown'))
+          .clamp(0.0, 1.0);
+    }
     if (noisy < callThreshold) return const GameAction.fold();
     // The commitment gate applies to *every* call, not just one that crosses the
     // 40%-of-stack branch above. `commit` measures this single call against the

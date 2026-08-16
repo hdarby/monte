@@ -4,6 +4,7 @@ import 'package:monte/core/domain/ai/amateur_policy.dart';
 import 'package:monte/core/domain/ai/home_game_profiles.dart';
 import 'package:monte/core/domain/ai/opponent_reads.dart';
 import 'package:monte/core/domain/ai/player_profile.dart';
+import 'package:monte/core/domain/ai/mental_state.dart';
 import 'package:monte/core/domain/ai/profile_calibrator.dart';
 import 'package:monte/core/domain/ai/trigger_observer.dart';
 import 'package:monte/core/domain/ai/profile_policy.dart';
@@ -29,17 +30,19 @@ DecisionPolicy deciderForProfile(
   Random? random,
   OpponentReads? reads,
   TriggerObserver? triggers,
+  MentalReads? mental,
 }) {
   if (isAmateurProfile(profile)) {
-    return AmateurPolicy(profile, random: random);
+    return AmateurPolicy(profile, random: random, mental: mental);
   }
   return ProfilePolicy(
     profile,
     random: random,
     ranges: const ProfileCalibrator().rangesFor(profile),
     postflop: ProfilePostflopPolicy(profile,
-        random: random, reads: reads, triggers: triggers),
+        random: random, reads: reads, triggers: triggers, mental: mental),
     reads: reads,
     triggers: triggers,
+    mental: mental,
   );
 }

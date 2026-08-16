@@ -66,6 +66,30 @@ const List<CharacteristicSpec> characteristicCatalog = [
         '(the average number of hands played is unchanged).',
   ),
   CharacteristicSpec(
+    id: 'Tilt_Blowup',
+    name: 'Blow-up tilt',
+    description:
+        'After a big loss they come out swinging — far more hands, played far '
+        'harder. Proficiency scales how violently. Needs tilt resistance low '
+        'enough for the pressure to build in the first place.',
+  ),
+  CharacteristicSpec(
+    id: 'Tilt_Chase',
+    name: 'Chasing tilt',
+    description:
+        'After a big loss they get sticky rather than aggressive: more hands, '
+        'fewer raises, and they call down to prove a point. Proficiency scales '
+        'how far.',
+  ),
+  CharacteristicSpec(
+    id: 'Tilt_Shutdown',
+    name: 'Shutdown tilt',
+    description:
+        'After a big loss they go into a shell and wait for a monster — the '
+        'reaction nobody models, because tilt is assumed to mean aggression. '
+        'Proficiency scales how tightly they clam up.',
+  ),
+  CharacteristicSpec(
     id: 'Check_Raise_Merchant',
     name: 'Check-raise merchant',
     description:

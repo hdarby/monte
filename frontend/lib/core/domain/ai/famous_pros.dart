@@ -30,6 +30,12 @@ PlayerCharacteristic _under(double p) =>
     PlayerCharacteristic(id: 'Underbluff_Exploit', proficiency: p);
 PlayerCharacteristic _cr(double p) =>
     PlayerCharacteristic(id: 'Check_Raise_Merchant', proficiency: p);
+PlayerCharacteristic _blowup(double p) =>
+    PlayerCharacteristic(id: 'Tilt_Blowup', proficiency: p);
+PlayerCharacteristic _chase(double p) =>
+    PlayerCharacteristic(id: 'Tilt_Chase', proficiency: p);
+PlayerCharacteristic _shutdown(double p) =>
+    PlayerCharacteristic(id: 'Tilt_Shutdown', proficiency: p);
 
 PlayerProfile _p(
   String id,
@@ -185,7 +191,7 @@ final List<PlayerProfile> famousPros = [
       desc: 'High-volume, aggressive ring-game grinder.'),
   _p('FP028', 'Josh Arieh', 'Talkative_Aggressor',
       vpip: 0.30, pfr: 0.22, threeBet: 0.12, gto: 0.78, exploit: 0.45, risk: 1.2,
-      chars: [_lev(0.6), _soul(0.5)],
+      chars: [_lev(0.6), _soul(0.5), _blowup(0.6)],
       desc: 'Aggressive, talkative live pro.'),
   _p('FP029', 'David Williams', 'Versatile_Aggressor',
       vpip: 0.28, pfr: 0.21, threeBet: 0.11, gto: 0.82, exploit: 0.35, risk: 1.15,
@@ -219,7 +225,7 @@ final List<PlayerProfile> famousPros = [
       desc: 'ElkY — fast, aggressive, online-bred.'),
   _p('FP036', 'Eli Elezra', 'Action_Gambler',
       vpip: 0.31, pfr: 0.23, threeBet: 0.12, gto: 0.7, exploit: 0.5, risk: 1.3,
-      chars: [_lev(0.7), _soul(0.5), _sticky(0.6), _limp(0.5)],
+      chars: [_lev(0.7), _soul(0.5), _sticky(0.6), _limp(0.5), _chase(0.6)],
       desc: 'Action-loving live gambler.'),
   _p('FP037', 'Qui Nguyen', 'Unpredictable_LAG',
       vpip: 0.34, pfr: 0.25, threeBet: 0.13, gto: 0.68, exploit: 0.55, risk: 1.35,
@@ -227,7 +233,7 @@ final List<PlayerProfile> famousPros = [
       desc: 'Fearless, unpredictable live LAG.'),
   _p('FP038', 'Mike Matusow', 'The_Mouth',
       vpip: 0.30, pfr: 0.22, threeBet: 0.12, gto: 0.72, exploit: 0.5, risk: 1.25,
-      tilt: 0.35, chars: [_lev(0.7), _soul(0.5)],
+      tilt: 0.35, chars: [_lev(0.7), _soul(0.5), _blowup(0.85)],
       desc: 'The Mouth — aggressive and tilt-prone.'),
   _p('FP039', 'Stu Ungar', 'Instinctive_Genius',
       vpip: 0.32, pfr: 0.24, threeBet: 0.13, gto: 0.8, exploit: 0.55, risk: 1.3,
@@ -316,19 +322,21 @@ final List<PlayerProfile> famousPros = [
       desc: 'Decision-theorist; sharp reads.'),
   _p('FP060', 'Kathy Liebert', 'Steady_Veteran',
       vpip: 0.26, pfr: 0.19, threeBet: 0.10, gto: 0.8, exploit: 0.35, oppRead: 0.7,
-      chars: [_soul(0.5)],
+      chars: [_soul(0.5), _shutdown(0.6)],
       desc: 'Steady, aggressive veteran.'),
   _p('FP061', 'Jennifer Tilly', 'Action_Loving',
       vpip: 0.33, pfr: 0.24, threeBet: 0.12, gto: 0.68, exploit: 0.45, risk: 1.2,
-      tilt: 0.7, chars: [_lev(0.6), _soul(0.4), _sticky(0.85)],
+      tilt: 0.7, chars: [_lev(0.6), _soul(0.4), _sticky(0.85), _chase(0.8)],
       desc: 'Loose, fearless, action-loving.'),
   _p('FP062', 'Cyndy Violette', 'Disciplined_Solid',
       vpip: 0.22, pfr: 0.16, threeBet: 0.08, gto: 0.82, exploit: 0.3,
+      chars: [_shutdown(0.65)],
       desc: 'Disciplined, solid pro.'),
 
   // ---- Tight / nitty / mathematical ---------------------------------------
   _p('FP063', 'Allen Kessler', 'Chainsaw_Nit',
       vpip: 0.18, pfr: 0.12, threeBet: 0.04, gto: 0.8, exploit: 0.2, tilt: 0.7,
+      chars: [_shutdown(0.8)],
       desc: 'Chainsaw — famously tight and value-driven.'),
   _p('FP064', 'Chris Ferguson', 'Jesus_GTO',
       vpip: 0.22, pfr: 0.16, threeBet: 0.08, gto: 0.95, exploit: 0.1,
@@ -340,11 +348,11 @@ final List<PlayerProfile> famousPros = [
       desc: 'Disciplined mixed-game specialist.'),
   _p('FP066', 'Tom McEvoy', 'ABC_Champion',
       vpip: 0.20, pfr: 0.14, threeBet: 0.06, gto: 0.8, exploit: 0.25,
-      chars: [_limp(0.5)],
+      chars: [_limp(0.5), _shutdown(0.6)],
       desc: 'Conservative ABC champion.'),
   _p('FP067', 'Greg Raymer', 'Fossilman',
       vpip: 0.22, pfr: 0.16, threeBet: 0.08, gto: 0.82, exploit: 0.35,
-      chars: [_soul(0.5)],
+      chars: [_soul(0.5), _shutdown(0.55)],
       desc: 'Fossilman — analytical and solid.'),
 
   // ---- Special ------------------------------------------------------------
@@ -360,7 +368,7 @@ final List<PlayerProfile> famousPros = [
       desc: 'Studious Hong Kong high-roller regular.'),
   _p('FP070', 'Paul Phua', 'Aggressive_Whale',
       vpip: 0.32, pfr: 0.20, threeBet: 0.10, gto: 0.72, exploit: 0.5, risk: 1.3,
-      tilt: 0.6, chars: [_lev(0.6), _soul(0.5), _sticky(0.7)],
+      tilt: 0.6, chars: [_lev(0.6), _soul(0.5), _sticky(0.7), _chase(0.6)],
       desc: 'Loose, fearless super-high-roller businessman.'),
   _p('FP071', 'Nacho Barbero', 'LAG_Grinder',
       vpip: 0.31, pfr: 0.23, threeBet: 0.13, gto: 0.82, exploit: 0.4, risk: 1.25,
@@ -388,7 +396,7 @@ final List<PlayerProfile> famousPros = [
       desc: 'Jungleman — creative, exploitative online legend.'),
   _p('FP077', 'Eric Persson', 'Action_Whale',
       vpip: 0.34, pfr: 0.24, threeBet: 0.12, gto: 0.65, exploit: 0.55, risk: 1.4,
-      tilt: 0.4, chars: [_lev(0.7), _soul(0.4), _sticky(0.8)],
+      tilt: 0.4, chars: [_lev(0.7), _soul(0.4), _sticky(0.8), _chase(0.75)],
       desc: 'Maverick action-junkie; maximum gamble.'),
   _p('FP078', 'Wang Ye', 'Aggressive_Live',
       vpip: 0.30, pfr: 0.21, threeBet: 0.11, gto: 0.76, exploit: 0.45, risk: 1.2,
@@ -457,7 +465,7 @@ final List<PlayerProfile> famousPros = [
       desc: 'Steady, well-rounded tournament grinder.'),
   _p('FP094', 'Bill Perkins', 'Action_Whale',
       vpip: 0.33, pfr: 0.22, threeBet: 0.11, gto: 0.66, exploit: 0.5, risk: 1.4,
-      tilt: 0.5, chars: [_lev(0.6), _soul(0.4), _sticky(0.75)],
+      tilt: 0.5, chars: [_lev(0.6), _soul(0.4), _sticky(0.75), _chase(0.7)],
       desc: 'High-stakes gambler who loves the action.'),
   _p('FP095', 'Shaun Deeb', 'Exploitative_Grinder',
       vpip: 0.30, pfr: 0.22, threeBet: 0.13, gto: 0.8, exploit: 0.55, risk: 1.25,
@@ -518,7 +526,7 @@ final List<PlayerProfile> famousPros = [
       desc: 'Aggressive, talented young tournament crusher.'),
   _p('FP110', 'Martin Kabrhel', 'Chaotic_Whale',
       vpip: 0.34, pfr: 0.24, threeBet: 0.13, gto: 0.68, exploit: 0.55, risk: 1.4,
-      tilt: 0.4, oppRead: 0.7, chars: [_lev(0.8), _soul(0.5), _sticky(0.65), _float(0.5)],
+      tilt: 0.4, oppRead: 0.7, chars: [_lev(0.8), _soul(0.5), _sticky(0.65), _float(0.5), _blowup(0.7)],
       desc: 'Wild, table-talking, chaotic high-roller.'),
   _p('FP111', 'Punnat Punsri', 'Solid_Reg',
       vpip: 0.26, pfr: 0.19, threeBet: 0.11, gto: 0.87, exploit: 0.3,
@@ -571,7 +579,7 @@ final List<PlayerProfile> famousPros = [
       desc: 'Steady live cash-game vlogger and grinder.'),
   _p('FP123', 'Ryan DePaulo', 'Recreational_LAG',
       vpip: 0.32, pfr: 0.21, threeBet: 0.10, gto: 0.68, exploit: 0.45, risk: 1.25,
-      tilt: 0.55, chars: [_lev(0.5), _soul(0.4), _sticky(0.7)],
+      tilt: 0.55, chars: [_lev(0.5), _soul(0.4), _sticky(0.7), _chase(0.65)],
       desc: 'Degenerate-brand vlogger; loose and fearless.'),
   _p('FP124', 'David Kaye', 'Solid_Live',
       vpip: 0.27, pfr: 0.19, threeBet: 0.10, gto: 0.8, exploit: 0.4,
@@ -599,7 +607,7 @@ final List<PlayerProfile> famousPros = [
       desc: 'Aggressive content-creator and cash player.'),
   _p('FP130', 'Nathan Williams', 'Coach_Nit',
       vpip: 0.22, pfr: 0.15, threeBet: 0.06, gto: 0.88, exploit: 0.4, oppRead: 0.7,
-      chars: [_pos(0.6), _under(0.65)],
+      chars: [_pos(0.6), _under(0.65), _shutdown(0.7)],
       desc: 'BlackRain79 — tight-aggressive micro-stakes coach.'),
   _p('FP131', 'Lex Veldhuis', 'Aggressive_Stream',
       vpip: 0.30, pfr: 0.22, threeBet: 0.12, gto: 0.8, exploit: 0.4, risk: 1.25,
@@ -611,7 +619,7 @@ final List<PlayerProfile> famousPros = [
       desc: 'High-stakes cash exploiter and coach.'),
   _p('FP133', 'Will Kassouf', 'Speech_Play_LAG',
       vpip: 0.32, pfr: 0.21, threeBet: 0.11, gto: 0.7, exploit: 0.5, risk: 1.25,
-      tilt: 0.6, oppRead: 0.75, chars: [_soul(0.6), _lev(0.6)],
+      tilt: 0.6, oppRead: 0.75, chars: [_soul(0.6), _lev(0.6), _blowup(0.6)],
       desc: 'Speech-play specialist; loose, needling, aggressive.'),
   _p('FP134', 'Abby Merk', 'Solid_Reg',
       vpip: 0.26, pfr: 0.19, threeBet: 0.11, gto: 0.85, exploit: 0.35,

@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:monte/core/domain/ai/opponent_reads.dart';
 import 'package:monte/core/domain/ai/player_profile.dart';
 import 'package:monte/core/domain/ai/player_stats.dart';
+import 'package:monte/core/domain/ai/mental_state.dart';
 import 'package:monte/core/domain/ai/open_ranges.dart';
 import 'package:monte/core/domain/ai/trigger_observer.dart';
 import 'package:monte/core/domain/ai/preflop_ranges.dart';
@@ -35,6 +36,7 @@ class ProfilePolicy implements DecisionPolicy {
     DecisionPolicy? postflop,
     OpponentReads? reads,
     TriggerObserver? triggers,
+    MentalReads? mental,
   }) : _random = random ?? Random(),
        _ranges =
            ranges ??
@@ -45,6 +47,7 @@ class ProfilePolicy implements DecisionPolicy {
            ) {
     _reads = reads;
     _triggers = triggers;
+    _mental = mental;
     _postflop = postflop ?? BotStrategy(random: _random);
   }
 
@@ -56,6 +59,9 @@ class ProfilePolicy implements DecisionPolicy {
 
   /// Records signature moves when they fire (see [TriggerObserver]).
   late final TriggerObserver? _triggers;
+
+  /// How rattled each seat is (see [MentalReads]). Null = nobody tilts.
+  late final MentalReads? _mental;
 
   /// Strength cutoffs for escalated preflop pots. Facing a 3-bet you continue
   /// only with a strong range, and only premiums 4-bet/stack off — otherwise two
@@ -86,6 +92,44 @@ class ProfilePolicy implements DecisionPolicy {
     var pfrCut = _ranges.pfr;
     var threeBetCut = _ranges.threeBet;
     final posProf = profile.proficiencyOf('Positional_Warfare');
+    // Tilt and boredom, applied to the same opening cut the positional model
+    // shifts. A rattled player's *shape* of deviation is the characteristic —
+    // some come out swinging, some get sticky, some clam up — so a profile with
+    // no tilt style accumulates pressure and expresses none of it, and the 154
+    // pros who were never given one play exactly as before.
+    final mind = _mental?.stateFor(p.id);
+    var tiltVpip = 0.0; // extra fraction of hands entered
+    var tiltPfr = 0.0; // extra fraction raised (negative = passive)
+    if (mind != null) {
+      // Boredom is universal and small: everyone gets restless card-dead.
+      final bored = MentalModel.boredom(mind) * 0.05;
+      tiltVpip += bored;
+      tiltPfr += bored * 0.5;
+
+      if (mind.isTilted) {
+        final t = mind.tiltPressure;
+        final blowup = profile.proficiencyOf('Tilt_Blowup');
+        final chase = profile.proficiencyOf('Tilt_Chase');
+        final shutdown = profile.proficiencyOf('Tilt_Shutdown');
+        if (blowup > 0) {
+          // PFR widens *faster* than VPIP: the extra hands arrive raising.
+          // Widening entries faster than raises would make a blow-up look like
+          // a chaser, which is the one thing it must not.
+          tiltVpip += 0.16 * t * blowup;
+          tiltPfr += 0.24 * t * blowup;
+        }
+        if (chase > 0) {
+          // Wider, but *passive* — the hands come in calling, not raising.
+          tiltVpip += 0.20 * t * chase;
+          tiltPfr -= 0.06 * t * chase;
+        }
+        if (shutdown > 0) {
+          tiltVpip -= 0.14 * t * shutdown;
+          tiltPfr -= 0.10 * t * shutdown;
+        }
+      }
+    }
+
     if (raises == 0 && toCall <= bb) {
       // Anchored on the *calibrated* opening cut, not the raw target: the
       // calibrator tunes `_ranges.pfr` to hit a player's stated PFR, and an
@@ -96,14 +140,18 @@ class ProfilePolicy implements DecisionPolicy {
           base: baseFrac,
           positionAwareness: profile.generalTraits.positionAwareness,
           positionalProficiency: posProf);
-      if (open != baseFrac) {
+      final shift = open - baseFrac;
+      if (shift != 0 || tiltVpip != 0 || tiltPfr != 0) {
         // Shift VPIP by the same number of points, so the gap between "hands
-        // entered" and "hands raised" stays the player's own.
-        final shift = open - baseFrac;
+        // entered" and "hands raised" stays the player's own — then tilt moves
+        // the two independently, which is what makes a chaser look different
+        // from a blow-up rather than just looser.
         final vpipFrac = PreflopRanges.fractionForThreshold(_ranges.vpip);
-        pfrCut = PreflopRanges.thresholdForFraction(open);
+        pfrCut = PreflopRanges.thresholdForFraction(
+          (open + tiltPfr).clamp(0.02, 0.95),
+        );
         vpipCut = PreflopRanges.thresholdForFraction(
-          (vpipFrac + shift).clamp(0.02, 0.95),
+          (vpipFrac + shift + tiltVpip).clamp(0.02, 0.95),
         );
       }
     }
@@ -170,7 +218,18 @@ class ProfilePolicy implements DecisionPolicy {
     // here was what pushed half of all flops multiway.
     if (raises == 1) {
       if (s >= threeBetCut && canRaise) return raiseBy(0.6);
-      if (s >= _coldCallCut(game, p, vpipCut)) return const GameAction.call();
+      // Tilt reaches the cold-call too — and this is the spot where a chaser's
+      // character actually lives. First-in on the button it is raise or fold,
+      // so a widened *entry* range has nowhere to express itself; facing a
+      // raise is where "I am coming along anyway" becomes a real action.
+      var callCut = _coldCallCut(game, p, vpipCut);
+      if (tiltVpip != 0) {
+        final frac = PreflopRanges.fractionForThreshold(callCut);
+        callCut = PreflopRanges.thresholdForFraction(
+          (frac + tiltVpip).clamp(0.02, 0.95),
+        );
+      }
+      if (s >= callCut) return const GameAction.call();
       return const GameAction.fold();
     }
 

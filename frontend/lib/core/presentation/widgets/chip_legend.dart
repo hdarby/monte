@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import 'package:monte/core/domain/engine/chip_breakdown.dart';
 import 'package:monte/core/presentation/widgets/chip_stack_view.dart';
-import 'package:monte/core/theme/app_theme.dart';
 import 'package:monte/core/util/format.dart';
 
 /// A single chip drawn **face-on**, for a legend entry.
@@ -100,7 +99,6 @@ class ChipLegend extends StatelessWidget {
     required this.denominations,
     this.minDenomination = 1,
     this.amount,
-    this.title,
   });
 
   /// Every denomination in play, ascending.
@@ -112,8 +110,6 @@ class ChipLegend extends StatelessWidget {
 
   /// When given, the legend also shows how many of each chip this stack holds.
   final int? amount;
-
-  final String? title;
 
   @override
   Widget build(BuildContext context) {
@@ -139,59 +135,53 @@ class ChipLegend extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         decoration: BoxDecoration(
           color: const Color(0xF01B1B1B),
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(8),
           border: Border.all(color: Colors.white24),
           boxShadow: const [
-            BoxShadow(color: Colors.black87, blurRadius: 14, offset: Offset(0, 5)),
+            BoxShadow(color: Colors.black87, blurRadius: 12, offset: Offset(0, 4)),
           ],
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              title ?? 'Chips in play',
-              style: TextStyle(
-                color: AppTheme.gold.withValues(alpha: 0.85),
-                fontSize: 9,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 1.0,
-              ),
-            ),
-            const SizedBox(height: 5),
-            for (final d in inPlay)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 2),
-                child: Row(
+        // Laid out as a wrap rather than one long column. Ten denominations in
+        // a single list is a 216px-tall panel dropped over the middle of the
+        // felt; flowed into rows it is a third of that, and a legend you have to
+        // look past is worse than no legend.
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 250),
+          child: Wrap(
+            spacing: 10,
+            runSpacing: 3,
+            children: [
+              for (final d in inPlay)
+                Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     ChipSwatch(denomination: d),
-                    const SizedBox(width: 6),
+                    const SizedBox(width: 4),
                     Text(
                       formatChips(d),
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 11,
+                        fontSize: 10,
                         fontWeight: FontWeight.w600,
+                        height: 1.1,
                       ),
                     ),
-                    if (held.containsKey(d)) ...[
-                      const SizedBox(width: 5),
+                    if (held.containsKey(d))
                       Text(
-                        '× ${held[d]}',
+                        '×${held[d]}',
                         style: const TextStyle(
                           color: Colors.white54,
-                          fontSize: 10,
+                          fontSize: 9,
+                          height: 1.1,
                         ),
                       ),
-                    ],
                   ],
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );
