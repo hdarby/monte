@@ -142,10 +142,35 @@ class _ChipStackViewState extends State<ChipStackView> {
     final ref = reference > 0 ? reference : amount;
     final total = (capacity * amount / ref).round().clamp(1, capacity);
 
-    // Allocate the drawn chips across denominations in proportion to how many
-    // of each the player *actually holds*, so the colours on screen reflect the
-    // real composition of the stack rather than an arbitrary column order.
-    final held = breakdown.chipCount;
+    // A stack worth less than the smallest chip on the table is drawn as a
+    // single chip, never scaled up. Scaling the fallback is what let a 60,000
+    // stack render as several columns of 500,000 chips: the breakdown has to
+    // name *some* denomination, and multiplying it by the height scale turned
+    // "less than one chip" into a tower of plaques.
+    if (breakdown.columns.length == 1 &&
+        amount < breakdown.columns.first.denomination) {
+      return SizedBox(
+        height: maxHeight,
+        child: Align(
+          alignment: Alignment.bottomLeft,
+          child: ChipColumnView(
+            column: breakdown.columns.first,
+            chipWidth: chipWidth,
+            chipHeight: chipHeight,
+          ),
+        ),
+      );
+    }
+
+    // Allocate the drawn chips across denominations by each one's share of the
+    // stack's **value**, not of its chip count.
+    //
+    // By count, a couple of odd change chips take up half the picture: a player
+    // holding 2x100k and 3x25k — 73% of their money in the big ones — was drawn
+    // 60% small, and the colours stopped meaning anything. Money is what a stack
+    // is read for across a table, and it is where your money is that shows.
+    final held = breakdown.columns
+        .fold<int>(0, (a, c) => a + c.count * c.denomination);
     final alloc = <int, int>{};
     var assigned = 0;
     for (var i = 0; i < breakdown.columns.length; i++) {
@@ -153,7 +178,7 @@ class _ChipStackViewState extends State<ChipStackView> {
       final isLast = i == breakdown.columns.length - 1;
       var n = isLast
           ? total - assigned
-          : (total * (held <= 0 ? 0 : c.count / held)).round();
+          : (total * (held <= 0 ? 0 : c.count * c.denomination / held)).round();
       if (n < 1 && !isLast) n = 1;
       if (assigned + n > total) n = total - assigned;
       if (n <= 0) continue;

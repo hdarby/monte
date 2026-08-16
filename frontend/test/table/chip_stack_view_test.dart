@@ -199,18 +199,81 @@ void main() {
       }
     });
 
+    testWidgets('a stack worth less than one chip draws exactly one chip',
+        (tester) async {
+      // The breakdown has to name *some* denomination for a stack below the
+      // smallest chip on the table. Scaling that fallback by the height factor
+      // is what let a 60,000 stack render as several columns of 500,000 chips.
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: ChipStackView(
+                amount: 60000,
+                denominations: wsop,
+                reference: 60000, // chip leader, so the height scale is maximal
+                minDenomination: 500000,
+                maxHeight: 32,
+              ),
+            ),
+          ),
+        ),
+      );
+      final chips = find
+          .descendant(
+            of: find.byType(ChipStackView),
+            matching: find.byType(Container),
+          )
+          .evaluate()
+          .length;
+      expect(chips, 1, reason: 'less than one chip is one chip, not a tower');
+    });
+
+    testWidgets('never draws a denomination bigger than the stack itself',
+        (tester) async {
+      for (final amount in [3000, 60000, 275000, 1200000]) {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: Center(
+                child: ChipStackView(
+                  amount: amount,
+                  denominations: wsop,
+                  reference: amount,
+                  minDenomination: 1000,
+                  maxHeight: 32,
+                ),
+              ),
+            ),
+          ),
+        );
+        final drawn = find
+            .descendant(
+              of: find.byType(ChipStackView),
+              matching: find.byType(ChipColumnView),
+            )
+            .evaluate()
+            .map((e) => (e.widget as ChipColumnView).denomination);
+        for (final d in drawn) {
+          expect(d, lessThanOrEqualTo(amount),
+              reason: 'a $amount stack cannot hold a $d chip');
+        }
+      }
+    });
+
     testWidgets('columns run largest denomination first', (tester) async {
       final denoms = await columnDenoms(tester, 1275000);
       final sorted = [...denoms]..sort((a, b) => b.compareTo(a));
       expect(denoms, sorted);
     });
 
-    testWidgets('the most-held denomination gets the most chips',
+    testWidgets('the denomination holding the money dominates the picture',
         (tester) async {
-      // 29,000 breaks down as 1 x 25,000 + 4 x 1,000: by *count* the 1,000s
-      // dominate, so they must dominate the picture even though the single 25k
-      // is worth far more. (Greedy decomposition minimises chip count, so the
-      // amount has to be chosen to actually produce change.)
+      // 29,000 breaks down as 1 x 25,000 + 4 x 1,000. By *count* the 1,000s win
+      // 4-to-1, and this test used to require that they dominate — which is what
+      // made the colours meaningless: 86% of the stack is in the single 25k
+      // chip, and a picture that reads four-fifths small is not that stack.
+      // Money is what a stack is read for, so value share is what shows.
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -240,7 +303,8 @@ void main() {
         perDenom[c.denomination] =
             (perDenom[c.denomination] ?? 0) + c.column.count;
       }
-      expect(perDenom[1000], greaterThan(perDenom[25000] ?? 0));
+      expect(perDenom[25000], greaterThan(perDenom[1000] ?? 0),
+          reason: '86% of the value is in the 25k chip');
     });
   });
 
