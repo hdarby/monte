@@ -24,6 +24,15 @@ const _outPath = 'lib/core/domain/ai/custom_players.dart';
 
 void main(List<String> args) {
   final dryRun = args.contains('--dry-run');
+
+  // Warn, but don't refuse: piping answers in is a legitimate way to script a
+  // player, and refusing outright broke it. The EOF abort in [_readLine] is what
+  // actually stops the runaway this was added for.
+  if (!stdin.hasTerminal) {
+    stderr.writeln('⚠  stdin is not a terminal — prompts can only be answered '
+        'from piped input.\n');
+  }
+
   print('=== Monte player creator ===\n');
 
   final name = _ask('Player name');
@@ -91,7 +100,8 @@ PlayerProfile _createRec(String name, String id) {
   final gt = _generalTraits();
   final opp = _score('Reading opponents / tendencies '
       '(0 = oblivious, 100 = sharp)');
-  final desc = _ask('One-line strengths/weaknesses (optional)', optional: true);
+  final chars = _characteristics(name);
+  final desc = _ask('One-line strengths/weaknesses', optional: true);
 
   return PlayerFactory.recreational(
     id: id,
@@ -105,6 +115,7 @@ PlayerProfile _createRec(String name, String id) {
     tiltResistance: tilt,
     opponentReading: opp,
     generalTraits: gt,
+    characteristics: chars,
     description: desc.isEmpty ? null : desc,
   );
 }
@@ -145,14 +156,7 @@ PlayerProfile _createPro(String name, String id) {
   final exploitWeight = [0.10, 0.30, 0.55, 0.80][deviate];
   final risk = [0.85, 1.0, 1.25][sizing];
 
-  print('\nSpecial characteristics — which apply to $name?');
-  print('(answer the % they use each; leave blank / 0 to skip)\n');
-  final chosen = <PlayerCharacteristic>[];
-  for (final c in characteristicCatalog) {
-    print('• ${c.name} — ${c.description}');
-    final pct = _score('   Proficiency for "${c.name}" (0 = skip)');
-    if (pct > 0) chosen.add(PlayerCharacteristic(id: c.id, proficiency: pct));
-  }
+  final chosen = _characteristics(name);
 
   final gt = _generalTraits();
 
@@ -173,23 +177,86 @@ PlayerProfile _createPro(String name, String id) {
   );
 }
 
+/// Walks the catalog asking which named moves apply to [name], and how well.
+///
+/// Offered to **both** flows. It used to be pro-only, and the omission silently
+/// disabled a whole feature: `AmateurPolicy` reads the three tilt styles off the
+/// profile, but nothing could put one on a recreational — so every rec built up
+/// tilt pressure and expressed none of it, which is backwards. Recreationals are
+/// the players who tilt.
+///
+/// Entering `done` stops early. Sixteen prompts with no way out is why authoring
+/// a player who uses two moves meant answering fourteen blanks.
+List<PlayerCharacteristic> _characteristics(String name) {
+  print('\nSpecial characteristics — which apply to $name?');
+  print('(enter the % they use each; blank skips one, "done" ends the list)\n');
+  final chosen = <PlayerCharacteristic>[];
+  for (final c in characteristicCatalog) {
+    print('• ${c.name} — ${c.description}');
+    stdout.write('   Proficiency for "${c.name}" (blank = skip, done = finish): ');
+    final line = _readLine();
+    if (line.toLowerCase() == 'done') break;
+    if (line.isEmpty) continue;
+    final n = num.tryParse(line);
+    if (n == null || n < 0 || n > 100) {
+      print('   Not a 0–100 number — skipped.');
+      continue;
+    }
+    if (n > 0 && n < 1) {
+      print('   That looks like a fraction; treating it as ${(n * 100).round()}%.');
+      chosen.add(PlayerCharacteristic(id: c.id, proficiency: n.toDouble()));
+      continue;
+    }
+    if (n > 0) {
+      chosen.add(
+        PlayerCharacteristic(id: c.id, proficiency: (n / 100).toDouble()),
+      );
+    }
+  }
+  if (chosen.isEmpty) print('  (none selected)');
+  return chosen;
+}
+
 /// The three genuinely-new scored dimensions (tilt + opponent reading are asked
 /// separately because they map onto existing behavioral fields).
 GeneralTraits _generalTraits() {
-  print('\nGeneral traits (0–100):');
+  print('\nGeneral traits (0–100, blank = 50 average):');
   return GeneralTraits(
-    positionAwareness: _score('Position awareness'),
-    potOdds: _score('Understanding of pot odds'),
-    impliedOdds: _score('Understanding of implied odds'),
+    positionAwareness: _score('Position awareness', fallback: 0.5),
+    potOdds: _score('Understanding of pot odds', fallback: 0.5),
+    impliedOdds: _score('Understanding of implied odds', fallback: 0.5),
   );
 }
 
 // ---- Prompt helpers ---------------------------------------------------------
 
+/// Reads one line, or aborts if stdin has ended.
+///
+/// `readLineSync` returns null at EOF, and the old `?? ''` turned that into an
+/// empty answer — so a prompt that rejects blanks looped on it forever, printing
+/// "Please enter a value." until the process was killed. That is what "I can't
+/// make it run" looked like: hitting Run on this file in an IDE gives it no
+/// stdin at all, so it never got past the first question.
+String _readLine() {
+  final line = stdin.readLineSync();
+  if (line == null) {
+    stderr.writeln('\n\nInput ended before the player was finished; nothing '
+        'written.\n');
+    stderr.writeln('If you did not expect that, this script needs an '
+        'interactive terminal — an IDE');
+    stderr.writeln('Run button or debug console cannot answer its prompts. '
+        'Use a real shell:\n');
+    stderr.writeln('  cd ${Directory.current.path}');
+    stderr.writeln('  dart run tool/create_player.dart');
+    exit(130);
+  }
+  return line.trim();
+}
+
 String _ask(String prompt, {bool optional = false}) {
   while (true) {
     stdout.write('$prompt${optional ? ' (optional)' : ''}: ');
-    final line = stdin.readLineSync()?.trim() ?? '';
+    final line = _readLine();
     if (line.isNotEmpty || optional) return line;
     print('  Please enter a value.');
   }
@@ -203,18 +270,24 @@ int _askInt(String prompt, {required int min, required int max}) {
   }
 }
 
-/// A 0–100 score returned as a 0–1 fraction. Blank = 0.
+/// A 0–100 score returned as a 0–1 fraction. Blank returns [fallback].
+///
+/// [fallback] matters: pressing Enter through the general-traits block used to
+/// hand back 0.0, so a skipped "position awareness" produced a player who opens
+/// the same range from every seat — that field scales the whole `OpenRanges`
+/// slope. Skipping a question should mean "average", which is what the
+/// `GeneralTraits` constructor defaults to.
 ///
 /// Values strictly between 0 and 1 are rejected rather than accepted. The prompt
 /// asks for a percentage, but `num.tryParse` happily took `0.85` and returned
 /// 0.0085 — that silent hundred-fold error is how Jeremy Ausmus ended up with a
 /// GTO adherence of 0.0085 instead of 0.85. Nobody means "0.85%", so treating it
 /// as a typo and asking again is always right.
-double _score(String prompt) {
+double _score(String prompt, {double fallback = 0.0}) {
   while (true) {
     stdout.write('$prompt: ');
-    final line = stdin.readLineSync()?.trim() ?? '';
-    if (line.isEmpty) return 0.0;
+    final line = _readLine();
+    if (line.isEmpty) return fallback;
     final n = num.tryParse(line);
     if (n != null && n > 0 && n < 1) {
       print('  That looks like a fraction — enter ${(n * 100).round()} for '
@@ -234,7 +307,7 @@ int _askChoice(String prompt, List<String> options) {
       print('  ${i + 1}) ${options[i]}');
     }
     stdout.write('Choose 1–${options.length}: ');
-    final n = int.tryParse(stdin.readLineSync()?.trim() ?? '');
+    final n = int.tryParse(_readLine());
     if (n != null && n >= 1 && n <= options.length) return n - 1;
     print('  Enter a number 1–${options.length}.');
   }
@@ -242,6 +315,6 @@ int _askChoice(String prompt, List<String> options) {
 
 bool _askYesNo(String prompt) {
   stdout.write('$prompt [y/N]: ');
-  final line = (stdin.readLineSync() ?? '').trim().toLowerCase();
+  final line = _readLine().toLowerCase();
   return line == 'y' || line == 'yes';
 }

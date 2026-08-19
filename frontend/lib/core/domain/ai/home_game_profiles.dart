@@ -83,6 +83,7 @@ PlayerProfile buildAmateur({
   double riskPremium = 1.0,
   double tiltResistance = 0.50,
   String archetype = 'Home_Game_Amateur',
+  List<PlayerCharacteristic> characteristics = const [],
 }) {
   final skill = strengthToSkill(strength);
   return PlayerProfile(
@@ -107,6 +108,7 @@ PlayerProfile buildAmateur({
       // Amateurs don't systematically track opponents (Phase 3 wiring aside).
       weightOnOpponentHistory: 0.0,
     ),
+    characteristics: characteristics,
   );
 }
 

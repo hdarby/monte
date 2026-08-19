@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:monte/core/domain/ai/characteristic_catalog.dart';
+import 'package:monte/core/domain/ai/home_game_profiles.dart';
 import 'package:monte/core/domain/ai/player_factory.dart';
 import 'package:monte/core/domain/ai/player_profile.dart';
 
@@ -76,6 +77,74 @@ void main() {
       expect(ids.toSet(), hasLength(ids.length));
       expect(characteristicById('GTO_Adherence')?.drivesGtoAdherence, isTrue);
       expect(characteristicById('nope'), isNull);
+    });
+  });
+
+  group('recreational players can carry characteristics', () {
+    // AmateurPolicy reads the three tilt styles straight off the profile, but
+    // there was no way to put one there: buildAmateur took no characteristics,
+    // PlayerFactory.recreational took none, no shipped rec had any, and the
+    // creator only asked pros. So every recreational accumulated tilt pressure
+    // and expressed none of it — the tilt layer was dead code for the exact
+    // population it was built for.
+    test('the factory forwards them', () {
+      final p = PlayerFactory.recreational(
+        id: 'H900',
+        name: 'Chaser',
+        strength: 4,
+        characteristics: const [
+          PlayerCharacteristic(id: 'Tilt_Chase', proficiency: 0.7),
+        ],
+      );
+      expect(p.proficiencyOf('Tilt_Chase'), 0.7);
+    });
+
+    test('buildAmateur forwards them', () {
+      final p = buildAmateur(
+        id: 'H901',
+        name: 'Blower',
+        strength: 3,
+        characteristics: const [
+          PlayerCharacteristic(id: 'Tilt_Blowup', proficiency: 0.9),
+        ],
+      );
+      expect(p.proficiencyOf('Tilt_Blowup'), 0.9);
+    });
+
+    test('defaults to none, so existing profiles are unchanged', () {
+      final p = PlayerFactory.recreational(
+        id: 'H902',
+        name: 'Plain',
+        strength: 5,
+      );
+      expect(p.characteristics, isEmpty);
+      expect(p.proficiencyOf('Tilt_Chase'), 0.0);
+    });
+
+    test('every move the amateur brain reads is in the catalog and reachable',
+        () {
+      // The guard against re-introducing the same hole: a proficiency the
+      // amateur policy consults must be nameable by the creator (catalogued)
+      // and attachable to a recreational (forwarded by the factory).
+      const readByAmateurPolicy = [
+        'Tilt_Blowup',
+        'Tilt_Chase',
+        'Tilt_Shutdown',
+      ];
+      final known = characteristicCatalog.map((c) => c.id).toSet();
+      for (final id in readByAmateurPolicy) {
+        expect(known, contains(id), reason: '$id is read but not catalogued');
+        final p = PlayerFactory.recreational(
+          id: 'H903',
+          name: 'Carrier',
+          strength: 5,
+          characteristics: [
+            PlayerCharacteristic(id: id, proficiency: 0.5),
+          ],
+        );
+        expect(p.proficiencyOf(id), 0.5,
+            reason: '$id cannot be attached to a recreational');
+      }
     });
   });
 }

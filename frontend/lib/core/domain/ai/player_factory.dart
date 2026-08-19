@@ -9,7 +9,16 @@ class PlayerFactory {
 
   /// A recreational player. Wraps [buildAmateur] (strength → skill, style knobs)
   /// then attaches the scored [generalTraits], an [opponentReading] score
-  /// (mapped onto `weightOnOpponentHistory`), and the prose [description].
+  /// (mapped onto `weightOnOpponentHistory`), the prose [description], and any
+  /// [characteristics].
+  ///
+  /// [characteristics] used to be missing here, and the omission was silent but
+  /// total: `AmateurPolicy` reads `Tilt_Blowup` / `Tilt_Chase` /
+  /// `Tilt_Shutdown` off the profile, no shipped recreational carried one, and
+  /// there was no parameter to supply one — so every rec accumulated tilt
+  /// pressure and expressed none of it. Recreationals are precisely who tilts,
+  /// which made the whole tilt layer dead code for the population it was built
+  /// for.
   static PlayerProfile recreational({
     required String id,
     required String name,
@@ -22,6 +31,7 @@ class PlayerFactory {
     double tiltResistance = 0.50,
     double opponentReading = 0.0,
     GeneralTraits generalTraits = const GeneralTraits(),
+    List<PlayerCharacteristic> characteristics = const [],
     String? description,
     String archetype = 'Home_Game_Amateur',
   }) {
@@ -51,6 +61,7 @@ class PlayerFactory {
       ),
       skill: base.skill,
       generalTraits: generalTraits,
+      characteristics: characteristics,
       description: description,
     );
   }
