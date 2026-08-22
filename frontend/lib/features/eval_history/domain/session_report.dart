@@ -44,7 +44,16 @@ class SessionReport {
     required this.evLostByStreet,
     required this.evLostByAction,
     required this.bustout,
+    this.sessionId,
+    this.startedAtMs,
+    this.decisionCount = 0,
   });
+
+  /// Which sitting this covers, when it began, and how many graded decisions it
+  /// contains. Null/zero for a report spanning everything.
+  final String? sessionId;
+  final int? startedAtMs;
+  final int decisionCount;
 
   final String playerId;
   final int hands;
@@ -117,10 +126,41 @@ class SessionReport {
   /// Strongly negative = ran below expectation; near zero = the result is real.
   double get luckBb => netBb - allInEvBb;
 
+  /// Total big blinds of expected value given up.
+  double get evLostBb => evLostByStreet.values.fold(0.0, (a, b) => a + b);
+
+  /// **The progress metric.** Expected value given up per decision faced.
+  ///
+  /// Results are the wrong yardstick over a session: a big-blind win rate is
+  /// dominated by a handful of large pots and needs tens of thousands of hands
+  /// before it means anything. Decision quality is measured on *every decision*
+  /// — dozens per hundred hands rather than one result per hundred — so it
+  /// converges orders of magnitude faster and is very nearly a pure measure of
+  /// skill. This is the number that should fall session over session. The win
+  /// rate is what eventually follows it.
+  double get evLostPerDecision =>
+      decisionCount == 0 ? 0 : evLostBb / decisionCount;
+
+  /// One report per sitting, oldest first — the series to plot. Hands recorded
+  /// before sessions were tracked carry no id and group together as the
+  /// baseline, which is exactly what they are.
+  static List<SessionReport> bySession(List<EvalHand> hands, String playerId) {
+    final groups = <String, List<EvalHand>>{};
+    for (final h in hands) {
+      groups.putIfAbsent(h.sessionId ?? '(baseline)', () => []).add(h);
+    }
+    final out = [for (final e in groups.entries) of(e.value, playerId)];
+    out.sort((a, b) => (a.startedAtMs ?? 0).compareTo(b.startedAtMs ?? 0));
+    return out;
+  }
+
   static const _streets = ['preflop', 'flop', 'turn', 'river'];
 
   /// Builds the report for [playerId] over [hands].
   static SessionReport of(List<EvalHand> hands, String playerId) {
+    String? sessionId;
+    int? startedAt;
+    var decisions = 0;
     var n = 0;
     var netBb = 0.0, allIn = 0.0, sd = 0.0, nsd = 0.0;
     var sawFlop = 0, wwsf = 0;
@@ -138,6 +178,10 @@ class SessionReport {
       final me = h.players.where((p) => p.id == playerId).firstOrNull;
       if (me == null) continue;
       n++;
+      sessionId ??= h.sessionId;
+      final ts = h.timestampMs;
+      if (ts != null && (startedAt == null || ts < startedAt)) startedAt = ts;
+      decisions += h.decisions.where((d) => d.playerId == playerId).length;
       final bb = h.bigBlind <= 0 ? 1 : h.bigBlind;
       final net = me.net / bb;
       netBb += net;
@@ -266,6 +310,9 @@ class SessionReport {
       evLostByStreet: evStreet,
       evLostByAction: evAction,
       bustout: bust,
+      sessionId: sessionId,
+      startedAtMs: startedAt,
+      decisionCount: decisions,
     );
   }
 
