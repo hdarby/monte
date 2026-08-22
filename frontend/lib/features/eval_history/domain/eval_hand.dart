@@ -21,11 +21,35 @@ class EvalHand {
     required this.actions,
     required this.board,
     required this.results,
+    this.sessionId,
+    this.timestampMs,
+    this.ante = 0,
+    this.playersRemaining,
+    this.decisions = const [],
   });
 
   final int handNumber;
   final int smallBlind;
   final int bigBlind;
+
+  /// Which sitting this hand belongs to, and when it was played.
+  ///
+  /// Without these a reviewer cannot say "this session versus last": the only
+  /// boundary marker was `handNumber` rolling back to 1, which merges two
+  /// sittings played back to back and splits one that reloaded a save.
+  final String? sessionId;
+  final int? timestampMs;
+
+  /// Tournament context. A 9 BB shove and a fold near a pay jump can only be
+  /// judged against the level and the field; without them every hand has to be
+  /// graded as if it were a cash game, which misreads push/fold and the bubble,
+  /// and makes a tight small blind look like a leak when it is an ante-less
+  /// level.
+  final int ante;
+  final int? playersRemaining;
+
+  /// Per-decision coaching record for the human seat (empty otherwise).
+  final List<EvalDecision> decisions;
   final List<EvalHandPlayer> players;
   final List<ActionRecord> actions;
   final List<String> board;
@@ -48,6 +72,15 @@ class EvalHand {
       for (final r in (j['results'] as List).cast<Map<String, dynamic>>())
         HandResultRecord.fromJson(r),
     ],
+    sessionId: j['sessionId'] as String?,
+    timestampMs: j['timestampMs'] as int?,
+    ante: (j['ante'] as int?) ?? 0,
+    playersRemaining: j['playersRemaining'] as int?,
+    decisions: [
+      for (final d in (j['decisions'] as List? ?? const [])
+          .cast<Map<String, dynamic>>())
+        EvalDecision.fromJson(d),
+    ],
   );
 
   Map<String, dynamic> toJson() => {
@@ -58,7 +91,97 @@ class EvalHand {
     'actions': [for (final a in actions) a.toJson()],
     'board': board,
     'results': [for (final r in results) r.toJson()],
+    if (sessionId != null) 'sessionId': sessionId,
+    if (timestampMs != null) 'timestampMs': timestampMs,
+    if (ante > 0) 'ante': ante,
+    if (playersRemaining != null) 'playersRemaining': playersRemaining,
+    if (decisions.isNotEmpty)
+      'decisions': [for (final d in decisions) d.toJson()],
   };
+}
+
+/// One decision the human faced, with what the coach would have done.
+///
+/// This is what turns frequency coaching into decision coaching. Frequencies say
+/// "you call too much"; these say *which* calls, and what they cost. The coach
+/// already computes all of it live for the in-hand panel and then throws it
+/// away, so recording it is wiring rather than new analysis.
+///
+/// [evLost] is the honest scoreboard: the recommended action's EV minus the EV
+/// of the one actually taken, in big blinds, floored at zero. Summed over a
+/// session it is a progress number that tightens far faster than win rate.
+@immutable
+class EvalDecision {
+  const EvalDecision({
+    required this.playerId,
+    required this.street,
+    required this.actualType,
+    required this.actualAmount,
+    required this.potBb,
+    required this.toCallBb,
+    required this.spr,
+    required this.equity,
+    this.potOdds,
+    required this.chosenLabel,
+    required this.chosenEv,
+    required this.bestLabel,
+    required this.bestEv,
+  });
+
+  final String playerId;
+  final String street;
+  final String actualType;
+  final int actualAmount;
+
+  final double potBb;
+  final double toCallBb;
+  final double spr;
+  final double equity;
+  final double? potOdds;
+
+  /// The coach's line for the action actually taken, and for its own pick.
+  final String chosenLabel;
+  final double chosenEv;
+  final String bestLabel;
+  final double bestEv;
+
+  /// Big blinds of expected value given up, never negative.
+  double get evLost => (bestEv - chosenEv) > 0 ? bestEv - chosenEv : 0;
+
+  /// Whether the action taken was the coach's own recommendation.
+  bool get followedCoach => chosenLabel == bestLabel;
+
+  factory EvalDecision.fromJson(Map<String, dynamic> j) => EvalDecision(
+        playerId: j['playerId'] as String,
+        street: j['street'] as String,
+        actualType: j['actualType'] as String,
+        actualAmount: (j['actualAmount'] as num?)?.toInt() ?? 0,
+        potBb: (j['potBb'] as num).toDouble(),
+        toCallBb: (j['toCallBb'] as num).toDouble(),
+        spr: (j['spr'] as num).toDouble(),
+        equity: (j['equity'] as num).toDouble(),
+        potOdds: (j['potOdds'] as num?)?.toDouble(),
+        chosenLabel: j['chosenLabel'] as String,
+        chosenEv: (j['chosenEv'] as num).toDouble(),
+        bestLabel: j['bestLabel'] as String,
+        bestEv: (j['bestEv'] as num).toDouble(),
+      );
+
+  Map<String, dynamic> toJson() => {
+        'playerId': playerId,
+        'street': street,
+        'actualType': actualType,
+        'actualAmount': actualAmount,
+        'potBb': potBb,
+        'toCallBb': toCallBb,
+        'spr': spr,
+        'equity': equity,
+        if (potOdds != null) 'potOdds': potOdds,
+        'chosenLabel': chosenLabel,
+        'chosenEv': chosenEv,
+        'bestLabel': bestLabel,
+        'bestEv': bestEv,
+      };
 }
 
 /// One player in an [EvalHand] — always with full hole cards, tagged with the

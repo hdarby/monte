@@ -85,10 +85,25 @@ class FieldBuilder {
 
     var i = 0;
     while (field.length < botsNeeded) {
-      // Alternate the pools so the field stays a believable mix. At a big
-      // buy-in the rotation is weighted toward pros: a $10k field is roughly
-      // three-quarters regulars, a $100 field roughly half recreational.
-      final proShare = 0.5 + 0.25 * pressure;
+      // Alternate the pools so the field stays a believable mix.
+      //
+      // This used to run 0.5 + 0.25 * pressure — half pros at a $100 event and
+      // three-quarters at the Main. Both are badly wrong, and wrong in the
+      // direction that makes the game feel unfair. A $100 tournament is almost
+      // entirely recreational; even the Main Event, the most prestigious field
+      // in poker, is overwhelmingly satellite winners, amateurs and businessmen
+      // taking their annual shot — professionals are a large minority at most.
+      // Pros only actually dominate a field above the Main, in the high rollers
+      // where the buy-in itself is the filter.
+      //
+      // So: about 12% pros at $100, ~35% at the $10k Main, and climbing past
+      // half only above it. [stakesPressure] saturates at $10k, hence the
+      // separate term for the events beyond it.
+      final beyondMain = buyIn > 10000
+          ? (log(buyIn / 10000) / log(10)).clamp(0.0, 1.0)
+          : 0.0;
+      final proShare = (0.12 + 0.23 * pressure + 0.45 * beyondMain)
+          .clamp(0.05, 0.85);
       final preferred = ((i * proShare) % 1.0) >= proShare ? recreational : pros;
       i++;
       final src = preferred.isNotEmpty

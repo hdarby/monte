@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:monte/core/domain/ai/bot_spec.dart';
 import 'package:monte/core/domain/ai/decider_factory.dart';
@@ -17,6 +18,7 @@ import 'package:monte/core/domain/engine/hand_evaluator.dart';
 import 'package:monte/core/domain/engine/player.dart';
 import 'package:monte/core/domain/hand_history.dart';
 import 'package:monte/features/reads/data/player_stats_store.dart';
+import 'package:monte/features/coach/domain/hand_coach.dart';
 import 'package:monte/features/eval_history/domain/eval_hand.dart';
 import 'package:monte/features/table/domain/game_repository.dart';
 import 'package:monte/features/table/data/table_snapshot_projection.dart';
@@ -33,6 +35,14 @@ export 'package:monte/features/table/domain/table_config.dart';
 /// the engine plays itself, recording every hand for analysis.
 class LocalGameRepository extends GameRepository {
   LocalGameRepository({this.config = const TableConfig(), this.statsService});
+
+  /// Identifies this sitting, so a review can separate one session from the
+  /// next. Derived from the clock at construction; hands carry it verbatim.
+  final String _sessionId =
+      'S${DateTime.now().millisecondsSinceEpoch.toRadixString(36)}';
+
+  /// The human's decisions this hand, with the coach's verdict on each.
+  List<EvalDecision> _recDecisions = [];
 
   final TableConfig config;
 
@@ -304,6 +314,12 @@ class LocalGameRepository extends GameRepository {
     final current = game.currentPlayer;
     if (current == null || !current.isHuman) return;
 
+    // Grade the decision *before* it is applied — the coach has to see the spot
+    // the human actually faced. Skipped during batch evaluation, where there is
+    // no human and the equity sims would dominate the run.
+    if (!_evaluating && config.onEvalHandRecorded != null) {
+      _recordDecision(game, current, action);
+    }
     _applyAndRecord(current, action);
     _publish();
     await _runBots();
@@ -548,6 +564,92 @@ class LocalGameRepository extends GameRepository {
     if (!_evaluating) config.onHandRecorded?.call(hand);
     _recPlayers = [];
     _recActions = [];
+    _recDecisions = [];
+  }
+
+  /// Runs the coach on the spot [p] is facing and stores what [action] cost
+  /// against the coach's own pick.
+  ///
+  /// The comparison is by *label*: `ActionEv` carries the coach's own wording
+  /// for each option, and matching on it keeps the chosen line and the
+  /// recommended line described in the same vocabulary the in-hand panel uses,
+  /// rather than inventing a second one that could drift from it.
+  void _recordDecision(PokerGame game, Player p, GameAction action) {
+    final live = game.players.where((x) => x.inHand && !identical(x, p));
+    final effStack = live.isEmpty
+        ? p.stack
+        : math.min(p.stack, live.map((x) => x.stack).reduce(math.max));
+    final CoachReport r;
+    try {
+      r = HandCoach.analyze(
+        HandCoachInput(
+          hole: p.hole,
+          board: game.board,
+          pot: game.pot,
+          toCall: game.callAmount(p),
+          heroCurrentBet: p.currentBet,
+          currentBet: game.currentBet,
+          effectiveStack: effStack,
+          bigBlind: game.bigBlind,
+          street: game.round,
+          raiseCount: game.raiseCountThisRound,
+          opponents: live.length,
+          opponentLabels: [for (final x in live) x.name],
+          canCheck: game.canCheck(p),
+          canRaise: p.stack > game.callAmount(p),
+          minRaiseTo: game.minRaiseTo(p),
+          maxRaiseTo: game.maxRaiseTo(p),
+        ),
+        analysisAvailable: true,
+      );
+    } catch (_) {
+      return; // never let coaching telemetry break a hand
+    }
+    if (r.actions.isEmpty) return;
+    final best = r.actions[r.recommendedIndex.clamp(0, r.actions.length - 1)];
+    final chosen = _matchAction(r.actions, action) ?? best;
+    final bb = game.bigBlind <= 0 ? 1 : game.bigBlind;
+    _recDecisions.add(
+      EvalDecision(
+        playerId: p.id,
+        street: game.round.name,
+        actualType: action.type.name,
+        actualAmount: action.amount,
+        potBb: game.pot / bb,
+        toCallBb: game.callAmount(p) / bb,
+        spr: r.spr,
+        equity: r.equity,
+        potOdds: r.potOdds,
+        chosenLabel: chosen.label,
+        chosenEv: chosen.ev,
+        bestLabel: best.label,
+        bestEv: best.ev,
+      ),
+    );
+  }
+
+  /// The coach option corresponding to [action], or null if none lines up.
+  /// A bet or raise is matched to the sized option nearest the amount chosen.
+  ActionEv? _matchAction(List<ActionEv> options, GameAction action) {
+    bool isKind(ActionEv o, CoachAction k) => o.kind == k;
+    switch (action.type) {
+      case ActionType.fold:
+        return options.where((o) => isKind(o, CoachAction.fold)).firstOrNull;
+      case ActionType.check:
+        return options.where((o) => isKind(o, CoachAction.check)).firstOrNull;
+      case ActionType.call:
+        return options.where((o) => isKind(o, CoachAction.call)).firstOrNull;
+      case ActionType.bet:
+      case ActionType.raise:
+      case ActionType.allIn:
+        final sized =
+            options.where((o) => o.toAmount != null).toList();
+        if (sized.isEmpty) return null;
+        sized.sort((a, b) => (a.toAmount! - action.amount)
+            .abs()
+            .compareTo((b.toAmount! - action.amount).abs()));
+        return sized.first;
+    }
   }
 
   int _stackOf(String id) => _game!.players.firstWhere((p) => p.id == id).stack;
@@ -625,6 +727,11 @@ class LocalGameRepository extends GameRepository {
       handNumber: _handCounter,
       smallBlind: game.smallBlind,
       bigBlind: game.bigBlind,
+      sessionId: _sessionId,
+      timestampMs: DateTime.now().millisecondsSinceEpoch,
+      ante: game.ante,
+      playersRemaining: config.playersRemaining,
+      decisions: List.of(_recDecisions),
       players: players,
       actions: List.of(_recActions),
       board: board,

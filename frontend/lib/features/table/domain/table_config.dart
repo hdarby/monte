@@ -27,6 +27,7 @@ class TableConfig {
     this.deciderBuilder,
     this.onHandRecorded,
     this.onEvalHandRecorded,
+    this.playersRemaining,
     this.overrideProfile,
   });
 
@@ -87,6 +88,13 @@ class TableConfig {
   /// the model each seat played. Feeds the permanent tuning history; must never
   /// be routed to a bot / opponent model (that would leak folded cards).
   final void Function(EvalHand hand)? onEvalHandRecorded;
+
+  /// Runners still alive in the tournament, recorded on each [EvalHand].
+  ///
+  /// A shove or a fold near a pay jump can only be judged against the size of
+  /// the field; without it every hand reads as a cash-game spot and ICM
+  /// discipline looks like nitting. Null at a cash table.
+  final int? playersRemaining;
 
   /// Maps a seat's named [PlayerProfile] to the *effective* profile to play —
   /// used to swap in the offline auto-tuner's tuned preflop baseline. Identity
