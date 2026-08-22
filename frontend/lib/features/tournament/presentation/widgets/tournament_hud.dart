@@ -28,9 +28,13 @@ class TournamentHud extends StatelessWidget {
         ? 'hand ${tour.handsThisLevel + 1}/${tour.handsPerLevel}'
         : 'L${tour.level}';
     final ante = tour.ante > 0 ? '+${tour.ante}' : '';
+    // Before the money, "Nth = bubble" only restated the place already shown
+    // beside it. What a player actually needs to know is how far off a cash is
+    // and what it is worth, so name the last paid place and its prize.
+    final minCash = tour.payouts.isEmpty ? 0 : tour.payouts.last;
     final nextPay = tour.nextPayoutAmount > 0
         ? '${ordinal(tour.nextPayoutPlace)} \$${tour.nextPayoutAmount}'
-        : '${ordinal(tour.nextPayoutPlace)}=bubble';
+        : 'none until ${ordinal(tour.paidPlaces)} (\$$minCash)';
 
     return Material(
       color: Colors.black.withValues(alpha: 0.72),

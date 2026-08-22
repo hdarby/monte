@@ -142,7 +142,9 @@ class YourStandingDialog extends StatelessWidget {
               'If you bust now',
               tour.nextPayoutAmount > 0
                   ? '${ordinal(tour.nextPayoutPlace)} — \$${tour.nextPayoutAmount}'
-                  : '${ordinal(tour.nextPayoutPlace)} — no cash (bubble)',
+                  : '${ordinal(tour.nextPayoutPlace)} — nothing. No cash until '
+                      '${ordinal(tour.paidPlaces)} pays '
+                      '\$${tour.payouts.isEmpty ? 0 : tour.payouts.last}',
             ),
           ]),
           const Divider(),
