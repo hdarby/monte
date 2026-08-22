@@ -9,6 +9,7 @@ import 'package:monte/features/table/domain/table_snapshot.dart';
 import 'package:monte/features/tournament/data/tournament_controller.dart';
 import 'package:monte/features/tournament/domain/tournament_snapshot.dart';
 import 'package:monte/features/tournament/domain/tournament_structure.dart';
+import 'package:monte/features/eval_history/presentation/eval_history_provider.dart';
 
 /// The immutable state a tournament view renders: the human's live table, the
 /// tournament-wide snapshot, and background-simulation progress (null when no
@@ -119,6 +120,10 @@ class TournamentViewModel extends Notifier<TournamentUiState> {
     names: args.names,
     botProfiles: args.field,
     statsService: ref.read(opponentStatsServiceProvider),
+    // Tournament hands are the ones the player actually cares about, so they
+    // are the ones a post-session review needs; until this was wired they were
+    // the only hands that produced no record at all.
+    onEvalHandRecorded: ref.read(evalHistoryStoreProvider).record,
   );
 
   /// The full live standings, built on demand — the field can be thousands of

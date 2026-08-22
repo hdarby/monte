@@ -9,12 +9,17 @@ import 'package:monte/core/domain/ai/player_stats.dart';
 import 'package:monte/core/domain/ai/profile_decider.dart';
 import 'package:monte/core/domain/ai/trigger_observer.dart';
 import 'package:monte/core/domain/hand_history.dart';
+import 'package:monte/features/coach/domain/hand_coach.dart';
+import 'package:monte/features/eval_history/domain/eval_hand.dart';
 import 'package:monte/features/reads/data/player_stats_store.dart';
 import 'package:monte/core/domain/ai/tournament_context.dart';
 import 'package:monte/core/domain/engine/actions.dart';
 import 'package:monte/core/domain/engine/decision_policy.dart';
 import 'package:monte/core/domain/engine/deck.dart';
+import 'dart:math' as math;
+
 import 'package:monte/core/domain/engine/game.dart';
+import 'package:monte/core/domain/engine/hand_evaluator.dart';
 import 'package:monte/core/domain/engine/player.dart';
 import 'package:monte/features/tournament/data/chronicle_recorder.dart';
 import 'package:monte/features/tournament/domain/tournament_chronicle.dart';
@@ -51,6 +56,7 @@ class TournamentController {
     required Map<String, DecisionPolicy> deciders,
     required Map<String, Player> enginePlayers,
     this.statsService,
+    this.onEvalHandRecorded,
     this._identityBySeat = const {},
     this._profileBySeat = const {},
     TriggerLog? triggerLog,
@@ -71,6 +77,21 @@ class TournamentController {
   /// Persistent per-opponent reads (present only in interactive play). Fed the
   /// human's-table hands and consulted by the exploitative pros.
   final OpponentStatsService? statsService;
+
+  /// Full-information tuning/coaching record for the human's table.
+  ///
+  /// The single-table repository has always written these; the tournament path
+  /// never did, so the hands the player actually cares about produced no record
+  /// at all and no review was possible for them.
+  final void Function(EvalHand hand)? onEvalHandRecorded;
+
+  /// Identifies this sitting, so a review can separate one tournament from the
+  /// next.
+  final String _sessionId =
+      'T${DateTime.now().millisecondsSinceEpoch.toRadixString(36)}';
+
+  /// The human's graded decisions in the hand in progress.
+  List<EvalDecision> _liveDecisions = [];
 
   /// Seat id (`e0`, `e3`, …) → the stable identity its stats accumulate under:
   /// `'human'` for the human, else the personality's `profile.id`.
@@ -217,6 +238,7 @@ class TournamentController {
   factory TournamentController.restore(
     TournamentSave save, {
     OpponentStatsService? statsService,
+    void Function(EvalHand hand)? onEvalHandRecorded,
     bool icmAware = true,
   }) {
     final structure = save.structure;
@@ -249,6 +271,7 @@ class TournamentController {
       humanSeat: hasHuman,
       icmAware: icmAware,
       statsService: statsService,
+      onEvalHandRecorded: onEvalHandRecorded,
       restoreFrom: save,
     );
   }
@@ -265,6 +288,7 @@ class TournamentController {
     bool icmAware = true,
     DecisionPolicy Function(String id, int index)? deciderBuilder,
     OpponentStatsService? statsService,
+    void Function(EvalHand hand)? onEvalHandRecorded,
     TournamentSave? restoreFrom,
   }) {
     // One log per tournament: the deciders write signature moves into it, the
@@ -395,6 +419,7 @@ class TournamentController {
       deciders: deciders,
       enginePlayers: engine,
       statsService: statsService,
+      onEvalHandRecorded: onEvalHandRecorded,
       triggerLog: triggerLog,
       mental: mental,
       identityBySeat: identityBySeat,
@@ -682,6 +707,9 @@ class TournamentController {
   Future<void> submitLiveAction(GameAction action) async {
     if (!_awaitingHuman || _liveGame == null) return;
     _awaitingHuman = false;
+    if (onEvalHandRecorded != null) {
+      _gradeHumanDecision(_liveGame!, action);
+    }
     _applyLive(_liveGame!, humanId ?? 'e0', action);
     _publishTable();
     await _runLiveBots();
@@ -723,7 +751,7 @@ class TournamentController {
     _liveGame!.startHand();
     // Snapshot the seats/blinds for the hand's stats record (masked cards — the
     // read model only needs actions + positions, never hole cards).
-    if (statsService != null) {
+    if (statsService != null || onEvalHandRecorded != null) {
       final btn = _liveGame!.buttonIndex;
       _liveHandNumber = _handCounter;
       _livePlayers = [
@@ -751,8 +779,18 @@ class TournamentController {
   /// Folds the just-finished human-table hand into the persistent opponent-stats
   /// model, keyed by each seat's stable identity. Your-table-only (per config).
   void _recordLiveHand(PokerGame game) {
+    if (_livePlayers.isEmpty) return;
+    // Full-information record first, off the unmasked engine state.
+    if (onEvalHandRecorded != null) {
+      onEvalHandRecorded!(_buildLiveEvalHand(game));
+    }
     final svc = statsService;
-    if (svc == null || _livePlayers.isEmpty) return;
+    if (svc == null) {
+      _livePlayers = [];
+      _liveActions = [];
+      _liveDecisions = [];
+      return;
+    }
     final level = state.currentLevel;
     final hand = HandHistory(
       handNumber: _liveHandNumber,
@@ -770,6 +808,144 @@ class TournamentController {
     svc.record(hand, _identityOf);
     _livePlayers = [];
     _liveActions = [];
+    _liveDecisions = [];
+  }
+
+  /// The human table's hand as a full-information [EvalHand] — every seat's real
+  /// cards, its personality, the level's ante and the size of the field still
+  /// alive, plus the human's graded decisions.
+  EvalHand _buildLiveEvalHand(PokerGame game) {
+    final level = state.currentLevel;
+    final n = game.players.length;
+    final starting = _preChipsLive;
+    final players = <EvalHandPlayer>[];
+    for (final live in game.players) {
+      final offset = (game.players.indexOf(live) - game.buttonIndex + n) % n;
+      final profile = _profileBySeat[live.id];
+      String? foldStreet;
+      for (final a in _liveActions) {
+        if (a.playerId == live.id && a.type == ActionType.fold) {
+          foldStreet = a.street.name;
+          break;
+        }
+      }
+      players.add(EvalHandPlayer(
+        id: live.id,
+        name: live.name,
+        modelId: profile?.id ?? (live.id == humanId ? 'human' : 'unknown'),
+        modelLabel: profile?.name ?? live.name,
+        position: positionLabel(offset, n),
+        seatsFromButton: offset,
+        holeCards: [for (final c in live.hole) c.code],
+        startingStack: starting[live.id] ?? live.stack,
+        finalStack: live.stack,
+        folded: live.hasFolded,
+        foldStreet: foldStreet,
+        madeHand: game.board.length >= 3 && live.hole.length == 2
+            ? HandEvaluator.evaluate([...live.hole, ...game.board]).rank.label
+            : null,
+        skill: profile?.skill,
+        vpipTarget: profile?.strategicBaseline.vpipTarget,
+        pfrTarget: profile?.strategicBaseline.pfrTarget,
+        threeBetTarget: profile?.strategicBaseline.threeBetFrequency,
+      ));
+    }
+    return EvalHand(
+      handNumber: _liveHandNumber,
+      smallBlind: level.smallBlind,
+      bigBlind: level.bigBlind,
+      players: players,
+      actions: List.of(_liveActions),
+      board: [for (final c in game.board) c.code],
+      results: [
+        for (final r in game.results)
+          HandResultRecord(
+            playerId: r.player.id,
+            amountWon: r.amountWon,
+            handRank: r.handValue?.rank.label,
+          ),
+      ],
+      sessionId: _sessionId,
+      timestampMs: DateTime.now().millisecondsSinceEpoch,
+      ante: level.ante,
+      playersRemaining: state.players.values.where((p) => p.isActive).length,
+      decisions: List.of(_liveDecisions),
+    );
+  }
+
+  /// Runs the coach on the spot the human faces and stores what [action] cost
+  /// against the coach's own pick. Never allowed to break a hand.
+  void _gradeHumanDecision(PokerGame game, GameAction action) {
+    final p = game.currentPlayer;
+    if (p == null || p.hole.length != 2) return;
+    final live = game.players.where((x) => x.inHand && !identical(x, p));
+    final eff = live.isEmpty
+        ? p.stack
+        : math.min(p.stack, live.map((x) => x.stack).reduce(math.max));
+    try {
+      final r = HandCoach.analyze(
+        HandCoachInput(
+          hole: p.hole,
+          board: game.board,
+          pot: game.pot,
+          toCall: game.callAmount(p),
+          heroCurrentBet: p.currentBet,
+          currentBet: game.currentBet,
+          effectiveStack: eff,
+          bigBlind: game.bigBlind,
+          street: game.round,
+          raiseCount: game.raiseCountThisRound,
+          opponents: live.length,
+          opponentLabels: [for (final x in live) x.name],
+          canCheck: game.canCheck(p),
+          canRaise: p.stack > game.callAmount(p),
+          minRaiseTo: game.minRaiseTo(p),
+          maxRaiseTo: game.maxRaiseTo(p),
+        ),
+        analysisAvailable: true,
+      );
+      if (r.actions.isEmpty) return;
+      final best = r.actions[r.recommendedIndex.clamp(0, r.actions.length - 1)];
+      final chosen = _matchCoachAction(r.actions, action) ?? best;
+      final bb = game.bigBlind <= 0 ? 1 : game.bigBlind;
+      _liveDecisions.add(EvalDecision(
+        playerId: p.id,
+        street: game.round.name,
+        actualType: action.type.name,
+        actualAmount: action.amount,
+        potBb: game.pot / bb,
+        toCallBb: game.callAmount(p) / bb,
+        spr: r.spr,
+        equity: r.equity,
+        potOdds: r.potOdds,
+        chosenLabel: chosen.label,
+        chosenEv: chosen.ev,
+        bestLabel: best.label,
+        bestEv: best.ev,
+      ));
+    } catch (_) {
+      // Coaching telemetry must never cost the player a hand.
+    }
+  }
+
+  ActionEv? _matchCoachAction(List<ActionEv> options, GameAction action) {
+    switch (action.type) {
+      case ActionType.fold:
+        return options.where((o) => o.kind == CoachAction.fold).firstOrNull;
+      case ActionType.check:
+        return options.where((o) => o.kind == CoachAction.check).firstOrNull;
+      case ActionType.call:
+        return options.where((o) => o.kind == CoachAction.call).firstOrNull;
+      case ActionType.bet:
+      case ActionType.raise:
+      case ActionType.allIn:
+        final sized = options.where((o) => o.toAmount != null).toList();
+        if (sized.isEmpty) return null;
+        sized.sort((a, b) => (a.toAmount! - action.amount)
+            .abs()
+            .compareTo((b.toAmount! - action.amount).abs()));
+        return sized.first;
+    }
   }
 
   /// Applies [action] for [actorId] at the human table, recording it for the
@@ -777,7 +953,7 @@ class TournamentController {
   void _applyLive(PokerGame game, String actorId, GameAction action) {
     final street = game.round;
     game.applyAction(action);
-    if (statsService != null) {
+    if (statsService != null || onEvalHandRecorded != null) {
       _liveActions.add(ActionRecord(
         playerId: actorId,
         street: street,

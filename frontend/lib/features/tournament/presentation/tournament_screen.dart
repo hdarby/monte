@@ -15,6 +15,7 @@ import 'package:monte/features/tournament/domain/tournament_save.dart';
 import 'package:monte/features/tournament/presentation/widgets/saved_tournaments_dialog.dart';
 import 'package:monte/features/tournament/presentation/widgets/standings_panel.dart';
 import 'package:monte/features/tournament/presentation/widgets/tournament_hud.dart';
+import 'package:monte/features/eval_history/presentation/eval_history_provider.dart';
 
 /// The interactive tournament: the human plays their table live (via the reused
 /// [TableScreen]) with a tournament HUD overlaid; other tables simulate between
@@ -66,6 +67,7 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
         : () => TournamentController.restore(
               widget.restore!,
               statsService: ref.read(opponentStatsServiceProvider),
+              onEvalHandRecorded: ref.read(evalHistoryStoreProvider).record,
             ),
   );
 
