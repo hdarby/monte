@@ -81,6 +81,22 @@ void main() {
       }
     });
 
+    test('nobody carries more than one tilt style', () {
+      // Blow-up, chase and shutdown are mutually exclusive *shapes*, not dials
+      // that stack: a player who widens-and-raises, widens-and-calls, and
+      // tightens all at once just cancels into mush. Four authored pros held all
+      // three at the same time before this existed.
+      const styles = ['Tilt_Blowup', 'Tilt_Chase', 'Tilt_Shutdown'];
+      for (final p in all) {
+        final held = p.characteristics
+            .where((c) => styles.contains(c.id) && c.proficiency > 0)
+            .map((c) => c.id)
+            .toList();
+        expect(held.length, lessThanOrEqualTo(1),
+            reason: '${p.name} (${p.id}) holds $held');
+      }
+    });
+
     test('no two profiles share a name', () {
       // Ids are checked above, but a duplicated *name* is what a human notices
       // at the table, and the roster has near-collisions already (Jamie Dwan
