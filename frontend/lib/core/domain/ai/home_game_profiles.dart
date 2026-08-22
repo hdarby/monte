@@ -454,12 +454,20 @@ final PlayerProfile steveStrong = buildAmateur(
 /// The owner. Experienced and exploitative; tight, near-GTO preflop, stacks off
 /// with AKs (AKo almost as hard), likes to set-mine, capable of big folds but
 /// mostly plays strong hands aggressively; can get trapped by tricky opponents.
+///
+/// Frequencies measured from 319 logged hands in the eval history rather than
+/// estimated: VPIP came in at 23.5% against an authored 22 (inside the interval,
+/// so the hand selection was right), but PFR measured 10.7% against an authored
+/// 18 — well outside it, and not a sampling artefact. A 13-point VPIP−PFR gap is
+/// a calling and set-mining game, which is what the prose above already said;
+/// only the numbers disagreed. Note the amateur brain damps PFR further, so an
+/// authored 13 lands near the measured 10.7.
 final PlayerProfile halDarby = buildAmateur(
   id: 'H026',
   name: 'Hal Darby',
   strength: 6,
-  vpip: 0.22, // tight preflop
-  pfr: 0.18, // tight-aggressive
+  vpip: 0.23, // measured 23.5%
+  pfr: 0.13, // measured 10.7% after the amateur brain's damping
   threeBet: 0.06,
   exploitativeWeight: 0.50, // exploitative reads
   riskPremium: 1.05, // strong hands played hard
