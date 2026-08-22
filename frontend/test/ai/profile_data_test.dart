@@ -56,5 +56,41 @@ void main() {
         expect(p.validate(), isEmpty, reason: '${p.name} (${p.id})');
       }
     });
+
+    test('every pro profile is calibrator-feasible', () {
+      // famous_pros.dart promises this in its header comment and nothing was
+      // checking it. An infeasible set of targets does not fail loudly — the
+      // calibrator just cannot reach them, so the profile quietly plays a
+      // frequency nobody chose.
+      //
+      // Pros only. Recreationals go through AmateurPolicy's `_leakyRanges`,
+      // never ProfileCalibrator, so this envelope does not apply to them — and
+      // should not: a 50/8 calling station or a 75-VPIP maniac is the whole
+      // point of those profiles, not a mistake to be tuned away.
+      for (final p in builtInProfiles) {
+        final b = p.strategicBaseline;
+        expect(
+          PlayerProfile.preflopFeasibility(
+            vpip: b.vpipTarget,
+            pfr: b.pfrTarget,
+            threeBet: b.threeBetFrequency,
+          ),
+          isEmpty,
+          reason: '${p.name} (${p.id})',
+        );
+      }
+    });
+
+    test('no two profiles share a name', () {
+      // Ids are checked above, but a duplicated *name* is what a human notices
+      // at the table, and the roster has near-collisions already (Jamie Dwan
+      // and Tom Dwan; Luc and Sam Greenwood; Michael and Robert Mizrachi).
+      final names = all.map((p) => p.name).toList();
+      final dupes = <String>{
+        for (final n in names)
+          if (names.where((x) => x == n).length > 1) n,
+      };
+      expect(dupes, isEmpty, reason: 'duplicate names: $dupes');
+    });
   });
 }

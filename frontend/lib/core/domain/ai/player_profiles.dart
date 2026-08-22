@@ -71,7 +71,13 @@ const michaelAddamo = PlayerProfile(
   // Top-tier aggressor — flawless execution.
   skill: 1.00,
   strategicBaseline: StrategicBaseline(
-    vpipTarget: 0.30,
+    // 0.30 VPIP against a 0.26 PFR left a 0.04 gap, below the 0.06 the
+    // calibrator needs — his VPIP simply overshot, because opens plus flats
+    // exceeded it. The calibrator's own cache comment still reads "Addamo
+    // (32 / 28 / 14)", so 0.32 was the intended figure and the later trim broke
+    // the gap. Restoring it keeps what makes him him (the huge PFR and 3-bet,
+    // and a raise-or-fold game with barely any cold-calling).
+    vpipTarget: 0.32,
     pfrTarget: 0.26,
     threeBetFrequency: 0.13,
     gtoAdherenceWeight: 0.85,
@@ -105,7 +111,10 @@ const isaacHaxton = PlayerProfile(
   // The benchmark: flawless, unexploitable execution.
   skill: 1.00,
   strategicBaseline: StrategicBaseline(
-    vpipTarget: 0.24,
+    // 0.24 VPIP against 0.20 PFR was a 0.04 gap, under the 0.06 the calibrator
+    // needs, so his VPIP overshot. Widened rather than dropping the PFR, which
+    // is the number that makes him a nosebleed reg.
+    vpipTarget: 0.26,
     pfrTarget: 0.20,
     threeBetFrequency: 0.09,
     gtoAdherenceWeight: 1.00,
