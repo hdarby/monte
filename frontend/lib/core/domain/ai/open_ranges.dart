@@ -40,6 +40,34 @@ class OpenRanges {
   /// exactly where the ranges are widest and hardest to play well.
   static const _pointsPerPosition = 0.048;
 
+  /// How much wider *everyone* opens as the table shrinks.
+  ///
+  /// The positional model above is **mean-zero across the table**: it decides
+  /// who at a given table opens widest, and deliberately cannot change how much
+  /// the table opens overall. Nothing else did either, so opening frequency was
+  /// pinned to the six-max calibration at every table size — and because the
+  /// button has fewer players behind it short-handed, the redistribution
+  /// actually made bots *tighter* as seats emptied. Measured: a 27/21 profile
+  /// opened 33.7% of hands on the button nine-handed and 26.0% heads-up, where
+  /// it should be nearer 42% and 80%. Every final table in the app was free
+  /// money for anyone who simply raised relentlessly.
+  ///
+  /// A steal wins the blinds when everyone behind folds, and that probability
+  /// compounds with each player left to act — so removing seats widens the
+  /// correct opening range far faster than linearly. Anchored on the standard
+  /// full-ring, six-max, three-handed and heads-up ranges, relative to nine.
+  static double tableFactor(int players) {
+    if (players >= 9) return 1.0;
+    if (players <= 2) return 4.4;
+    const anchors = {9: 1.0, 6: 1.9, 5: 2.2, 4: 2.6, 3: 3.1, 2: 4.4};
+    final lo = anchors.keys.where((k) => k <= players).reduce((a, b) => a > b ? a : b);
+    final hi = anchors.keys.where((k) => k >= players).reduce((a, b) => a < b ? a : b);
+    if (lo == hi) return anchors[lo]!;
+    final t = (players - lo) / (hi - lo);
+    return anchors[lo]! + (anchors[hi]! - anchors[lo]!) * t;
+  }
+
+
   /// How much more often a player open-raises than their headline PFR suggests.
   ///
   /// PFR counts raises against every hand *dealt*; an open-raise can only happen
@@ -121,7 +149,7 @@ class OpenRanges {
     double positionAwareness = 1.0,
     double positionalProficiency = 0,
   }) =>
-      (base * _rfiOverPfr +
+      (base * _rfiOverPfr * tableFactor(tableSize) +
               positionalDelta(
                 playersBehind: playersBehind,
                 tableSize: tableSize,
