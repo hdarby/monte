@@ -955,4 +955,10 @@ final List<PlayerProfile> famousPros = [
       tilt: 0.85, oppRead: 0.95,
       chars: [_soul(0.9), _float(0.6), _under(0.5)],
       desc: 'The Mad Genius — tells, psychology, and pure read-craft.'),
+  _p('FP206', 'Tobey Maguire', 'Ruthless_Celebrity',
+      vpip: 0.23, pfr: 0.17, threeBet: 0.08, gto: 0.72, exploit: 0.6, risk: 1.1,
+      tilt: 0.9, oppRead: 0.85,
+      chars: [_soul(0.7), _pos(0.7), _under(0.6), _bubble(0.5)],
+      desc: 'Reputedly the best and least merciful player in the Hollywood '
+          'games.'),
 ];
