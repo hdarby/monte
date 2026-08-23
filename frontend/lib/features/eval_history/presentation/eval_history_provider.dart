@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:monte/features/tournament/data/tournament_result_store.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:monte/features/eval_history/data/file_eval_history_store.dart';
@@ -76,3 +77,12 @@ class ProfileOverridesController extends Notifier<ProfileOverrides> {
     await prefs.remove(_key);
   }
 }
+
+/// Career store: one row per finished tournament.
+///
+/// Overridden in `main.dart` with a file-backed store once the application
+/// support directory has resolved, exactly as the eval store is. Defaults to a
+/// no-op so widget tests never touch the disk.
+final tournamentResultStoreProvider = Provider<TournamentResultStore>(
+  (ref) => const NullTournamentResultStore(),
+);

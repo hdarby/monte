@@ -1,5 +1,6 @@
 import 'package:monte/features/eval_history/domain/eval_hand.dart';
 import 'package:monte/features/eval_history/domain/session_report.dart';
+import 'package:monte/features/tournament/domain/tournament_result.dart';
 
 /// Renders a [SessionReport] as the markdown review the player actually reads.
 ///
@@ -17,6 +18,7 @@ class SessionMarkdown {
     List<(EvalDecision, EvalHand)> worst = const [],
     SessionReport? previous,
     List<(String, SessionReport)> bands = const [],
+    List<CareerRow> career = const [],
   }) {
     final b = StringBuffer();
     final label = r.sessionId == null ? 'Baseline' : 'Session ${r.sessionId}';
@@ -217,8 +219,41 @@ class SessionMarkdown {
       }
       b.writeln();
     }
+    // --- Career ---------------------------------------------------------
+    if (career.isNotEmpty) {
+      b.writeln('## Career');
+      b.writeln();
+      b.writeln('| Player | Events | Cashes | Cash % | In | Out | Net | ROI | '
+          'Best | Faced you |');
+      b.writeln('|---|---|---|---|---|---|---|---|---|---|');
+      final you = career.where((c) => c.profileId == 'human');
+      // The player first, then the field by ROI. You are reading this to find
+      // out how you are doing; scrolling for your own row is absurd.
+      for (final c in [...you, ...career.where((c) => c.profileId != 'human')]
+          .take(31)) {
+        b.writeln('| ${c.profileId == 'human' ? '**You**' : c.name} '
+            '| ${c.played} | ${c.cashes} | ${_r0(c.cashRate)}% '
+            '| \$${c.buyIns} | \$${c.won} | ${_bbMoney(c.net)} '
+            '| ${c.roi >= 0 ? '+' : ''}${_r0(c.roi)}% '
+            '| ${c.bestPlace >= 1 << 29 ? '—' : c.bestPlace} '
+            '| ${c.facedYou} |');
+      }
+      b.writeln();
+      b.writeln('_ROI is measured against money in, not events played, so one '
+          'deep run in a big field outweighs a string of min-cashes. "Faced '
+          'you" counts events where they shared a table with you — the rest '
+          'they were somewhere else in the field._');
+      if (career.length > 31) {
+        b.writeln();
+        b.writeln('_${career.length - 31} more not shown._');
+      }
+      b.writeln();
+    }
+
     return b.toString();
   }
+
+  static String _bbMoney(int v) => '${v >= 0 ? '+' : '-'}\$${v.abs()}';
 
   static void _row(
       StringBuffer b, String name, String value, String target, double? was) {

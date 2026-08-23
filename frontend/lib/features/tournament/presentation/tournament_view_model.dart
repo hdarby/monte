@@ -124,6 +124,7 @@ class TournamentViewModel extends Notifier<TournamentUiState> {
     // are the ones a post-session review needs; until this was wired they were
     // the only hands that produced no record at all.
     onEvalHandRecorded: ref.read(evalHistoryStoreProvider).record,
+    resultStore: ref.read(tournamentResultStoreProvider),
   );
 
   /// The full live standings, built on demand — the field can be thousands of

@@ -371,4 +371,29 @@ final List<PlayerProfile> famousAmateurs = [
         PlayerCharacteristic(id: 'Tilt_Chase', proficiency: 0.55),
       ],
       desc: 'Fearless big-bet gambler of the streamed-cash boom.'),
+
+  // ---- The rest of the Mizrachi brothers -----------------------------------
+  // Four of them play. Michael and Robert are in the pro pack on their records;
+  // these two are a long way behind both, with results thin enough that rating
+  // them as pros would mean inventing most of the profile. Recreational at the
+  // top of the scale is the honest placement — and with feature tables now
+  // live, several Mizrachis in one game is a moment the recap should catch.
+  _a('A030', 'Eric Mizrachi', 'Family_Regular',
+      strength: 7, vpip: 0.30, pfr: 0.20, threeBet: 0.06,
+      exploit: 0.45, risk: 1.1, tilt: 0.65,
+      pos: 0.6, potOdds: 0.7, impliedOdds: 0.65,
+      chars: const [
+        PlayerCharacteristic(id: 'Soul_Read', proficiency: 0.45),
+        PlayerCharacteristic(id: 'Slow_Play_Trap', proficiency: 0.4),
+      ],
+      desc: 'Third of the Mizrachi brothers; competent, and in their shadow.'),
+  _a('A031', 'Donny Mizrachi', 'Family_Regular',
+      strength: 7, vpip: 0.29, pfr: 0.19, threeBet: 0.05,
+      exploit: 0.40, risk: 1.05, tilt: 0.70,
+      pos: 0.6, potOdds: 0.7, impliedOdds: 0.6,
+      chars: const [
+        PlayerCharacteristic(id: 'Slow_Play_Trap', proficiency: 0.45),
+        PlayerCharacteristic(id: 'Underbluff_Exploit', proficiency: 0.4),
+      ],
+      desc: 'The fourth Mizrachi; steady, mixed-game raised, rarely bluffing.'),
 ];

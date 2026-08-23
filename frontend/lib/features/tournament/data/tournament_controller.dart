@@ -11,6 +11,8 @@ import 'package:monte/core/domain/ai/trigger_observer.dart';
 import 'package:monte/core/domain/hand_history.dart';
 import 'package:monte/features/coach/domain/hand_coach.dart';
 import 'package:monte/features/eval_history/domain/eval_hand.dart';
+import 'package:monte/features/tournament/data/tournament_result_store.dart';
+import 'package:monte/features/tournament/domain/tournament_result.dart';
 import 'package:monte/features/reads/data/player_stats_store.dart';
 import 'package:monte/core/domain/ai/tournament_context.dart';
 import 'package:monte/core/domain/engine/actions.dart';
@@ -57,6 +59,8 @@ class TournamentController {
     required Map<String, Player> enginePlayers,
     this.statsService,
     this.onEvalHandRecorded,
+    this.resultStore,
+    this.buyIn = 0,
     this._identityBySeat = const {},
     this._profileBySeat = const {},
     TriggerLog? triggerLog,
@@ -84,6 +88,13 @@ class TournamentController {
   /// never did, so the hands the player actually cares about produced no record
   /// at all and no review was possible for them.
   final void Function(EvalHand hand)? onEvalHandRecorded;
+
+  /// Career record: one row per finished event. The hand log cannot answer a
+  /// career question — it knows nothing about buy-ins, places or prizes.
+  final TournamentResultStore? resultStore;
+
+  /// What each seat paid to enter, for ROI.
+  final int buyIn;
 
   /// Identifies this sitting, so a review can separate one tournament from the
   /// next.
@@ -239,6 +250,7 @@ class TournamentController {
     TournamentSave save, {
     OpponentStatsService? statsService,
     void Function(EvalHand hand)? onEvalHandRecorded,
+    TournamentResultStore? resultStore,
     bool icmAware = true,
   }) {
     final structure = save.structure;
@@ -272,6 +284,7 @@ class TournamentController {
       icmAware: icmAware,
       statsService: statsService,
       onEvalHandRecorded: onEvalHandRecorded,
+      resultStore: resultStore,
       restoreFrom: save,
     );
   }
@@ -289,6 +302,7 @@ class TournamentController {
     DecisionPolicy Function(String id, int index)? deciderBuilder,
     OpponentStatsService? statsService,
     void Function(EvalHand hand)? onEvalHandRecorded,
+    TournamentResultStore? resultStore,
     TournamentSave? restoreFrom,
   }) {
     // One log per tournament: the deciders write signature moves into it, the
@@ -620,8 +634,44 @@ class TournamentController {
   bool _maybeFinish() {
     if (state.playersRemaining > 1) return false;
     state.declareChampion();
+    _recordCareer();
     return true;
   }
+
+  /// Writes the finished event to the career store, once.
+  ///
+  /// Recorded at the champion, which includes the stretch played out headless
+  /// after the human busted — so a career page reflects whole fields rather
+  /// than only the events its owner survived.
+  bool _careerRecorded = false;
+  void _recordCareer() {
+    final store = resultStore;
+    if (store == null || _careerRecorded) return;
+    _careerRecorded = true;
+    final faced = _facedHuman;
+    store.record(TournamentResult(
+      timestampMs: DateTime.now().millisecondsSinceEpoch,
+      structureName: state.structure.name,
+      buyIn: buyIn,
+      entrants: state.players.length,
+      finishes: [
+        for (final p in state.players.values)
+          TournamentFinish(
+            profileId: _profileBySeat[p.id]?.id ?? (p.isHuman ? 'human' : p.id),
+            name: p.name,
+            place: p.finishPlace ?? 0,
+            prize: p.prizeWon,
+            isHuman: p.isHuman,
+            facedHuman: faced.contains(p.id),
+          ),
+      ],
+    ));
+  }
+
+  /// Everyone who has shared a table with the human at any point. A field-wide
+  /// record is more complete; this is what makes it meaningful, since these are
+  /// the only players actually played against.
+  final Set<String> _facedHuman = {};
 
   void _tickLevel() {
     final before = state.currentLevel;
@@ -750,6 +800,7 @@ class TournamentController {
       deck: Deck(random: Random(seed * 131071 + tableId * 8191 + ++_handCounter)),
     )..buttonIndex = (_button[tableId] ?? 0) % enginePlayers.length;
     _preChipsLive = {for (final p in enginePlayers) p.id: p.stack};
+    _facedHuman.addAll(enginePlayers.map((p) => p.id));
     _liveGame!.startHand();
     // Snapshot the seats/blinds for the hand's stats record (masked cards — the
     // read model only needs actions + positions, never hole cards).

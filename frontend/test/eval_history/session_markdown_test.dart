@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:monte/features/eval_history/domain/session_markdown.dart';
 import 'package:monte/features/eval_history/domain/session_report.dart';
+import 'package:monte/features/tournament/domain/tournament_result.dart';
 import 'package:monte/features/eval_history/presentation/session_review_screen.dart';
 
 SessionReport _r({
@@ -94,6 +95,23 @@ void main() {
     final thin = SessionReport.of(const [], 'e0');
     final md = SessionMarkdown.of(_r(), bands: [('Heads-up', thin)]);
     expect(md, isNot(contains('## By table size')));
+  });
+
+  test('the career page puts you first, then the field by ROI', () {
+    // You are reading this to find out how *you* are doing; hunting for your
+    // own row among two hundred personalities would be absurd.
+    const rows = [
+      CareerRow(profileId: 'P1', name: 'Ivey', played: 9, cashes: 5,
+          buyIns: 900, won: 4000, bestPlace: 1, facedYou: 3),
+      CareerRow(profileId: 'human', name: 'You', played: 9, cashes: 1,
+          buyIns: 900, won: 300, bestPlace: 14, facedYou: 9),
+    ];
+    final md = SessionMarkdown.of(_r(), career: rows);
+    expect(md, contains('## Career'));
+    expect(md.indexOf('**You**'), lessThan(md.indexOf('Ivey')));
+    expect(md, contains('-\$600'), reason: 'a losing net reads as a loss');
+    expect(md, contains('+344%'), reason: "Ivey's ROI on 900 in, 4000 out");
+    expect(md, contains('measured against money in'));
   });
 
   test('reports both sides of the blind battle', () {

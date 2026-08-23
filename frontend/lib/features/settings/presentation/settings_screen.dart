@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:monte/features/eval_history/presentation/eval_history_provider.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -353,10 +354,61 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
             label: const Text('Clear all opponent reads'),
           ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: () => _confirmClearCareer(context),
+            icon: const Icon(Icons.payments_outlined, size: 18),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFFEF5350),
+              side: const BorderSide(color: Color(0x55EF5350)),
+            ),
+            label: const Text('Clear career results (won / lost)'),
+          ),
         ],
       ),
     ),
   );
+
+  /// Wipes the career record.
+  ///
+  /// A third wipe, and it clears a third thing: the opponent reads are what the
+  /// bots know about you, the tuning history is the hand-by-hand record, and
+  /// this is the money. None of them does another's job, which is worth saying
+  /// out loud because two of them have been confused before.
+  Future<void> _confirmClearCareer(BuildContext context) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        title: const Text('Clear career results?'),
+        content: const Text(
+          'Permanently deletes every finished tournament: buy-ins, prizes, '
+          'finishing places and ROI, for you and for every personality. Hand '
+          'histories and opponent reads are untouched. This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFEF5350),
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Clear'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await ref.read(tournamentResultStoreProvider).wipe();
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Career results cleared')),
+    );
+  }
 
   Future<void> _confirmClearReads(BuildContext context) async {
     final ok = await showDialog<bool>(

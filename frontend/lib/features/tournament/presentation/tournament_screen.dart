@@ -18,6 +18,7 @@ import 'package:monte/features/tournament/presentation/widgets/tournament_hud.da
 import 'package:monte/features/eval_history/domain/eval_hand.dart';
 import 'package:monte/features/eval_history/domain/session_markdown.dart';
 import 'package:monte/features/eval_history/domain/session_report.dart';
+import 'package:monte/features/tournament/domain/tournament_result.dart';
 import 'package:monte/features/eval_history/presentation/eval_history_provider.dart';
 import 'package:monte/features/eval_history/presentation/session_review_screen.dart';
 
@@ -72,6 +73,7 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
               widget.restore!,
               statsService: ref.read(opponentStatsServiceProvider),
               onEvalHandRecorded: ref.read(evalHistoryStoreProvider).record,
+              resultStore: ref.read(tournamentResultStoreProvider),
             ),
   );
 
@@ -164,10 +166,15 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
             for (final d in h.decisions)
               if (d.playerId == seat) (d, h)
         ]..sort((a, b) => b.$1.evLost.compareTo(a.$1.evLost));
+        // Page two: the career, across every event ever finished — including
+        // the stretches played out headless after the human busted.
+        final career = CareerRow.from(
+            await ref.read(tournamentResultStoreProvider).loadAll());
         final md = SessionMarkdown.of(
           report,
           worst: worst.take(5).toList(),
           bands: SessionReport.byTableSize(mine, seat),
+          career: career,
         );
         if (mounted) {
           await nav.push(MaterialPageRoute<void>(

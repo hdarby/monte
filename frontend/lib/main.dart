@@ -27,6 +27,7 @@ import 'package:monte/features/table/presentation/table_screen.dart';
 import 'package:monte/features/table/presentation/table_view_model.dart';
 import 'package:monte/features/table/presentation/widgets/bust_out_dialog.dart';
 import 'package:monte/features/eval_history/data/file_eval_history_store.dart';
+import 'package:monte/features/tournament/data/tournament_result_store.dart';
 import 'package:monte/features/eval_history/presentation/auto_tune_job.dart';
 import 'package:monte/features/eval_history/presentation/eval_history_provider.dart';
 import 'package:monte/features/table/presentation/widgets/new_game_dialog.dart';
@@ -55,6 +56,8 @@ Future<void> main() async {
   final container = ProviderContainer(
     overrides: [
       evalHistoryStoreProvider.overrideWithValue(store),
+      tournamentResultStoreProvider
+          .overrideWithValue(FileTournamentResultStore(dir)),
       opponentStatsServiceProvider.overrideWithValue(statsService),
       tournamentSaveStoreProvider
           .overrideWithValue(FileTournamentSaveStore(dir)),
