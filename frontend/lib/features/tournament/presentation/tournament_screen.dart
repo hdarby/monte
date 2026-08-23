@@ -17,6 +17,10 @@ import 'package:monte/features/tournament/presentation/widgets/standings_panel.d
 import 'package:monte/features/tournament/presentation/widgets/tournament_hud.dart';
 import 'package:monte/features/eval_history/domain/eval_hand.dart';
 import 'package:monte/features/eval_history/domain/session_markdown.dart';
+import 'package:monte/core/domain/ai/profile_decider.dart';
+import 'package:monte/core/domain/ai/player_profiles.dart';
+import 'package:monte/core/domain/engine/bot.dart';
+import 'package:monte/features/eval_history/domain/duplicate_run.dart';
 import 'package:monte/features/eval_history/domain/session_report.dart';
 import 'package:monte/features/tournament/domain/tournament_result.dart';
 import 'package:monte/features/eval_history/presentation/eval_history_provider.dart';
@@ -177,8 +181,12 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
           career: career,
         );
         if (mounted) {
+          // Kicked off *before* the screen opens, so a few hundred replays per
+          // hand are already running while the first page is being read.
+          final pending = _duplicateSection(mine, seat);
           await nav.push(MaterialPageRoute<void>(
-            builder: (_) => SessionReviewScreen(markdown: md),
+            builder: (_) =>
+                SessionReviewScreen(markdown: md, pending: pending),
           ));
         }
       }
@@ -186,6 +194,51 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
       // A review must never trap the player in a finished tournament.
     }
     nav.pop();
+  }
+
+  /// Replays the session with a pro in the player's seat, as markdown.
+  ///
+  /// Every other number in the review is `HandCoach`'s model of poker. This one
+  /// is a measurement: the same cards dealt to the same opponents with somebody
+  /// else in the chair. When the two disagree, the model is the one to doubt.
+  Future<String> _duplicateSection(List<EvalHand> hands, String seat) async {
+    // Yield first so the review paints before the simulation starts.
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    const runs = 120;
+    final profile = danielNegreanu;
+    final substitute = deciderForProfile(profile);
+    final results = <DuplicateHand>[];
+    for (final h in hands) {
+      final me = h.players.where((p) => p.id == seat).firstOrNull;
+      if (me == null) continue;
+      final bb = h.bigBlind <= 0 ? 1 : h.bigBlind;
+      final theirs = DuplicateRun.replay(
+        h,
+        seat,
+        deciderFor: (id) =>
+            ref.read(_vm.notifier).controller.deciderFor(id) ?? BotStrategy(),
+        substitute: substitute,
+        runs: runs,
+        seed: h.handNumber * 7919,
+      );
+      if (theirs == null) continue;
+      results.add(DuplicateHand(
+        hand: h,
+        yoursBb: me.net / bb,
+        theirsBb: theirs,
+      ));
+      // Keep the frame free between hands; this runs while the player reads.
+      await Future<void>.delayed(Duration.zero);
+    }
+    if (results.isEmpty) return '';
+    return SessionMarkdown.of(
+      SessionReport.of(const [], seat),
+      duplicate: DuplicateReport(
+        substituteName: profile.name,
+        hands: results,
+        runsPerHand: runs,
+      ),
+    );
   }
 
   void _announce(TournamentUiState state) {

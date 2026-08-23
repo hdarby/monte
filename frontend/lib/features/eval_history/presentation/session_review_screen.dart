@@ -6,10 +6,40 @@ import 'package:flutter/services.dart';
 /// Renders the small subset of markdown the report actually uses — headings,
 /// tables, bold, italics, bullets — rather than pulling in a dependency for it.
 /// The raw text stays one tap away via Copy, so it can go anywhere.
-class SessionReviewScreen extends StatelessWidget {
-  const SessionReviewScreen({super.key, required this.markdown});
+class SessionReviewScreen extends StatefulWidget {
+  const SessionReviewScreen({
+    super.key,
+    required this.markdown,
+    this.pending,
+  });
 
   final String markdown;
+
+  /// A slower section still being computed — the duplicate run, which replays
+  /// every hand a few hundred times and cannot hold up the first page.
+  ///
+  /// Started before this screen opens, so it is already running while the first
+  /// page is being read. It resolves to markdown appended at the end.
+  final Future<String>? pending;
+
+  @override
+  State<SessionReviewScreen> createState() => _SessionReviewScreenState();
+}
+
+class _SessionReviewScreenState extends State<SessionReviewScreen> {
+  String? _extra;
+  Object? _failed;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.pending?.then(
+      (md) { if (mounted) setState(() => _extra = md); },
+      onError: (Object e) { if (mounted) setState(() => _failed = e); },
+    );
+  }
+
+  String get markdown => widget.markdown + (_extra ?? '');
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -35,7 +65,31 @@ class SessionReviewScreen extends StatelessWidget {
             constraints: const BoxConstraints(maxWidth: 760),
             child: ListView(
               padding: const EdgeInsets.all(20),
-              children: renderMarkdown(context, markdown),
+              children: [
+                ...renderMarkdown(context, markdown),
+                if (widget.pending != null && _extra == null && _failed == null)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 18),
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                        SizedBox(width: 10),
+                        Text('Replaying your hands with someone else in your '
+                            'seat…'),
+                      ],
+                    ),
+                  ),
+                if (_failed != null)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 18),
+                    child: Text('The duplicate run failed; the rest of the '
+                        'review is unaffected.'),
+                  ),
+              ],
             ),
           ),
         ),

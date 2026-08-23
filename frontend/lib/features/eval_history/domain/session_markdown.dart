@@ -1,4 +1,5 @@
 import 'package:monte/features/eval_history/domain/eval_hand.dart';
+import 'package:monte/features/eval_history/domain/duplicate_run.dart';
 import 'package:monte/features/eval_history/domain/session_report.dart';
 import 'package:monte/features/tournament/domain/tournament_result.dart';
 
@@ -19,6 +20,7 @@ class SessionMarkdown {
     SessionReport? previous,
     List<(String, SessionReport)> bands = const [],
     List<CareerRow> career = const [],
+    DuplicateReport? duplicate,
   }) {
     final b = StringBuffer();
     final label = r.sessionId == null ? 'Baseline' : 'Session ${r.sessionId}';
@@ -219,6 +221,49 @@ class SessionMarkdown {
       }
       b.writeln();
     }
+    // --- Someone else in your seat ---------------------------------------
+    if (duplicate != null && duplicate.hands.isNotEmpty) {
+      final d = duplicate;
+      b.writeln('## If ${d.substituteName} had your cards');
+      b.writeln();
+      b.writeln('| | Over ${d.hands.length} hands |');
+      b.writeln('|---|---|');
+      b.writeln('| You | ${_bb(d.yoursBb)} |');
+      b.writeln('| ${d.substituteName} | ${_bb(d.theirsBb)} |');
+      b.writeln('| **Gap** | **${_bb(d.gapBb)}** |');
+      b.writeln();
+      b.writeln(d.gapBb > 0
+          ? '_Same cards, same opponents, different player. Everything else in '
+              'this report is a model of poker; this is a measurement._'
+          : '_You outperformed the substitute over these hands. Either you '
+              'played well or the bot is weaker than advertised — both are '
+              'worth knowing, and the sample is small either way._');
+      b.writeln();
+      final worst = d.biggestGaps.where((h) => h.gapBb > 0).take(5).toList();
+      if (worst.isNotEmpty) {
+        b.writeln('Where the gap came from:');
+        b.writeln();
+        b.writeln('| Hand | Board | You | ${d.substituteName} | Gap |');
+        b.writeln('|---|---|---|---|---|');
+        for (final h in worst) {
+          final me = h.hand.players
+              .where((p) => p.modelId == 'human')
+              .firstOrNull;
+          b.writeln('| ${me?.holeCards.join(' ') ?? '?'} | '
+              '`${h.hand.board.isEmpty ? '—' : h.hand.board.join(' ')}` | '
+              '${_r1(h.yoursBb)} | ${_r1(h.theirsBb)} | '
+              '**${_r1(h.gapBb)}** |');
+        }
+        b.writeln();
+      }
+      b.writeln('_${d.runsPerHand} runs per hand. This is a **duplicate**, not '
+          'a counterfactual: once the substitute deviates the hand diverges, '
+          'because the opponents are responding to their action rather than to '
+          "yours. It is the same claim a duplicate poker event makes — same "
+          'cards, same opponents, different player._');
+      b.writeln();
+    }
+
     // --- Career ---------------------------------------------------------
     if (career.isNotEmpty) {
       b.writeln('## Career');

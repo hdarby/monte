@@ -234,6 +234,9 @@ class TournamentController {
 
   final Map<String, DecisionPolicy> _deciders;
 
+  /// The policy driving [seatId], for a replay that needs the same opponents.
+  DecisionPolicy? deciderFor(String seatId) => _deciders[seatId];
+
   /// Signature moves fired during the hand in progress. Drained into each
   /// recorded hand so the recap can name the move a player made, then cleared.
   /// Session-scoped and in-memory: it describes one hand, never persisted.
