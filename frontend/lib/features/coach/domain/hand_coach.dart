@@ -55,13 +55,32 @@ class HandCoach {
     // of the range (AJo ~30%), never the whole top-20% (~57%). `_betEv` picks
     // the level from the bet's pot-fraction (see [_calledLevel]).
     final calledMemo = <int, double>{};
+    // The range that calls a bet of this size, **filtered by strength on this
+    // board**.
+    //
+    // `narrowedBy` ranks combos by preflop playability and never looks at the
+    // board, so its "tight" range stays dense with unpaired big cards that call
+    // nothing. Hero equity against it therefore stayed high no matter how large
+    // the bet, and since a bet's value scales with size whenever you beat the
+    // callers, every recommendation came out as All-in. A session came back with
+    // the coach advising a shove in all eight of its worst spots.
+    //
+    // `polarisedOn` is the fix, and it is the same one `ProfilePostflopPolicy`
+    // already uses for exactly this failure. A calling range is close to pure
+    // value — people call with hands, not with air — so the bluff share is small
+    // and the range narrows sharply as the bet grows.
     double calledEquity(int level) => !hasHand
         ? 0.5
-        : calledMemo.putIfAbsent(
-            level,
-            () => share(baseRange.narrowedBy(
-                raiseCount: level, street: i.street)),
-          );
+        : calledMemo.putIfAbsent(level, () {
+            final narrowed =
+                baseRange.narrowedBy(raiseCount: level, street: i.street);
+            if (i.board.isEmpty) return share(narrowed);
+            return share(narrowed.polarisedOn(
+              i.board,
+              bluffFraction: 0.05,
+              betRangeFraction: pow(0.55, level).toDouble().clamp(0.05, 0.85),
+            ));
+          });
 
     final madeHand = i.board.length >= 3 && hasHand
         ? HandEvaluator.evaluate([...i.hole, ...i.board]).rank.label
