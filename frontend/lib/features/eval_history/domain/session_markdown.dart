@@ -74,14 +74,24 @@ class SessionMarkdown {
     if (r.rfiBySeat.isNotEmpty) {
       b.writeln('## Opening by seat');
       b.writeln();
-      b.writeln('| Seat | Chances | Raised | |');
-      b.writeln('|---|---|---|---|');
-      final seats = r.rfiBySeat.entries.toList()
-        ..sort((a, b) => b.value.$1.compareTo(a.value.$1));
-      for (final e in seats) {
-        final pct = e.value.$1 == 0 ? 0 : 100 * e.value.$2 / e.value.$1;
-        b.writeln('| ${e.key} | ${e.value.$1} | ${e.value.$2} | '
-            '${_r0(pct.toDouble())}% |');
+      b.writeln('| Seat | Dealt | First in | Raised | |');
+      b.writeln('|---|---|---|---|---|');
+      // Table order, not frequency order — a positional curve is only readable
+      // if the seats are in the order they act.
+      const order = [
+        'UTG', 'UTG1', 'UTG2', 'MP', 'MP1', 'MP2', 'LJ', 'HJ', 'CO', 'BTN',
+        'SB', 'BB',
+      ];
+      final seats = r.rfiBySeat.keys.toList()
+        ..sort((a, b) {
+          final ia = order.indexOf(a), ib = order.indexOf(b);
+          return (ia < 0 ? 99 : ia).compareTo(ib < 0 ? 99 : ib);
+        });
+      for (final k in seats) {
+        final v = r.rfiBySeat[k]!;
+        final pct = v.$2 == 0 ? null : 100 * v.$3 / v.$2;
+        b.writeln('| $k | ${v.$1} | ${v.$2} | ${v.$3} | '
+            '${pct == null ? '—' : '${_r0(pct.toDouble())}%'} |');
       }
       b.writeln();
       b.writeln('_Early seats should open tightest, the button widest. A flat '

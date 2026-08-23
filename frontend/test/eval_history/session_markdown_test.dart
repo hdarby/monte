@@ -24,7 +24,7 @@ SessionReport _r({
       threeBet: 1,
       limpFirstIn: limps,
       firstInSpots: 35,
-      rfiBySeat: const {'UTG': (11, 3), 'BTN': (2, 2)},
+      rfiBySeat: const {'UTG': (14, 11, 3), 'BTN': (5, 2, 2), 'BB': (12, 0, 0)},
       foldToThreeBet: 0,
       faced3Bet: 1,
       fourBet: 0,
@@ -65,6 +65,18 @@ void main() {
   test('shows the previous session for comparison when given one', () {
     final md = SessionMarkdown.of(_r(), previous: _r(limps: 16));
     expect(md, contains('was 45.7'));
+  });
+
+  test('shows every seat sat in, including ones never opened from', () {
+    // A missing seat is ambiguous: "never raised here" and "never had the
+    // option here" are different facts and only one is a leak. The big blind
+    // can never be first in, so it must read 0 chances rather than vanish.
+    final md = SessionMarkdown.of(_r());
+    expect(md, contains('| BB | 12 | 0 | 0 | — |'));
+    expect(md, contains('| UTG | 14 | 11 | 3 |'));
+    // Table order, not frequency order — a curve is unreadable otherwise.
+    expect(md.indexOf('| UTG |'), lessThan(md.indexOf('| BTN |')));
+    expect(md.indexOf('| BTN |'), lessThan(md.indexOf('| BB |')));
   });
 
   testWidgets('the reader renders headings and tables, not raw pipes',

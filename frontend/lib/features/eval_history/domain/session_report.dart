@@ -84,8 +84,14 @@ class SessionReport {
   final int limpFirstIn;
   final int firstInSpots;
 
-  /// Seat label → (opportunities, raises) when folded to.
-  final Map<String, (int, int)> rfiBySeat;
+  /// Seat label → (hands dealt, first-in chances, raises).
+  ///
+  /// Every seat the player was dealt in appears, including ones they never had
+  /// a chance to open from. Without the dealt count a missing seat is ambiguous
+  /// — "never raised here" and "never had the option here" are different facts,
+  /// and only one of them is a leak. The big blind is always 0 chances by
+  /// definition: it can never be first in.
+  final Map<String, (int, int, int)> rfiBySeat;
 
   final int foldToThreeBet;
   final int faced3Bet;
@@ -168,7 +174,7 @@ class SessionReport {
     var firstIn = 0, limped = 0, limpFolded = 0;
     var faced3 = 0, fold3 = 0;
     var bbFaced = 0, bbDef = 0;
-    final rfi = <String, (int, int)>{};
+    final rfi = <String, (int, int, int)>{};
     final riverSize = <String, (int, int)>{};
     final evStreet = {for (final s in _streets) s: 0.0};
     final evAction = <String, double>{};
@@ -194,6 +200,10 @@ class SessionReport {
         nsd += net;
       }
 
+      // Seed the seat so it shows even with no opportunity and no action.
+      final seeded = rfi[me.position] ?? (0, 0, 0);
+      rfi[me.position] = (seeded.$1 + 1, seeded.$2, seeded.$3);
+
       final pre = h.actions.where((a) => a.street == BettingRound.preflop);
       final mine = pre.where((a) => a.playerId == playerId).toList();
       if (mine.any((a) => _isVoluntary(a.type))) vpip++;
@@ -217,8 +227,9 @@ class SessionReport {
             final seat = me.position;
             if (raisesBefore == 0 && callersBefore == 0 && seat != 'BB') {
               firstIn++;
-              final cur = rfi[seat] ?? (0, 0);
-              rfi[seat] = (cur.$1 + 1, cur.$2 + (_isRaise(a.type) ? 1 : 0));
+              final cur = rfi[seat] ?? (0, 0, 0);
+              rfi[seat] =
+                  (cur.$1, cur.$2 + 1, cur.$3 + (_isRaise(a.type) ? 1 : 0));
               if (a.type == ActionType.call) {
                 limped++;
                 if (mine.skip(1).any((x) => x.type == ActionType.fold)) {
