@@ -100,6 +100,29 @@ class SessionMarkdown {
       b.writeln();
     }
 
+    // --- The blind battle -------------------------------------------------
+    if (r.stealChances > 0 || r.bbFacedSteal > 0 || r.sbFacedSteal > 0) {
+      b.writeln('## The blind battle');
+      b.writeln();
+      b.writeln('| | You | Target |');
+      b.writeln('|---|---|---|');
+      b.writeln('| Steal attempt (CO/BTN/SB, folded to you) | '
+          '**${_r0(r.stealPct)}% of ${r.stealChances}** | 35-45% |');
+      b.writeln('| ...taken without a flop | ${_r0(r.stealWinPct)}% | 50-60% |');
+      b.writeln('| Fold BB to a lone raiser | '
+          '**${_r0(r.bbFoldToStealPct)}% of ${r.bbFacedSteal}** | 40-55% |');
+      b.writeln('| ...3-bet instead | ${r.bbThreeBet} | |');
+      b.writeln('| Fold SB to a lone raiser | '
+          '**${_r0(r.sbFoldToStealPct)}% of ${r.sbFacedSteal}** | 60-75% |');
+      b.writeln('| ...3-bet instead | ${r.sbThreeBet} | |');
+      b.writeln();
+      b.writeln('_The small blind folds more than the big blind and should: '
+          'worse odds, and out of position for the rest of the hand. Defending '
+          'it by calling is the expensive habit; 3-betting or folding is the '
+          'cheap one._');
+      b.writeln();
+    }
+
     // --- Rivers ------------------------------------------------------------
     if (r.riverFoldBySize.isNotEmpty) {
       b.writeln('## Facing a river bet');

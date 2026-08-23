@@ -30,8 +30,15 @@ SessionReport _r({
       fourBet: 0,
       fiveBet: 0,
       squeeze: 0,
-      bbDefend: 0,
-      bbFacedSteal: 0,
+      bbDefend: 4,
+      bbFacedSteal: 10,
+      stealChances: 20,
+      stealAttempts: 7,
+      stealWins: 4,
+      sbFacedSteal: 8,
+      sbDefend: 2,
+      sbThreeBet: 1,
+      bbThreeBet: 2,
       limpFolded: 0,
       riverFoldBySize: const {'1/3-2/3': (4, 1)},
       evLostByStreet: const {'preflop': 1.0, 'flop': 2.0, 'turn': 3.0, 'river': 4.0},
@@ -65,6 +72,15 @@ void main() {
   test('shows the previous session for comparison when given one', () {
     final md = SessionMarkdown.of(_r(), previous: _r(limps: 16));
     expect(md, contains('was 45.7'));
+  });
+
+  test('reports both sides of the blind battle', () {
+    final md = SessionMarkdown.of(_r());
+    expect(md, contains('Steal attempt'));
+    expect(md, contains('35% of 20'));      // 7 of 20
+    expect(md, contains('60% of 10'));      // BB folded 6 of 10
+    expect(md, contains('75% of 8'));       // SB folded 6 of 8
+    expect(md, contains('worse odds'));     // says why SB folds more
   });
 
   test('shows every seat sat in, including ones never opened from', () {

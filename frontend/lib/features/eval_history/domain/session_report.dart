@@ -39,6 +39,13 @@ class SessionReport {
     required this.squeeze,
     required this.bbDefend,
     required this.bbFacedSteal,
+    required this.stealChances,
+    required this.stealAttempts,
+    required this.stealWins,
+    required this.sbFacedSteal,
+    required this.sbDefend,
+    required this.sbThreeBet,
+    required this.bbThreeBet,
     required this.limpFolded,
     required this.riverFoldBySize,
     required this.evLostByStreet,
@@ -102,6 +109,20 @@ class SessionReport {
   final int bbDefend;
   final int bbFacedSteal;
 
+  /// The blind battle, from the attacking side: folded to you in the cutoff,
+  /// button or small blind. A [stealWins] is the pot taken without a flop.
+  final int stealChances;
+  final int stealAttempts;
+  final int stealWins;
+
+  /// And from the defending side. The small blind is the harder seat — out of
+  /// position for the whole hand and worse odds than the big blind — and was
+  /// not measured at all until now.
+  final int sbFacedSteal;
+  final int sbDefend;
+  final int sbThreeBet;
+  final int bbThreeBet;
+
   /// Limped and then folded the same hand preflop — the worst version of it.
   final int limpFolded;
 
@@ -125,6 +146,11 @@ class SessionReport {
   double get foldTo3BetPct => _pct(foldToThreeBet, faced3Bet);
   double get wwsfPct => _pct(wonWhenSawFlop, sawFlop);
   double get bbDefendPct => _pct(bbDefend, bbFacedSteal);
+  double get bbFoldToStealPct => _pct(bbFacedSteal - bbDefend, bbFacedSteal);
+  double get sbDefendPct => _pct(sbDefend, sbFacedSteal);
+  double get sbFoldToStealPct => _pct(sbFacedSteal - sbDefend, sbFacedSteal);
+  double get stealPct => _pct(stealAttempts, stealChances);
+  double get stealWinPct => _pct(stealWins, stealAttempts);
   double get bbPer100 => hands == 0 ? 0 : 100 * netBb / hands;
   double get allInEvPer100 => hands == 0 ? 0 : 100 * allInEvBb / hands;
 
@@ -173,7 +199,10 @@ class SessionReport {
     var vpip = 0, pfr = 0, tb = 0, fourBet = 0, fiveBet = 0, squeeze = 0;
     var firstIn = 0, limped = 0, limpFolded = 0;
     var faced3 = 0, fold3 = 0;
-    var bbFaced = 0, bbDef = 0;
+    var bbFaced = 0, bbDef = 0, bbThree = 0;
+    var stealChance = 0, stealTry = 0, stealWin = 0;
+    var sbFaced = 0, sbDef = 0, sbThree = 0;
+    const stealSeats = {'CO', 'BTN', 'SB'};
     final rfi = <String, (int, int, int)>{};
     final riverSize = <String, (int, int)>{};
     final evStreet = {for (final s in _streets) s: 0.0};
@@ -225,6 +254,17 @@ class SessionReport {
           if (!actedYet) {
             actedYet = true;
             final seat = me.position;
+            if (raisesBefore == 0 && callersBefore == 0 && stealSeats.contains(seat)) {
+              // A steal is an unopened pot in a late seat, and it succeeds when
+              // the blinds give it up rather than when the hand later wins.
+              stealChance++;
+              if (_isRaise(a.type)) {
+                stealTry++;
+                if (!h.actions.any((x) => x.street != BettingRound.preflop)) {
+                  stealWin++;
+                }
+              }
+            }
             if (raisesBefore == 0 && callersBefore == 0 && seat != 'BB') {
               firstIn++;
               final cur = rfi[seat] ?? (0, 0, 0);
@@ -242,9 +282,18 @@ class SessionReport {
                 tb++;
                 if (callersBefore > 0) squeeze++;
               }
-              if (seat == 'BB') {
+              // Facing a lone raiser in a blind. Only counts when nobody else
+              // has come in: defending against a raise and two callers is a
+              // different decision with different odds.
+              if (seat == 'BB' && callersBefore == 0) {
                 bbFaced++;
                 if (a.type != ActionType.fold) bbDef++;
+                if (_isRaise(a.type)) bbThree++;
+              }
+              if (seat == 'SB' && callersBefore == 0) {
+                sbFaced++;
+                if (a.type != ActionType.fold) sbDef++;
+                if (_isRaise(a.type)) sbThree++;
               }
             }
             if (raisesBefore == 2 && _isRaise(a.type)) fourBet++;
@@ -316,6 +365,13 @@ class SessionReport {
       squeeze: squeeze,
       bbDefend: bbDef,
       bbFacedSteal: bbFaced,
+      stealChances: stealChance,
+      stealAttempts: stealTry,
+      stealWins: stealWin,
+      sbFacedSteal: sbFaced,
+      sbDefend: sbDef,
+      sbThreeBet: sbThree,
+      bbThreeBet: bbThree,
       limpFolded: limpFolded,
       riverFoldBySize: riverSize,
       evLostByStreet: evStreet,
