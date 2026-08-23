@@ -919,9 +919,12 @@ class TournamentController {
         equity: r.equity,
         potOdds: r.potOdds,
         chosenLabel: chosen.label,
-        chosenEv: chosen.ev,
+        // HandCoach returns EV in **chips**. EvalDecision is documented in big
+        // blinds, and at tournament stacks the difference is not cosmetic: a
+        // session came back reporting 352,111bb of EV given up.
+        chosenEv: chosen.ev / bb,
         bestLabel: best.label,
-        bestEv: best.ev,
+        bestEv: best.ev / bb,
       ));
     } catch (_) {
       // Coaching telemetry must never cost the player a hand.

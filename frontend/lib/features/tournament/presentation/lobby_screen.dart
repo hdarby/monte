@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:monte/core/di/game_providers.dart';
 import 'package:monte/core/domain/ai/player_profile.dart';
 import 'package:monte/core/util/format.dart';
 import 'package:monte/features/tournament/domain/field_builder.dart';
@@ -12,16 +14,16 @@ import 'package:monte/features/tournament/presentation/widgets/lobby_widgets.dar
 ///
 /// Field composition itself lives in [FieldBuilder] (domain) — this screen only
 /// collects the choices and hands them over.
-class LobbyScreen extends StatefulWidget {
+class LobbyScreen extends ConsumerStatefulWidget {
   const LobbyScreen({super.key, this.humanName = 'You'});
 
   final String humanName;
 
   @override
-  State<LobbyScreen> createState() => _LobbyScreenState();
+  ConsumerState<LobbyScreen> createState() => _LobbyScreenState();
 }
 
-class _LobbyScreenState extends State<LobbyScreen> {
+class _LobbyScreenState extends ConsumerState<LobbyScreen> {
   static const _fieldSizes = [6, 9, 80, 180, 1000, 8000];
   static const _buyIns = [11, 55, 100, 500, 1000, 10000];
 
@@ -62,7 +64,42 @@ class _LobbyScreenState extends State<LobbyScreen> {
     }
   });
 
-  void _start() {
+  /// Offers to wipe the accumulated reads before dealing in.
+  ///
+  /// The exploitative pros act on persistent per-opponent stats, so a field that
+  /// remembers how you played last month is playing against a player who may no
+  /// longer exist — and after any change to how you play, those reads describe a
+  /// game that is over. Asking here beats relying on the player to remember a
+  /// button buried in settings.
+  Future<void> _offerWipe() async {
+    final svc = ref.read(opponentStatsServiceProvider);
+    if (svc == null) return;
+    final wipe = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Clear opponent reads?'),
+        content: const Text(
+          'The pros in this field remember how you have played and will exploit '
+          'it. Clearing gives you a fresh table where nobody has a book on you.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Keep reads'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Clear and play'),
+          ),
+        ],
+      ),
+    );
+    if (wipe ?? false) await svc.wipe();
+  }
+
+  Future<void> _start() async {
+    await _offerWipe();
+    if (!mounted) return;
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => TournamentScreen(
