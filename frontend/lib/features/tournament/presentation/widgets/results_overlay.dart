@@ -5,8 +5,12 @@ import 'package:monte/features/tournament/domain/tournament_snapshot.dart';
 /// The end-of-tournament results, shown over the table when it finishes: where
 /// the human landed, and the full list of players who cashed.
 class ResultsOverlay extends StatelessWidget {
-  const ResultsOverlay({super.key, required this.tour});
+  const ResultsOverlay({super.key, required this.tour, this.onBackToLobby});
   final TournamentSnapshot tour;
+
+  /// Runs instead of popping, so the screen can show the session review on the
+  /// way out. Falls back to a plain pop when absent.
+  final VoidCallback? onBackToLobby;
 
   @override
   Widget build(BuildContext context) {
@@ -68,7 +72,8 @@ class ResultsOverlay extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   FilledButton(
-                    onPressed: () => Navigator.of(context).pop(),
+                    onPressed:
+                        onBackToLobby ?? () => Navigator.of(context).pop(),
                     child: const Text('Back to lobby'),
                   ),
                 ],

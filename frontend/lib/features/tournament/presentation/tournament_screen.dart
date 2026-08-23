@@ -15,7 +15,11 @@ import 'package:monte/features/tournament/domain/tournament_save.dart';
 import 'package:monte/features/tournament/presentation/widgets/saved_tournaments_dialog.dart';
 import 'package:monte/features/tournament/presentation/widgets/standings_panel.dart';
 import 'package:monte/features/tournament/presentation/widgets/tournament_hud.dart';
+import 'package:monte/features/eval_history/domain/eval_hand.dart';
+import 'package:monte/features/eval_history/domain/session_markdown.dart';
+import 'package:monte/features/eval_history/domain/session_report.dart';
 import 'package:monte/features/eval_history/presentation/eval_history_provider.dart';
+import 'package:monte/features/eval_history/presentation/session_review_screen.dart';
 
 /// The interactive tournament: the human plays their table live (via the reused
 /// [TableScreen]) with a tournament HUD overlaid; other tables simulate between
@@ -127,6 +131,51 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
   Object? _lastColorUp;
   Object? _lastRecap;
   Object? _lastTableBreak;
+
+  /// Shows the session review, then returns to the lobby.
+  ///
+  /// On the way out rather than on demand: the moment a tournament ends is the
+  /// only one where the player is certain to look, and a review nobody opens is
+  /// a review that does not exist.
+  Future<void> _reviewThenLeave() async {
+    final nav = Navigator.of(context);
+    try {
+      final hands = await ref.read(evalHistoryStoreProvider).loadAll();
+      // The sitting that just finished: the newest session id in the store.
+      final latest = hands
+          .where((h) => h.sessionId != null)
+          .fold<EvalHand?>(
+              null,
+              (best, h) => best == null ||
+                      (h.timestampMs ?? 0) > (best.timestampMs ?? 0)
+                  ? h
+                  : best);
+      final mine =
+          hands.where((h) => h.sessionId == latest?.sessionId).toList();
+      final seat = mine
+          .expand((h) => h.players)
+          .where((p) => p.modelId == 'human')
+          .firstOrNull
+          ?.id;
+      if (mine.isNotEmpty && seat != null) {
+        final report = SessionReport.of(mine, seat);
+        final worst = [
+          for (final h in mine)
+            for (final d in h.decisions)
+              if (d.playerId == seat) (d, h)
+        ]..sort((a, b) => b.$1.evLost.compareTo(a.$1.evLost));
+        final md = SessionMarkdown.of(report, worst: worst.take(5).toList());
+        if (mounted) {
+          await nav.push(MaterialPageRoute<void>(
+            builder: (_) => SessionReviewScreen(markdown: md),
+          ));
+        }
+      }
+    } catch (_) {
+      // A review must never trap the player in a finished tournament.
+    }
+    nav.pop();
+  }
 
   void _announce(TournamentUiState state) {
     final colorUp = state.tour?.colorUp;
@@ -261,7 +310,8 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
               bottom: 0,
               child: SafeArea(child: SimProgressBar(sim: state.sim!)),
             ),
-          if (tour.finished) ResultsOverlay(tour: tour),
+          if (tour.finished)
+            ResultsOverlay(tour: tour, onBackToLobby: _reviewThenLeave),
         ],
       ),
     );
