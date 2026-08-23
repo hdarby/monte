@@ -281,6 +281,44 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
               ),
             ),
           ),
+          // The table number, centred just under the HUD and above the felt.
+          //
+          // It also lives in the HUD's stack chip, but squeezed in beside the
+          // chip count and place it reads as another statistic. A tournament
+          // calls you by your table all day, and when a table breaks the banner
+          // names the new one — so it wants somewhere unmistakable to land.
+          if (tour.yourTable > 0)
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 30),
+                  child: Center(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.55),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 3),
+                        child: Text(
+                          'Table ${tour.yourTable}',
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.85),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 0.8,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
           // Save / load, top-right, clear of the HUD.
           Positioned(
             top: 0,
