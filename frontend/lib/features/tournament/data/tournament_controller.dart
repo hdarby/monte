@@ -174,6 +174,30 @@ class TournamentController {
   /// established book on you is the one beating you in specific spots.
   List<LiveRead> _liveReads(String seatId, PlayerRead? ofMe) {
     final out = <LiveRead>[];
+
+    // Stack geometry first: whether a call can end your tournament is the fact
+    // that reframes every other read on the card.
+    final them = state.players[seatId];
+    final me = humanId == null ? null : state.players[humanId!];
+    final bb = state.currentLevel.bigBlind;
+    if (them != null && bb > 0) {
+      final depth = them.chips / bb;
+      if (depth <= 12) {
+        // Below roughly a dozen big blinds their game collapses to jam-or-fold
+        // (see PushFoldChart) and should be played against completely
+        // differently. That was modelled on their side and invisible on yours.
+        out.add(LiveRead('short — jamming ${depth.round()}bb',
+            LiveReadKind.stack));
+      }
+      if (me != null && them.id != me.id) {
+        if (them.chips > me.chips) {
+          out.add(const LiveRead('covers you', LiveReadKind.stack));
+        } else if (them.chips < me.chips) {
+          out.add(const LiveRead('you cover', LiveReadKind.stack));
+        }
+      }
+    }
+
     final mood = _mental.stateFor(seatId);
     if (mood != null && mood.isTilted) {
       out.add(LiveRead(
@@ -182,7 +206,6 @@ class TournamentController {
       ));
     }
     final rush = _recentNet[seatId] ?? 0;
-    final bb = state.currentLevel.bigBlind;
     if (bb > 0 && rush >= 40 * bb) {
       out.add(const LiveRead('running hot', LiveReadKind.rush));
     } else if (bb > 0 && rush <= -40 * bb) {

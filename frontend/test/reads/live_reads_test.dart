@@ -21,6 +21,11 @@ void main() {
     expect(reads.map((l) => l.kind).toSet(), hasLength(3));
   });
 
+  test('every live kind has a distinct colour slot', () {
+    // The card switches exhaustively on kind, so a new one must be handled.
+    expect(LiveReadKind.values, hasLength(4));
+  });
+
   group('the blind and 3-bet tags', () {
     PlayerStats stats({
       double foldBlind = 0.55,
@@ -48,6 +53,24 @@ void main() {
           contains('overfolds to 3-bets'));
       expect(PlayerRead.of(stats(fold3: 0.20)).tags,
           contains('never folds to a 3-bet'));
+    });
+
+    test('the limp gap is read from VPIP minus PFR', () {
+      PlayerStats gap(double vpip, double pfr) => PlayerStats()
+        ..hands = 200
+        ..vpip = vpip * 200
+        ..pfr = pfr * 200;
+      expect(PlayerRead.of(gap(0.42, 0.14)).tags, contains('limps a lot'));
+      expect(PlayerRead.of(gap(0.22, 0.19)).tags, contains('raise or fold'));
+    });
+
+    test('squeezing is reported at both extremes', () {
+      PlayerStats sq(double rate) => PlayerStats()
+        ..hands = 200
+        ..squeezeOpp = 100
+        ..squeeze = rate * 100;
+      expect(PlayerRead.of(sq(0.14)).tags, contains('squeezes light'));
+      expect(PlayerRead.of(sq(0.0)).tags, contains('never squeezes'));
     });
 
     test('a thin sample claims neither', () {

@@ -27,6 +27,11 @@ class LiveRead {
 }
 
 enum LiveReadKind {
+  /// Stack geometry: who can bust whom, and who is short enough to be jamming.
+  /// Pure tournament information, and the most actionable thing at the table —
+  /// whether a call ends your tournament changes every decision in the hand.
+  stack,
+
   /// They are rattled — exploitable, and dangerous in the way a rattled player
   /// is dangerous.
   tilt,
@@ -78,6 +83,7 @@ class PlayerRead {
         af: s.aggressionFactor,
         foldToBet: s.foldToBetRate,
         foldTo3bet: s.foldTo3betRate,
+        squeeze: s.squeezeRate,
         wsd: s.wonAtShowdownRate,
         hands: s.hands.round(),
         confidence: s.confidence,
@@ -130,6 +136,7 @@ class PlayerRead {
     required double af,
     required double foldToBet,
     double foldTo3bet = 0.55,
+    double squeeze = 0.05,
     required double wsd,
     required int hands,
     required double confidence,
@@ -222,6 +229,23 @@ class PlayerRead {
       if (foldBlindSteal <= 0.42) tags.add('defends blinds hard');
       if (foldTo3bet >= 0.68) tags.add('overfolds to 3-bets');
       if (foldTo3bet <= 0.35) tags.add('never folds to a 3-bet');
+    }
+    if (hands >= 25) {
+      // The loudest recreational tell there is, and it was being computed and
+      // thrown away: entering far more pots than you raise means limping.
+      final gap = vpip - pfr;
+      if (gap >= 0.18) {
+        tags.add('limps a lot');
+      } else if (gap <= 0.06 && vpip >= 0.15) {
+        tags.add('raise or fold');
+      }
+    }
+    if (hands >= 40) {
+      // squeezeRate has been computed since it was written and read by nothing.
+      if (squeeze >= 0.09) tags.add('squeezes light');
+      if (squeeze <= 0.015) tags.add('never squeezes');
+      if (af >= 4.0) tags.add('maniac');
+      if (af <= 0.8) tags.add('pure passive');
     }
     if (hands >= 45) {
       if (cbet >= 0.78) tags.add('c-bets relentlessly');

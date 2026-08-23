@@ -84,11 +84,13 @@ class PlayerReadCard extends StatelessWidget {
       LiveReadKind.tilt => const Color(0xFFFF7043),
       LiveReadKind.rush => const Color(0xFF42A5F5),
       LiveReadKind.danger => const Color(0xFFEF5350),
+      LiveReadKind.stack => const Color(0xFFB0BEC5),
     };
     final icon = switch (l.kind) {
       LiveReadKind.tilt => Icons.local_fire_department,
       LiveReadKind.rush => Icons.trending_up,
       LiveReadKind.danger => Icons.visibility,
+      LiveReadKind.stack => Icons.layers,
     };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
