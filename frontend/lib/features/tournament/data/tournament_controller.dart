@@ -1155,13 +1155,15 @@ class TournamentController {
       final src = state.tables.where((t) => t.id == e.key).firstOrNull;
       if (src != null && src.size > 0) continue; // merely rebalanced
       _lastTableBreak = TableBreakDisplay(
-        tableNumber: e.key,
+        // Display numbering: tables are indexed from zero internally, and
+        // "Table 0 has broken" is not a sentence a tournament ever says.
+        tableNumber: e.key + 1,
         moves: [
           for (final m in e.value)
             TableBreakMove(
               name: state.players[m.playerId]?.name ?? m.playerId,
               isHuman: state.players[m.playerId]?.isHuman ?? false,
-              toTable: m.toTable,
+              toTable: m.toTable + 1,
               toSeat: m.toSeat,
             ),
         ],

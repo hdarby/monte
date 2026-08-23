@@ -175,8 +175,13 @@ class TournamentSnapshot {
   /// The table that just broke and where its players went, or null.
   final TableBreakDisplay? tableBreak;
 
-  /// The table the human is seated at. Pure flavour, and the kind that matters:
-  /// "table 12" is how a tournament refers to you all day.
+  /// The table the human is seated at, numbered from **1**, or 0 when not
+  /// seated.
+  ///
+  /// Internally tables are indexed from zero, which meant the human at table 0
+  /// — everybody, in a single-table event — reported 0 and was treated as "no
+  /// table", so the number never appeared at all. Real tournaments number
+  /// tables from one; this is the display number, and 0 is the sentinel.
   final int yourTable;
 
   /// A recap for a level that just completed this tick, else null (one-shot).
@@ -292,15 +297,19 @@ class TournamentSnapshot {
       smallestChip: smallestChip,
       colorUp: colorUpDisplay,
       tableBreak: tableBreak,
-      yourTable: state.tables
-              .where((t) => t.playerIds.contains(humanId))
-              .firstOrNull
-              ?.id ??
-          0,
+      yourTable: _tableNumberOf(state, humanId),
       recap: recap,
       finalResults: results,
     );
   }
+}
+
+/// The human's table, numbered from 1, or 0 when they are not seated.
+int _tableNumberOf(TournamentState state, String humanId) {
+  for (final t in state.tables) {
+    if (t.playerIds.contains(humanId)) return t.id + 1;
+  }
+  return 0;
 }
 
 /// A table that has just been broken, and where each of its players was sent.
