@@ -43,6 +43,21 @@ class PlayerReadCard extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Live reads first, above the historical ones. They are the volatile
+          // half — true this orbit and false the next — and they are also the
+          // half that changes what you do on *this* hand, so they lead and they
+          // are coloured by urgency rather than sharing the gold of a settled
+          // tag.
+          if (!selfView && seatRead.live.isNotEmpty) ...[
+            Wrap(
+              spacing: 4,
+              runSpacing: 3,
+              children: [
+                for (final l in seatRead.live) _liveChip(l),
+              ],
+            ),
+            const SizedBox(height: 7),
+          ],
           if (selfView)
             _section(gold, 'YOUR STATS', name, seatRead.mine,
                 subjectIsName: true, statsOnly: true)
@@ -57,6 +72,42 @@ class PlayerReadCard extends StatelessWidget {
                 humanName, seatRead.ofMe!,
                 subjectIsName: humanName.toLowerCase() != 'you'),
           ],
+        ],
+      ),
+    );
+  }
+
+  /// Colour by urgency: a tilting opponent is an opportunity, a heater is
+  /// information, and somebody who has you read is a warning.
+  static Widget _liveChip(LiveRead l) {
+    final color = switch (l.kind) {
+      LiveReadKind.tilt => const Color(0xFFFF7043),
+      LiveReadKind.rush => const Color(0xFF42A5F5),
+      LiveReadKind.danger => const Color(0xFFEF5350),
+    };
+    final icon = switch (l.kind) {
+      LiveReadKind.tilt => Icons.local_fire_department,
+      LiveReadKind.rush => Icons.trending_up,
+      LiveReadKind.danger => Icons.visibility,
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.20),
+        borderRadius: BorderRadius.circular(3),
+        border: Border.all(color: color.withValues(alpha: 0.55), width: 0.8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 10, color: color),
+          const SizedBox(width: 3),
+          Text(l.label.toUpperCase(),
+              style: TextStyle(
+                  color: color,
+                  fontSize: 9,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.5)),
         ],
       ),
     );

@@ -5,9 +5,37 @@ import 'package:monte/core/domain/ai/player_stats.dart';
 /// is how that player (through their own style bias) reads the hero. [ofMe] is
 /// null for the hero's own seat or an untracked observer.
 class SeatRead {
-  const SeatRead({required this.mine, this.ofMe});
+  const SeatRead({required this.mine, this.ofMe, this.live = const []});
   final PlayerRead mine;
   final PlayerRead? ofMe;
+
+  /// Read-outs that come from the state of *this session* rather than from
+  /// accumulated history — tilt, a heater, and how well they have you pegged.
+  ///
+  /// Kept apart from [PlayerRead.tags] because the two decay differently: a tag
+  /// is a hundred hands of evidence and a live flag can be true this orbit and
+  /// false the next. Presenting them identically would make the volatile ones
+  /// look as settled as the durable ones.
+  final List<LiveRead> live;
+}
+
+/// A short-lived read on a seat, with the urgency to colour it by.
+class LiveRead {
+  const LiveRead(this.label, this.kind);
+  final String label;
+  final LiveReadKind kind;
+}
+
+enum LiveReadKind {
+  /// They are rattled — exploitable, and dangerous in the way a rattled player
+  /// is dangerous.
+  tilt,
+
+  /// Running hot. Not a strategy read; a table-image one.
+  rush,
+
+  /// They have a strong, established read on *you*. The one to actually fear.
+  danger,
 }
 
 /// A human-readable read on a player, derived from their accumulated
@@ -49,6 +77,7 @@ class PlayerRead {
         foldBlindSteal: s.foldBlindStealRate,
         af: s.aggressionFactor,
         foldToBet: s.foldToBetRate,
+        foldTo3bet: s.foldTo3betRate,
         wsd: s.wonAtShowdownRate,
         hands: s.hands.round(),
         confidence: s.confidence,
@@ -100,6 +129,7 @@ class PlayerRead {
     required double foldBlindSteal,
     required double af,
     required double foldToBet,
+    double foldTo3bet = 0.55,
     required double wsd,
     required int hands,
     required double confidence,
@@ -187,6 +217,11 @@ class PlayerRead {
     if (hands >= 35) {
       if (steal >= 0.55) tags.add('steals wide late');
       if (foldBlindSteal >= 0.72) tags.add('folds blinds to steals');
+      // The mirror image, and the more useful read: a blind they cannot steal
+      // is a blind not worth attacking.
+      if (foldBlindSteal <= 0.42) tags.add('defends blinds hard');
+      if (foldTo3bet >= 0.68) tags.add('overfolds to 3-bets');
+      if (foldTo3bet <= 0.35) tags.add('never folds to a 3-bet');
     }
     if (hands >= 45) {
       if (cbet >= 0.78) tags.add('c-bets relentlessly');

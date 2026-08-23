@@ -162,7 +162,51 @@ class TournamentController {
       final me = svc.book.read(PlayerStatsBook.meKey(id)) ?? PlayerStats();
       ofMe = PlayerRead.perceivedBy(me, observer);
     }
-    return SeatRead(mine: mine, ofMe: ofMe);
+    return SeatRead(mine: mine, ofMe: ofMe, live: _liveReads(seatId, ofMe));
+  }
+
+  /// Reads that come from the state of this session rather than from history.
+  ///
+  /// Tilt lives in [MentalTable] and had never left the domain — the bots have
+  /// been steaming at each other invisibly. A heater is table image rather than
+  /// strategy, but it is what a real player notices first. And the last one is
+  /// the read worth having: an opponent who both *tracks* opponents and has an
+  /// established book on you is the one beating you in specific spots.
+  List<LiveRead> _liveReads(String seatId, PlayerRead? ofMe) {
+    final out = <LiveRead>[];
+    final mood = _mental.stateFor(seatId);
+    if (mood != null && mood.isTilted) {
+      out.add(LiveRead(
+        mood.tiltPressure >= 0.7 ? 'steaming' : 'rattled',
+        LiveReadKind.tilt,
+      ));
+    }
+    final rush = _recentNet[seatId] ?? 0;
+    final bb = state.currentLevel.bigBlind;
+    if (bb > 0 && rush >= 40 * bb) {
+      out.add(const LiveRead('running hot', LiveReadKind.rush));
+    } else if (bb > 0 && rush <= -40 * bb) {
+      out.add(const LiveRead('taking a beating', LiveReadKind.rush));
+    }
+    final observer = _profileBySeat[seatId];
+    if (observer != null && ofMe != null && !ofMe.thin) {
+      final tracks = observer.behavioralModifiers.weightOnOpponentHistory;
+      if (tracks >= 0.6 && ofMe.confidence >= 0.5) {
+        out.add(const LiveRead('has your number', LiveReadKind.danger));
+      }
+    }
+    return out;
+  }
+
+  /// Rolling chip swing per seat over the last few orbits, for the heater read.
+  final Map<String, int> _recentNet = {};
+  static const _rushWindow = 18;
+  final Map<String, List<int>> _recentHands = {};
+
+  void _noteSwing(String seatId, int delta) {
+    final h = _recentHands.putIfAbsent(seatId, () => <int>[])..add(delta);
+    if (h.length > _rushWindow) h.removeAt(0);
+    _recentNet[seatId] = h.fold(0, (a, b) => a + b);
   }
 
   final Map<String, DecisionPolicy> _deciders;
@@ -850,6 +894,10 @@ class TournamentController {
   /// Folds the just-finished human-table hand into the persistent opponent-stats
   /// model, keyed by each seat's stable identity. Your-table-only (per config).
   void _recordLiveHand(PokerGame game) {
+    for (final p in game.players) {
+      final before = _preChipsLive[p.id];
+      if (before != null) _noteSwing(p.id, p.stack - before);
+    }
     if (_livePlayers.isEmpty) return;
     // Full-information record first, off the unmasked engine state.
     if (onEvalHandRecorded != null) {
