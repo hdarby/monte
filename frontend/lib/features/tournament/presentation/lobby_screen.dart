@@ -25,11 +25,17 @@ class _LobbyScreenState extends State<LobbyScreen> {
   static const _fieldSizes = [6, 9, 80, 180, 1000, 8000];
   static const _buyIns = [11, 55, 100, 500, 1000, 10000];
 
+  /// Seats per table. 0 means "let the field decide" — the previous behaviour,
+  /// and still the right default for a large event. The rest are the formats
+  /// real tournaments are actually dealt at.
+  static const _tableSizes = [0, 2, 6, 9, 10];
+
   late final FieldBuilder _builder = FieldBuilder(humanName: widget.humanName);
 
   TournamentPreset _preset = TournamentPreset.turbo;
   int _fieldSize = 9;
   int _buyIn = 100;
+  int _tableSizeChoice = 0; // 0 = auto
 
   /// Profile ids the owner explicitly added. Defaults to everyone — the usual
   /// intent is to play the full cast.
@@ -39,7 +45,14 @@ class _LobbyScreenState extends State<LobbyScreen> {
     fieldSize: _fieldSize,
     selectedCount: _selected.length,
   );
-  int get _tableSize => _builder.tableSizeFor(_entrants);
+  /// Seats per table: the explicit choice, or the field-derived default.
+  ///
+  /// Capped at the number of entrants, since a 10-max table cannot be dealt to
+  /// six people — picking heads-up for a 180-runner field is legitimate, but
+  /// picking 10-max for a six-handed one is not.
+  int get _tableSize => _tableSizeChoice == 0
+      ? _builder.tableSizeFor(_entrants)
+      : _tableSizeChoice.clamp(2, _entrants);
 
   void _setSelected(String id, bool on) => setState(() {
     if (on) {
@@ -100,6 +113,18 @@ class _LobbyScreenState extends State<LobbyScreen> {
               selected: _buyIn,
               labelOf: (b) => '\$${formatChips(b)}',
               onSelect: (v) => setState(() => _buyIn = v),
+            ),
+            const SizedBox(height: 12),
+            LobbyChoiceRow<int>(
+              title: 'Seats per table',
+              options: _tableSizes,
+              selected: _tableSizeChoice,
+              labelOf: (n) => switch (n) {
+                0 => 'Auto',
+                2 => 'Heads-up',
+                _ => '$n-max',
+              },
+              onSelect: (v) => setState(() => _tableSizeChoice = v),
             ),
             const SizedBox(height: 12),
             _playersHeader(context),
@@ -169,7 +194,8 @@ class _LobbyScreenState extends State<LobbyScreen> {
     final startingBb = (s.startingStack / s.levels.first.bigBlind).round();
     final paidApprox = _entrants <= 9 ? 3 : (_entrants * 0.15).round();
     return Text(
-      '${_preset.label} · $_entrants runners · $_tableSize-max · '
+      '${_preset.label} · $_entrants runners · '
+      '${_tableSize == 2 ? "heads-up" : "$_tableSize-max"} · '
       'start ${s.startingStack} ($startingBb BB) · '
       'pool \$${_buyIn * _entrants} · top ~$paidApprox paid',
       style: Theme.of(context).textTheme.bodySmall,
