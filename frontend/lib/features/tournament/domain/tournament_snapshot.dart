@@ -156,6 +156,14 @@ class TournamentSnapshot {
   final List<int> payouts;
   final bool inMoney;
 
+  /// Hand-for-hand: close enough to the money that every table is dealt in
+  /// lockstep so nobody can stall into a pay jump. The most nervous moment in a
+  /// tournament, and the table should look like it.
+  bool get handForHand => !inMoney && playersLeft - paidPlaces <= 3;
+
+  /// One table left. The thing everybody plays for.
+  bool get atFinalTable => tableCount <= 1 && playersLeft > 1;
+
   /// The place the next bust-out finishes in, and what it pays (0 if unpaid).
   final int nextPayoutPlace;
   final int nextPayoutAmount;
@@ -312,16 +320,28 @@ int _tableNumberOf(TournamentState state, String humanId) {
   return 0;
 }
 
-/// A table that has just been broken, and where each of its players was sent.
+/// A change to the player's own table: it broke, or somebody arrived.
 ///
-/// Flavour, but the useful kind: a table breaking is one of the few moments in
-/// a tournament where the field's shape becomes visible, and being told "table
-/// 7 broke, you are now at table 3 seat 5" is how a player keeps their bearings.
+/// Only ever about *their* table. Announcing every consolidation across an
+/// 8,000-runner field is noise about strangers — the field breaks tables
+/// constantly and none of it is the player's business. What is their business
+/// is being moved, and who just sat down next to them.
 class TableBreakDisplay {
-  const TableBreakDisplay({required this.tableNumber, required this.moves});
+  const TableBreakDisplay({
+    required this.tableNumber,
+    required this.moves,
+    this.arrivals = const [],
+    this.broke = true,
+  });
 
   final int tableNumber;
   final List<TableBreakMove> moves;
+
+  /// Players who have just sat down at the human's table.
+  final List<String> arrivals;
+
+  /// True when the human's own table broke; false for an arrivals-only notice.
+  final bool broke;
 }
 
 class TableBreakMove {

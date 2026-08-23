@@ -205,9 +205,22 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
       _lastTableBreak = brk;
       final you = brk.moves.where((m) => m.isHuman).firstOrNull;
       final others = brk.moves.where((m) => !m.isHuman).toList();
-      final where = you != null
-          ? 'You move to table ${you.toTable}, seat ${you.toSeat + 1}.'
-          : '${brk.moves.length} players reseated.';
+      final String title;
+      final String? detail;
+      if (!brk.broke) {
+        title = brk.arrivals.length == 1
+            ? '${brk.arrivals.first} has joined your table.'
+            : '${brk.arrivals.length} players have joined your table.';
+        detail = brk.arrivals.length == 1 ? null : brk.arrivals.join(', ');
+      } else {
+        title = 'Your table has broken. '
+            '${you == null ? '' : 'You move to table ${you.toTable}, '
+                'seat ${you.toSeat + 1}.'}';
+        detail = others.isEmpty
+            ? null
+            : others.take(9).map((m) => '${m.name} → T${m.toTable}').join('   ')
+                + (others.length > 9 ? '   +${others.length - 9} more' : '');
+      }
       ScaffoldMessenger.of(context)
         ..clearSnackBars()
         ..showSnackBar(SnackBar(
@@ -216,17 +229,10 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('Table ${brk.tableNumber} has broken. $where',
+              Text(title,
                   style: const TextStyle(fontWeight: FontWeight.w600)),
-              if (others.isNotEmpty)
-                Text(
-                  others
-                      .take(9)
-                      .map((m) => '${m.name} → T${m.toTable}')
-                      .join('   ') +
-                      (others.length > 9 ? '   +${others.length - 9} more' : ''),
-                  style: const TextStyle(fontSize: 11),
-                ),
+              if (detail != null)
+                Text(detail, style: const TextStyle(fontSize: 11)),
             ],
           ),
         ));
@@ -288,6 +294,96 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
               ),
             ),
           ),
+          // Bubble / final-table framing.
+          //
+          // Hand-for-hand gets amber and a stopwatch, because that is literally
+          // what is happening — every table dealt in lockstep so nobody can
+          // stall into a pay jump. The final table gets gold, because it is the
+          // thing everybody played for. Dollar signs were the other option and
+          // read as a slot machine; the tournament is tense, not tacky.
+          if (tour.handForHand || tour.atFinalTable)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: tour.atFinalTable
+                          ? const Color(0xCCFFC107)
+                          : const Color(0xCCFF8A50),
+                      width: 3,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: (tour.atFinalTable
+                                ? const Color(0xFFFFC107)
+                                : const Color(0xFFFF8A50))
+                            .withValues(alpha: 0.22),
+                        blurRadius: 40,
+                        spreadRadius: -8,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          if (tour.handForHand || tour.atFinalTable)
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: IgnorePointer(
+                child: SafeArea(
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: (tour.atFinalTable
+                                  ? const Color(0xFFFFC107)
+                                  : const Color(0xFFFF8A50))
+                              .withValues(alpha: 0.18),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 4),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                tour.atFinalTable
+                                    ? Icons.emoji_events
+                                    : Icons.timer_outlined,
+                                size: 15,
+                                color: tour.atFinalTable
+                                    ? const Color(0xFFFFC107)
+                                    : const Color(0xFFFF8A50),
+                              ),
+                              const SizedBox(width: 7),
+                              Text(
+                                tour.atFinalTable
+                                    ? 'FINAL TABLE'
+                                    : 'HAND FOR HAND — '
+                                        '${tour.playersLeft - tour.paidPlaces} '
+                                        'from the money',
+                                style: TextStyle(
+                                  color: tour.atFinalTable
+                                      ? const Color(0xFFFFC107)
+                                      : const Color(0xFFFF8A50),
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 1.4,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
           // The table number, centred just under the HUD and above the felt.
           //
           // It also lives in the HUD's stack chip, but squeezed in beside the

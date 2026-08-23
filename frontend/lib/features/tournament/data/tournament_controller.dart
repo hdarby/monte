@@ -1217,36 +1217,53 @@ class TournamentController {
   /// A table that has just broken, for the next publish. One-shot.
   TableBreakDisplay? _lastTableBreak;
 
-  /// Picks a broken table out of [moves] and remembers it for the UI.
+  /// Notes only the seat changes that affect the **human's** table.
   ///
-  /// Rebalancing produces two kinds of move: emptying a table, and shuffling one
-  /// player to even the counts. Only the first is a table *breaking*, and the
-  /// signature is a source table left with nobody in it.
+  /// This used to announce whichever table broke anywhere in the field, which
+  /// in a large event is a stream of notices about strangers being moved
+  /// between tables the player will never see. Two things actually matter: being
+  /// moved yourself, and somebody new sitting down opposite you.
   void _noteTableBreak(List<SeatMove> moves) {
-    if (moves.isEmpty) return;
-    final byFrom = <int, List<SeatMove>>{};
-    for (final m in moves) {
-      byFrom.putIfAbsent(m.fromTable, () => []).add(m);
-    }
-    for (final e in byFrom.entries) {
-      final src = state.tables.where((t) => t.id == e.key).firstOrNull;
-      if (src != null && src.size > 0) continue; // merely rebalanced
+    if (moves.isEmpty || humanId == null) return;
+    final me = humanId!;
+
+    // Were *we* moved? Then our table broke (or we were balanced away).
+    final mine = moves.where((m) => m.playerId == me).firstOrNull;
+    if (mine != null) {
+      final together = moves.where((m) => m.fromTable == mine.fromTable);
       _lastTableBreak = TableBreakDisplay(
-        // Display numbering: tables are indexed from zero internally, and
-        // "Table 0 has broken" is not a sentence a tournament ever says.
-        tableNumber: e.key + 1,
+        tableNumber: mine.fromTable + 1,
+        broke: true,
         moves: [
-          for (final m in e.value)
+          for (final m in together)
             TableBreakMove(
               name: state.players[m.playerId]?.name ?? m.playerId,
-              isHuman: state.players[m.playerId]?.isHuman ?? false,
+              isHuman: m.playerId == me,
               toTable: m.toTable + 1,
               toSeat: m.toSeat,
             ),
         ],
       );
-      return; // one banner at a time; the next tick shows the next
+      return;
     }
+
+    // Otherwise: did anyone arrive at our table?
+    final here = state.tables
+        .where((t) => t.playerIds.contains(me))
+        .firstOrNull
+        ?.id;
+    if (here == null) return;
+    final arrived = [
+      for (final m in moves)
+        if (m.toTable == here) state.players[m.playerId]?.name ?? m.playerId,
+    ];
+    if (arrived.isEmpty) return;
+    _lastTableBreak = TableBreakDisplay(
+      tableNumber: here + 1,
+      broke: false,
+      arrivals: arrived,
+      moves: const [],
+    );
   }
 
   void _publishTournament() {
