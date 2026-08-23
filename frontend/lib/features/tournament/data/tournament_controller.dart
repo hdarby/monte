@@ -734,8 +734,26 @@ class TournamentController {
         nonZero[id] = d;
       }
     });
+    // The race runs across the whole field — every stack has to be rounded to
+    // the new unit — but only the player's own table is worth *showing*. A
+    // thousand-runner race lists nine hundred strangers gaining and losing odd
+    // chips, which buries the one line the player came for: what happened to
+    // them and to the people they are sitting with.
+    final here = humanId == null
+        ? null
+        : state.tables
+            .where((t) => t.playerIds.contains(humanId))
+            .firstOrNull
+            ?.playerIds
+            .toSet();
+    final shown = here == null
+        ? nonZero
+        : {
+            for (final e in nonZero.entries)
+              if (here.contains(e.key)) e.key: e.value,
+          };
     lastColorUp =
-        ColorUpEvent(oldUnit: oldUnit, newUnit: newUnit, deltas: nonZero);
+        ColorUpEvent(oldUnit: oldUnit, newUnit: newUnit, deltas: shown);
   }
 
   // ---- Live play (M5): the human plays their table; others sim between hands --
