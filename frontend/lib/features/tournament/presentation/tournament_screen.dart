@@ -126,6 +126,7 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
   /// the snapshot stream rebuilds on every tick, but each event fires once.
   Object? _lastColorUp;
   Object? _lastRecap;
+  Object? _lastTableBreak;
 
   void _announce(TournamentUiState state) {
     final colorUp = state.tour?.colorUp;
@@ -135,6 +136,40 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
         context: context,
         builder: (_) => ColorUpDialog(colorUp: colorUp),
       );
+    }
+    // A break is a banner rather than a dialog: it is orienting information, not
+    // something to stop the game and read. A dialog every time the field
+    // consolidates would be intolerable in a large event.
+    final brk = state.tour?.tableBreak;
+    if (brk != null && !identical(brk, _lastTableBreak)) {
+      _lastTableBreak = brk;
+      final you = brk.moves.where((m) => m.isHuman).firstOrNull;
+      final others = brk.moves.where((m) => !m.isHuman).toList();
+      final where = you != null
+          ? 'You move to table ${you.toTable}, seat ${you.toSeat + 1}.'
+          : '${brk.moves.length} players reseated.';
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(SnackBar(
+          duration: const Duration(seconds: 6),
+          content: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Table ${brk.tableNumber} has broken. $where',
+                  style: const TextStyle(fontWeight: FontWeight.w600)),
+              if (others.isNotEmpty)
+                Text(
+                  others
+                      .take(9)
+                      .map((m) => '${m.name} → T${m.toTable}')
+                      .join('   ') +
+                      (others.length > 9 ? '   +${others.length - 9} more' : ''),
+                  style: const TextStyle(fontSize: 11),
+                ),
+            ],
+          ),
+        ));
     }
     final recap = state.tour?.recap;
     if (recap != null && !identical(recap, _lastRecap)) {

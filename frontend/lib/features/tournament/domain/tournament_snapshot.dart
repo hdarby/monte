@@ -120,6 +120,8 @@ class TournamentSnapshot {
     required this.youBusted,
     required this.smallestChip,
     this.colorUp,
+    this.tableBreak,
+    this.yourTable = 0,
     this.recap,
     this.finalResults,
   });
@@ -170,6 +172,13 @@ class TournamentSnapshot {
   /// A color-up that just happened this tick, else null.
   final ColorUpDisplay? colorUp;
 
+  /// The table that just broke and where its players went, or null.
+  final TableBreakDisplay? tableBreak;
+
+  /// The table the human is seated at. Pure flavour, and the kind that matters:
+  /// "table 12" is how a tournament refers to you all day.
+  final int yourTable;
+
   /// A recap for a level that just completed this tick, else null (one-shot).
   final LevelRecap? recap;
 
@@ -199,6 +208,7 @@ class TournamentSnapshot {
     String humanId, {
     ChipSet? chipSet,
     ColorUpEvent? colorUp,
+    TableBreakDisplay? tableBreak,
     LevelRecap? recap,
   }) {
     final level = state.currentLevel;
@@ -281,8 +291,40 @@ class TournamentSnapshot {
       youBusted: you != null && !you.isActive,
       smallestChip: smallestChip,
       colorUp: colorUpDisplay,
+      tableBreak: tableBreak,
+      yourTable: state.tables
+              .where((t) => t.playerIds.contains(humanId))
+              .firstOrNull
+              ?.id ??
+          0,
       recap: recap,
       finalResults: results,
     );
   }
+}
+
+/// A table that has just been broken, and where each of its players was sent.
+///
+/// Flavour, but the useful kind: a table breaking is one of the few moments in
+/// a tournament where the field's shape becomes visible, and being told "table
+/// 7 broke, you are now at table 3 seat 5" is how a player keeps their bearings.
+class TableBreakDisplay {
+  const TableBreakDisplay({required this.tableNumber, required this.moves});
+
+  final int tableNumber;
+  final List<TableBreakMove> moves;
+}
+
+class TableBreakMove {
+  const TableBreakMove({
+    required this.name,
+    required this.isHuman,
+    required this.toTable,
+    required this.toSeat,
+  });
+
+  final String name;
+  final bool isHuman;
+  final int toTable;
+  final int toSeat;
 }

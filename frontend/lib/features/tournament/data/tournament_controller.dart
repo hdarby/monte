@@ -516,7 +516,7 @@ class TournamentController {
       if (_maybeFinish()) return;
     }
 
-    seatManager.rebalance(state, tableSize);
+    _noteTableBreak(seatManager.rebalance(state, tableSize));
     _tickLevel();
     onRound?.call();
   }
@@ -1027,7 +1027,7 @@ class TournamentController {
     // tables) doesn't freeze the UI, and the human sees a "table N of M" bar.
     final finished = await _simulateBackgroundTables(humanTableId);
     if (finished) return;
-    seatManager.rebalance(state, tableSize);
+    _noteTableBreak(seatManager.rebalance(state, tableSize));
     _tickLevel();
     _publishTournament();
     await Future<void>.delayed(_botDelay);
@@ -1134,12 +1134,49 @@ class TournamentController {
     );
   }
 
+  /// A table that has just broken, for the next publish. One-shot.
+  TableBreakDisplay? _lastTableBreak;
+
+  /// Picks a broken table out of [moves] and remembers it for the UI.
+  ///
+  /// Rebalancing produces two kinds of move: emptying a table, and shuffling one
+  /// player to even the counts. Only the first is a table *breaking*, and the
+  /// signature is a source table left with nobody in it.
+  void _noteTableBreak(List<SeatMove> moves) {
+    if (moves.isEmpty) return;
+    final byFrom = <int, List<SeatMove>>{};
+    for (final m in moves) {
+      byFrom.putIfAbsent(m.fromTable, () => []).add(m);
+    }
+    for (final e in byFrom.entries) {
+      final src = state.tables.where((t) => t.id == e.key).firstOrNull;
+      if (src != null && src.size > 0) continue; // merely rebalanced
+      _lastTableBreak = TableBreakDisplay(
+        tableNumber: e.key,
+        moves: [
+          for (final m in e.value)
+            TableBreakMove(
+              name: state.players[m.playerId]?.name ?? m.playerId,
+              isHuman: state.players[m.playerId]?.isHuman ?? false,
+              toTable: m.toTable,
+              toSeat: m.toSeat,
+            ),
+        ],
+      );
+      return; // one banner at a time; the next tick shows the next
+    }
+  }
+
   void _publishTournament() {
     if (humanId == null || _tourCtrl.isClosed) return;
     _tourCtrl.add(TournamentSnapshot.of(state, humanId!,
-        chipSet: chips, colorUp: lastColorUp, recap: lastRecap));
+        chipSet: chips,
+        colorUp: lastColorUp,
+        recap: lastRecap,
+        tableBreak: _lastTableBreak));
     lastColorUp = null; // one-shot: only the tick it happened carries it
     lastRecap = null;
+    _lastTableBreak = null;
   }
 
   /// The full live standings, built on demand (never broadcast — a huge field

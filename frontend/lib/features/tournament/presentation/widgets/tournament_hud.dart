@@ -62,7 +62,8 @@ class TournamentHud extends StatelessWidget {
               ),
               _HudChip(
                 label: humanName,
-                value: '${tour.yourChips} · ${ordinal(tour.yourPlace)}',
+                value: '${tour.yourChips} · ${ordinal(tour.yourPlace)}'
+                    '${tour.yourTable > 0 ? " · T${tour.yourTable}" : ""}',
                 detail: () =>
                     YourStandingDialog(tour: tour, standings: standings()),
               ),
