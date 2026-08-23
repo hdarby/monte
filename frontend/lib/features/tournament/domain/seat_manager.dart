@@ -57,7 +57,11 @@ class SeatManager {
   /// Rebalances between hands: breaks surplus tables into the shortest ones, then
   /// evens out counts so no two tables differ by more than one. Returns the moves
   /// made (also applied to [s]).
-  List<SeatMove> rebalance(TournamentState s, int tableSize) {
+  /// [protect] names tables that should be broken last — the feature tables.
+  /// A real tournament keeps the table with the recognisable players together
+  /// and breaks somebody else's; it is the one with cameras on it.
+  List<SeatMove> rebalance(TournamentState s, int tableSize,
+      {Set<int> protect = const {}}) {
     final moves = <SeatMove>[];
     var live = s.tables.where((t) => t.size > 0).toList();
 
@@ -65,7 +69,13 @@ class SeatManager {
     //    the others (shortest target first), until we're at the ideal count.
     var ideal = idealTableCount(s.playersRemaining, tableSize);
     while (live.length > ideal && live.length > 1) {
-      live.sort((a, b) => a.size.compareTo(b.size));
+      // Smallest first, but a protected table sorts to the back so it is only
+      // broken when nothing else is left to break.
+      live.sort((a, b) {
+        final pa = protect.contains(a.id) ? 1 : 0;
+        final pb = protect.contains(b.id) ? 1 : 0;
+        return pa != pb ? pa - pb : a.size.compareTo(b.size);
+      });
       final breaking = live.first..isBreaking = true;
       final targets = live.sublist(1);
       for (final pid in List<String>.of(breaking.playerIds)) {

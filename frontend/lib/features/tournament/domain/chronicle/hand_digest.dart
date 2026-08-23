@@ -40,6 +40,7 @@ class HandDigest {
   const HandDigest({
     required this.levelIndex,
     required this.tableId,
+    this.notables = const [],
     required this.pot,
     required this.showdown,
     required this.winners,
@@ -50,6 +51,13 @@ class HandDigest {
 
   final int levelIndex;
   final int tableId;
+
+  /// Named personalities sitting at this table — the ones with a real player
+  /// behind them, as opposed to the anonymous profiles that fill out a field.
+  ///
+  /// Two or more of them makes it a **feature table**: the one a broadcast
+  /// would put cameras on, and the one whose hands are worth showing.
+  final List<String> notables;
 
   /// Total chips contested (won from opponents) this hand.
   final int pot;

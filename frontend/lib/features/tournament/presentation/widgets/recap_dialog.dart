@@ -67,7 +67,22 @@ class RecapDialog extends StatelessWidget {
                   _RecapLine(p.describe(recap.bigBlind)),
               ],
               if (recap.featureHand != null) ...[
-                _RecapHeading('HAND OF THE LEVEL', color: gold),
+                _RecapHeading(
+                  recap.featureTable == null
+                      ? 'HAND OF THE LEVEL'
+                      : recap.featureTable!.humanSeated
+                          // Sitting at the feature table is the thing a player
+                          // tells people about afterwards. Say so.
+                          ? 'FEATURE TABLE — YOU ARE ON IT'
+                          : 'HAND OF THE LEVEL — FEATURE TABLE',
+                  color: gold,
+                ),
+                if (recap.featureTable != null)
+                  _RecapLine(
+                    'Table ${recap.featureTable!.number} · '
+                    '${recap.featureTable!.names.join(', ')}'
+                    '${recap.featureTable!.humanSeated ? ' — and you.' : ''}',
+                  ),
                 FeatureHandView(
                   hand: recap.featureHand!,
                   bigBlind: recap.bigBlind,

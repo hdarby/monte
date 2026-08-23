@@ -516,7 +516,8 @@ class TournamentController {
       if (_maybeFinish()) return;
     }
 
-    _noteTableBreak(seatManager.rebalance(state, tableSize));
+    _noteTableBreak(
+        seatManager.rebalance(state, tableSize, protect: _featureTables()));
     _tickLevel();
     onRound?.call();
   }
@@ -591,6 +592,7 @@ class TournamentController {
       averageStack: state.averageStack,
       actions: actions ?? const [],
       firedTriggers: _triggerLog.drain(),
+      notables: _notablesAt(game),
     );
     // Drop the busted players from *this* table's seats directly — the busts all
     // happened here, so there's no need for the O(tables) scan that made huge
@@ -1010,6 +1012,7 @@ class TournamentController {
       humanTable: true,
       actions: liveActions,
       firedTriggers: _triggerLog.drain(),
+      notables: _notablesAt(game),
     );
     // Drop busts from the human's table seats locally (avoids the O(tables) scan).
     if (busts.isNotEmpty) {
@@ -1030,7 +1033,8 @@ class TournamentController {
     // tables) doesn't freeze the UI, and the human sees a "table N of M" bar.
     final finished = await _simulateBackgroundTables(humanTableId);
     if (finished) return;
-    _noteTableBreak(seatManager.rebalance(state, tableSize));
+    _noteTableBreak(
+        seatManager.rebalance(state, tableSize, protect: _featureTables()));
     _tickLevel();
     _publishTournament();
     await Future<void>.delayed(_botDelay);
@@ -1136,6 +1140,28 @@ class TournamentController {
       ),
     );
   }
+
+  /// Tables holding two or more recognisable players. A tournament breaks
+  /// somebody else's table before it breaks the one with the cameras on it.
+  Set<int> _featureTables() => {
+        for (final t in state.tables)
+          if (t.playerIds
+                  .where((id) => _profileBySeat[id]?.generated == false)
+                  .length >=
+              2)
+            t.id,
+      };
+
+  /// The named personalities dealt into [game] — the ones a viewer would
+  /// recognise, as opposed to the anonymous profiles that fill out a field.
+  ///
+  /// `FieldBuilder` marks auto-filled seats `generated`, so the flag is already
+  /// there; nothing had ever asked it a question.
+  List<String> _notablesAt(PokerGame game) => [
+        for (final p in game.players)
+          if (_profileBySeat[p.id]?.generated == false)
+            _profileBySeat[p.id]!.name,
+      ];
 
   /// A table that has just broken, for the next publish. One-shot.
   TableBreakDisplay? _lastTableBreak;

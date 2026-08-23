@@ -85,6 +85,7 @@ class LevelRecap {
     required this.bountyLine,
     required this.notables,
     required this.featureHand,
+    this.featureTable,
     required this.yourStory,
   });
   final int levelJustFinished;
@@ -123,5 +124,27 @@ class LevelRecap {
 
   /// A full replay (with commentary) of the level's biggest showdown, or null.
   final HandReplay? featureHand;
+
+  /// Set when the feature hand came from a table with two or more named
+  /// personalities — the one a broadcast would have had cameras on.
+  final FeatureTable? featureTable;
   final String? yourStory;
+}
+
+/// The table the feature hand came from, when it was a notable one.
+class FeatureTable {
+  const FeatureTable({
+    required this.number,
+    required this.names,
+    required this.humanSeated,
+  });
+
+  /// Display number, from 1.
+  final int number;
+
+  /// The recognisable players sitting there.
+  final List<String> names;
+
+  /// Whether the player was in the seat next to them.
+  final bool humanSeated;
 }

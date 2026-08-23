@@ -64,6 +64,7 @@ class ChronicleRecorder {
     required int levelIndex,
     required int averageStack,
     bool humanTable = false,
+    List<String> notables = const [],
     List<ActionRecord> actions = const [],
     List<FiredTrigger> firedTriggers = const [],
   }) {
@@ -91,6 +92,7 @@ class ChronicleRecorder {
       HandDigest(
         levelIndex: levelIndex,
         tableId: tableId,
+        notables: notables,
         pot: pot,
         showdown: showdown,
         winners: winners,

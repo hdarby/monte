@@ -55,6 +55,9 @@ class TournamentChronicle {
   /// The level's feature hand, kept in full for a replay.
   HandReplay? _biggestReplay;
 
+  /// The digest the feature hand came from, for the table it was played at.
+  HandDigest? _biggestDigest;
+
   /// The feature hand's score (see [_featureScore]), so a later hand can beat it.
   double _bestFeatureScore = 0;
 
@@ -83,6 +86,7 @@ class TournamentChronicle {
       Map<String, StandingKind> kinds, Set<String> personalities) {
     _potsThisLevel.clear();
     _biggestReplay = null;
+    _biggestDigest = null;
     _bestFeatureScore = 0;
     _levelStartIds = activeChips.keys.toSet();
     for (final e in activeChips.entries) {
@@ -171,6 +175,7 @@ class TournamentChronicle {
       final score = _featureScore(d, _humanIdOrNull());
       if (_biggestReplay == null || score > _bestFeatureScore) {
         _biggestReplay = d.replay;
+        _biggestDigest = d;
         _bestFeatureScore = score;
       }
     }
@@ -227,6 +232,14 @@ class TournamentChronicle {
     if (d.showdown.length >= 3) interest += 0.25;
     // The player was sitting at the table for it.
     if (d.humanTable) interest += 0.10;
+
+    // The feature table: two or more named personalities in the same game.
+    // This is the table a broadcast points its cameras at, and the reason is
+    // not the pot size — it is that you know who these people are. A hand
+    // between two strangers and a hand between two players you have watched all
+    // tournament are not the same hand.
+    final notable = d.notables.length;
+    if (notable >= 2) interest += 0.30 + 0.15 * (notable - 2).clamp(0, 4);
 
     // A hand the human actually contested **amplifies** whatever already made
     // it interesting, rather than adding a bonus of its own. Getting your own
@@ -326,6 +339,17 @@ class TournamentChronicle {
     //     field.
     final biggest = _biggestReplay;
     final featureHand = biggest == null ? null : HandNarrator.narrate(biggest);
+    // Name the table when the hand came off a notable one. Two recognisable
+    // players in the same game is what makes a feature table, and sitting at it
+    // is the thing a tournament player tells people about afterwards.
+    final fd = _biggestDigest;
+    final featureTable = (fd != null && fd.notables.length >= 2)
+        ? FeatureTable(
+            number: fd.tableId + 1,
+            names: fd.notables,
+            humanSeated: fd.humanTable,
+          )
+        : null;
 
     // 11) The player's own story.
     final yourStory = _yourStory(humanId, currentChips);
@@ -347,6 +371,7 @@ class TournamentChronicle {
       bountyLine: bountyLine,
       notables: notables,
       featureHand: featureHand,
+      featureTable: featureTable,
       yourStory: yourStory,
     );
   }
