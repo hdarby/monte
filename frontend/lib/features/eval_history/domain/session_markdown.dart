@@ -16,6 +16,7 @@ class SessionMarkdown {
     SessionReport r, {
     List<(EvalDecision, EvalHand)> worst = const [],
     SessionReport? previous,
+    List<(String, SessionReport)> bands = const [],
   }) {
     final b = StringBuffer();
     final label = r.sessionId == null ? 'Baseline' : 'Session ${r.sessionId}';
@@ -54,8 +55,31 @@ class SessionMarkdown {
             'That is aggression paying._');
     b.writeln();
 
+    // --- By table size ------------------------------------------------------
+    // Before the pooled figures, because the pooled figures are the misleading
+    // ones: a tournament that starts nine-handed and ends heads-up reports one
+    // VPIP true of neither stretch.
+    final shown = bands.where((e) => e.$2.hands >= 15).toList();
+    if (shown.length > 1) {
+      b.writeln('## By table size');
+      b.writeln();
+      b.writeln('| Band | Hands | VPIP | PFR | Limp | WWSF |');
+      b.writeln('|---|---|---|---|---|---|');
+      for (final (name, x) in shown) {
+        b.writeln('| $name | ${x.hands} | ${_r1(x.vpipPct)}% | '
+            '${_r1(x.pfrPct)}% | ${_r1(x.limpPct)}% | ${_r1(x.wwsfPct)}% |');
+      }
+      b.writeln();
+      final skipped = bands.length - shown.length;
+      b.writeln('_Correct play differs enormously between these — roughly 23% '
+          'VPIP nine-handed against 80% heads-up — so the pooled figures below '
+          'describe none of them exactly. Read the band you care about._'
+          '${skipped > 0 ? ' $skipped band(s) hidden for too few hands.' : ''}');
+      b.writeln();
+    }
+
     // --- The rules --------------------------------------------------------
-    b.writeln('## The rules');
+    b.writeln(shown.length > 1 ? '## All tables pooled' : '## The rules');
     b.writeln();
     b.writeln('| Metric | You | Target |');
     b.writeln('|---|---|---|');

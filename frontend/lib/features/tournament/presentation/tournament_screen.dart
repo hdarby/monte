@@ -164,7 +164,11 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
             for (final d in h.decisions)
               if (d.playerId == seat) (d, h)
         ]..sort((a, b) => b.$1.evLost.compareTo(a.$1.evLost));
-        final md = SessionMarkdown.of(report, worst: worst.take(5).toList());
+        final md = SessionMarkdown.of(
+          report,
+          worst: worst.take(5).toList(),
+          bands: SessionReport.byTableSize(mine, seat),
+        );
         if (mounted) {
           await nav.push(MaterialPageRoute<void>(
             builder: (_) => SessionReviewScreen(markdown: md),

@@ -173,6 +173,45 @@ class SessionReport {
   double get evLostPerDecision =>
       decisionCount == 0 ? 0 : evLostBb / decisionCount;
 
+  /// The band a table of [players] belongs to.
+  ///
+  /// Correct play differs so much between these that pooling them produces a
+  /// number describing none of them: ~23% VPIP is right nine-handed and ~80% is
+  /// right heads-up, and their average looks like a mild leak while actually
+  /// being two different games played well.
+  static String bandOf(int players) {
+    if (players <= 2) return 'Heads-up';
+    if (players <= 4) return '3-4 handed';
+    if (players <= 6) return '5-6 handed';
+    if (players <= 8) return '7-8 handed';
+    return '9-10 handed';
+  }
+
+  /// Band order, largest table first.
+  static const bands = [
+    '9-10 handed',
+    '7-8 handed',
+    '5-6 handed',
+    '3-4 handed',
+    'Heads-up',
+  ];
+
+  /// One report per table-size band, largest first, skipping empty bands.
+  ///
+  /// A tournament that starts nine-handed and finishes heads-up otherwise
+  /// reports one figure for each statistic that is true of neither stretch.
+  static List<(String, SessionReport)> byTableSize(
+      List<EvalHand> hands, String playerId) {
+    final groups = <String, List<EvalHand>>{};
+    for (final h in hands) {
+      groups.putIfAbsent(bandOf(h.players.length), () => []).add(h);
+    }
+    return [
+      for (final b in bands)
+        if (groups[b] != null) (b, of(groups[b]!, playerId)),
+    ];
+  }
+
   /// One report per sitting, oldest first — the series to plot. Hands recorded
   /// before sessions were tracked carry no id and group together as the
   /// baseline, which is exactly what they are.

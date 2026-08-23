@@ -74,6 +74,28 @@ void main() {
     expect(md, contains('was 45.7'));
   });
 
+  test('bands are split so a shrinking tournament is not pooled', () {
+    // 23% VPIP nine-handed and 80% heads-up average to something describing
+    // neither, and the average looks like a mild leak rather than two games
+    // played correctly.
+    final md = SessionMarkdown.of(_r(), bands: [
+      ('9-10 handed', _r()),
+      ('Heads-up', _r()),
+    ]);
+    expect(md, contains('## By table size'));
+    expect(md, contains('| 9-10 handed | 103 |'));
+    expect(md, contains('| Heads-up | 103 |'));
+    expect(md, contains('## All tables pooled'));
+    expect(md.indexOf('By table size'), lessThan(md.indexOf('All tables pooled')),
+        reason: 'the trustworthy split must come before the pooled figures');
+  });
+
+  test('a band with too few hands is hidden rather than shown as noise', () {
+    final thin = SessionReport.of(const [], 'e0');
+    final md = SessionMarkdown.of(_r(), bands: [('Heads-up', thin)]);
+    expect(md, isNot(contains('## By table size')));
+  });
+
   test('reports both sides of the blind battle', () {
     final md = SessionMarkdown.of(_r());
     expect(md, contains('Steal attempt'));
