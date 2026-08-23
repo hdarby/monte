@@ -121,7 +121,11 @@ class _LobbyScreenState extends State<LobbyScreen> {
               selected: _tableSizeChoice,
               labelOf: (n) => switch (n) {
                 0 => 'Auto',
-                2 => 'Heads-up',
+                // Deliberately not "heads-up": a heads-up tournament is a
+                // seeded bracket of one-on-one matches with fresh stacks each
+                // round, not an MTT whose tables happen to seat two. Calling it
+                // that would promise a format this does not implement.
+                2 => '2-handed',
                 _ => '$n-max',
               },
               onSelect: (v) => setState(() => _tableSizeChoice = v),
@@ -195,7 +199,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
     final paidApprox = _entrants <= 9 ? 3 : (_entrants * 0.15).round();
     return Text(
       '${_preset.label} · $_entrants runners · '
-      '${_tableSize == 2 ? "heads-up" : "$_tableSize-max"} · '
+      '${_tableSize == 2 ? "2-handed" : "$_tableSize-max"} · '
       'start ${s.startingStack} ($startingBb BB) · '
       'pool \$${_buyIn * _entrants} · top ~$paidApprox paid',
       style: Theme.of(context).textTheme.bodySmall,

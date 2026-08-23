@@ -42,6 +42,29 @@ class OpenRanges {
 
   /// How much wider *everyone* opens as the table shrinks.
   ///
+  /// **Not currently applied — see the conflict below.** Kept because the
+  /// problem it describes is real and the curve is the right shape; what is
+  /// missing is a design that does not fight the calibrator.
+  ///
+  /// The conflict, which is what made the first attempt's measurements
+  /// inexplicable: `ProfileCalibrator` is a **closed loop**. It tunes each
+  /// profile's threshold until the measured VPIP/PFR hits target, and it
+  /// measures at six-max. Multiplying opening frequency here just makes the
+  /// calibrator tighten the threshold to compensate, so the two pull against
+  /// each other — which is why nine-handed moved when this factor returns 1.0
+  /// there and cannot have affected it, and why six-max barely responded to a
+  /// large change in its own factor. It was not a measurement error; the loop
+  /// was absorbing the change and re-converging somewhere else.
+  ///
+  /// It also broke the calibration gate outright: profiles came in under their
+  /// PFR target (17.4% against a required 18.0%) because the calibrator could
+  /// no longer reach it.
+  ///
+  /// A correct fix has to be *relative to the table size the profile was
+  /// calibrated at*, so the factor is 1.0 at six-max by construction and only
+  /// deviates away from it — or the calibration itself has to become
+  /// table-size aware. Either is real design work, not a multiplier.
+  ///
   /// The positional model above is **mean-zero across the table**: it decides
   /// who at a given table opens widest, and deliberately cannot change how much
   /// the table opens overall. Nothing else did either, so opening frequency was
@@ -149,7 +172,7 @@ class OpenRanges {
     double positionAwareness = 1.0,
     double positionalProficiency = 0,
   }) =>
-      (base * _rfiOverPfr * tableFactor(tableSize) +
+      (base * _rfiOverPfr +
               positionalDelta(
                 playersBehind: playersBehind,
                 tableSize: tableSize,
