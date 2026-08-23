@@ -211,10 +211,24 @@ class TournamentController {
     } else if (bb > 0 && rush <= -40 * bb) {
       out.add(const LiveRead('taking a beating', LiveReadKind.rush));
     }
+    // Three gates, because the first version had one and it was useless.
+    //
+    // The threshold was 0.6, which is exactly `_p`'s default for `oppRead` —
+    // so 210 of 218 pros cleared it and the chip appeared on every seat at the
+    // table. A warning that is always on is not a warning. It has to be above
+    // the default to mean anything, and 0.85 leaves 26 profiles: about one per
+    // full table, which is what "this particular player has your number" should
+    // feel like.
+    //
+    // And watching is not the same as having found something. The read must
+    // also be confident *and* have produced concrete tendencies — tags are only
+    // emitted once there is a real sample behind them — so the chip means they
+    // have identified something specific about you, not merely that they were
+    // present.
     final observer = _profileBySeat[seatId];
     if (observer != null && ofMe != null && !ofMe.thin) {
       final tracks = observer.behavioralModifiers.weightOnOpponentHistory;
-      if (tracks >= 0.6 && ofMe.confidence >= 0.5) {
+      if (tracks >= 0.85 && ofMe.confidence >= 0.7 && ofMe.tags.isNotEmpty) {
         out.add(const LiveRead('has your number', LiveReadKind.danger));
       }
     }
