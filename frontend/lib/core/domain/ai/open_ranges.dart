@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:monte/core/domain/engine/game.dart';
 import 'package:monte/core/domain/engine/player.dart';
 
@@ -40,56 +41,42 @@ class OpenRanges {
   /// exactly where the ranges are widest and hardest to play well.
   static const _pointsPerPosition = 0.048;
 
-  /// How much wider *everyone* opens as the table shrinks.
+  /// How much wider everyone opens as the table shrinks, **relative to
+  /// six-max**.
   ///
-  /// **Not currently applied — see the conflict below.** Kept because the
-  /// problem it describes is real and the curve is the right shape; what is
-  /// missing is a design that does not fight the calibrator.
+  /// The first attempt at this fought the calibrator and lost.
+  /// `ProfileCalibrator` is a closed loop: it tunes each profile's threshold
+  /// until measured VPIP/PFR hits target, and it measures at **six-handed**.
+  /// Any multiplier applied at six-max is simply cancelled by the loop
+  /// re-converging, which is why nine-handed moved when the factor could not
+  /// have touched it and why the calibration gate broke at 17.4% PFR against a
+  /// required 18.0%.
   ///
-  /// The conflict, which is what made the first attempt's measurements
-  /// inexplicable: `ProfileCalibrator` is a **closed loop**. It tunes each
-  /// profile's threshold until the measured VPIP/PFR hits target, and it
-  /// measures at six-max. Multiplying opening frequency here just makes the
-  /// calibrator tighten the threshold to compensate, so the two pull against
-  /// each other — which is why nine-handed moved when this factor returns 1.0
-  /// there and cannot have affected it, and why six-max barely responded to a
-  /// large change in its own factor. It was not a measurement error; the loop
-  /// was absorbing the change and re-converging somewhere else.
-  ///
-  /// It also broke the calibration gate outright: profiles came in under their
-  /// PFR target (17.4% against a required 18.0%) because the calibrator could
-  /// no longer reach it.
-  ///
-  /// A correct fix has to be *relative to the table size the profile was
-  /// calibrated at*, so the factor is 1.0 at six-max by construction and only
-  /// deviates away from it — or the calibration itself has to become
-  /// table-size aware. Either is real design work, not a multiplier.
-  ///
-  /// The positional model above is **mean-zero across the table**: it decides
-  /// who at a given table opens widest, and deliberately cannot change how much
-  /// the table opens overall. Nothing else did either, so opening frequency was
-  /// pinned to the six-max calibration at every table size — and because the
-  /// button has fewer players behind it short-handed, the redistribution
-  /// actually made bots *tighter* as seats emptied. Measured: a 27/21 profile
-  /// opened 33.7% of hands on the button nine-handed and 26.0% heads-up, where
-  /// it should be nearer 42% and 80%. Every final table in the app was free
-  /// money for anyone who simply raised relentlessly.
+  /// So the curve is pinned at 1.0 for six-handed *and* full ring, and only
+  /// deviates below six. That leaves the calibrated band untouched by
+  /// construction and confines the change to table sizes nothing calibrates
+  /// against — which is exactly where the bug lives, since a profile was opening
+  /// 26% heads-up where the charts say 80%, and getting *tighter* as seats
+  /// emptied because the positional model is mean-zero across the table.
   ///
   /// A steal wins the blinds when everyone behind folds, and that probability
-  /// compounds with each player left to act — so removing seats widens the
-  /// correct opening range far faster than linearly. Anchored on the standard
-  /// full-ring, six-max, three-handed and heads-up ranges, relative to nine.
+  /// compounds with each player left to act, so removing seats widens the
+  /// correct range faster than linearly.
+  ///
+  /// **A first stab, deliberately.** These are reasoned rather than measured,
+  /// and the honest way to dial them in is a duplicate-match gate at each table
+  /// size. Until that exists, treat short-handed opening frequency as
+  /// approximate.
   static double tableFactor(int players) {
-    if (players >= 9) return 1.0;
-    if (players <= 2) return 4.4;
-    const anchors = {9: 1.0, 6: 1.9, 5: 2.2, 4: 2.6, 3: 3.1, 2: 4.4};
-    final lo = anchors.keys.where((k) => k <= players).reduce((a, b) => a > b ? a : b);
-    final hi = anchors.keys.where((k) => k >= players).reduce((a, b) => a < b ? a : b);
+    if (players >= 6) return 1.0;
+    if (players <= 2) return 2.6;
+    const anchors = {6: 1.0, 5: 1.15, 4: 1.35, 3: 1.7, 2: 2.6};
+    final lo = anchors.keys.where((k) => k <= players).reduce(max);
+    final hi = anchors.keys.where((k) => k >= players).reduce(min);
     if (lo == hi) return anchors[lo]!;
     final t = (players - lo) / (hi - lo);
     return anchors[lo]! + (anchors[hi]! - anchors[lo]!) * t;
   }
-
 
   /// How much more often a player open-raises than their headline PFR suggests.
   ///
@@ -172,7 +159,7 @@ class OpenRanges {
     double positionAwareness = 1.0,
     double positionalProficiency = 0,
   }) =>
-      (base * _rfiOverPfr +
+      (base * _rfiOverPfr * tableFactor(tableSize) +
               positionalDelta(
                 playersBehind: playersBehind,
                 tableSize: tableSize,
