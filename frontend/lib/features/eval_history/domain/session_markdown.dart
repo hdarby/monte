@@ -1,6 +1,7 @@
 import 'package:monte/features/eval_history/domain/eval_hand.dart';
 import 'package:monte/features/eval_history/domain/duplicate_run.dart';
 import 'package:monte/features/eval_history/domain/session_report.dart';
+import 'package:monte/features/eval_history/domain/session_verdict.dart';
 import 'package:monte/features/tournament/domain/tournament_result.dart';
 
 /// Renders a [SessionReport] as the markdown review the player actually reads.
@@ -28,6 +29,40 @@ class SessionMarkdown {
     b.writeln();
     b.writeln('${r.hands} hands · ${r.decisionCount} graded decisions');
     b.writeln();
+
+    // --- The verdict, first --------------------------------------------------
+    // Six tables of frequencies leave the reader to work out which number
+    // matters. This says it. Findings are ranked by consequence rather than by
+    // distance from target — a small-blind completion rate can be wildly off
+    // and cost nothing, while five points of missing aggression quietly costs a
+    // stack a session.
+    final findings = SessionVerdict.of(r);
+    if (findings.isNotEmpty) {
+      void section(String title, Severity sev) {
+        final rows = findings.where((f) => f.severity == sev).toList();
+        if (rows.isEmpty) return;
+        b.writeln('### $title');
+        b.writeln();
+        for (final f in rows) {
+          b.writeln('- **${f.headline}** — ${f.detail}');
+        }
+        b.writeln();
+      }
+
+      b.writeln('## The verdict');
+      b.writeln();
+      section('The ugly', Severity.ugly);
+      section('The bad', Severity.bad);
+      section('The good', Severity.good);
+
+      final fix = SessionVerdict.nextFix(findings);
+      b.writeln(fix == null
+          ? '**Nothing to fix.** Every measured frequency landed in its band. '
+              'Play more hands and let the sample grow.'
+          : '**Fix next: ${fix.headline}.** One thing, not seven — the rest '
+              'will follow it.');
+      b.writeln();
+    }
 
     // --- Was it luck? ---------------------------------------------------
     b.writeln('## Result');
@@ -87,8 +122,16 @@ class SessionMarkdown {
     b.writeln();
     b.writeln('| Metric | You | Target |');
     b.writeln('|---|---|---|');
-    _row(b, 'Limp (first in)', '${_r1(r.limpPct)}% of ${r.firstInSpots}', '0%',
-        previous?.limpPct);
+    _row(b, 'Open-limp (first in, not SB)',
+        '${_r1(r.limpPct)}% of ${r.firstInSpots}', '0%', previous?.limpPct);
+    if (r.sbFirstIn > 0) {
+      // Completing the small blind is often correct — three to one on half a
+      // bet, better still with an ante — so it gets its own row rather than
+      // being counted as a limp.
+      _row(b, 'SB complete (folded to you)',
+          '${_r1(r.sbCompletePct)}% of ${r.sbFirstIn}', 'often right',
+          previous?.sbCompletePct);
+    }
     _row(b, 'VPIP', '${_r1(r.vpipPct)}%', '~23%', previous?.vpipPct);
     _row(b, 'PFR', '${_r1(r.pfrPct)}%', '~18%', previous?.pfrPct);
     _row(b, 'WWSF', '${_r1(r.wwsfPct)}% of ${r.sawFlop}', '45-50%',

@@ -31,6 +31,8 @@ class SessionReport {
     required this.threeBet,
     required this.limpFirstIn,
     required this.firstInSpots,
+    required this.sbFirstIn,
+    required this.sbComplete,
     required this.rfiBySeat,
     required this.foldToThreeBet,
     required this.faced3Bet,
@@ -87,9 +89,20 @@ class SessionReport {
   final int pfr;
   final int threeBet;
 
-  /// Limps and opportunities when first into an unopened pot.
+  /// Limps and opportunities when first into an unopened pot, **excluding the
+  /// small blind**.
+  ///
+  /// The small blind folded to is a different decision and often a correct
+  /// limp: you are getting three to one on half a bet, position reverses
+  /// heads-up, and a big blind ante improves the price further. Solver
+  /// small-blind strategies are genuinely limp-heavy. Pooling it with an
+  /// under-the-gun open-limp makes a correct play read as the same leak.
   final int limpFirstIn;
   final int firstInSpots;
+
+  /// The small blind folded to, separately: chances and completes.
+  final int sbFirstIn;
+  final int sbComplete;
 
   /// Seat label → (hands dealt, first-in chances, raises).
   ///
@@ -143,6 +156,7 @@ class SessionReport {
   double get pfrPct => _pct(pfr, hands);
   double get threeBetPct => _pct(threeBet, hands);
   double get limpPct => _pct(limpFirstIn, firstInSpots);
+  double get sbCompletePct => _pct(sbComplete, sbFirstIn);
   double get foldTo3BetPct => _pct(foldToThreeBet, faced3Bet);
   double get wwsfPct => _pct(wonWhenSawFlop, sawFlop);
   double get bbDefendPct => _pct(bbDefend, bbFacedSteal);
@@ -237,6 +251,7 @@ class SessionReport {
     var sawFlop = 0, wwsf = 0;
     var vpip = 0, pfr = 0, tb = 0, fourBet = 0, fiveBet = 0, squeeze = 0;
     var firstIn = 0, limped = 0, limpFolded = 0;
+    var sbFirstIn = 0, sbComplete = 0;
     var faced3 = 0, fold3 = 0;
     var bbFaced = 0, bbDef = 0, bbThree = 0;
     var stealChance = 0, stealTry = 0, stealWin = 0;
@@ -304,7 +319,14 @@ class SessionReport {
                 }
               }
             }
-            if (raisesBefore == 0 && callersBefore == 0 && seat != 'BB') {
+            if (raisesBefore == 0 && callersBefore == 0 && seat == 'SB') {
+              sbFirstIn++;
+              if (a.type == ActionType.call) sbComplete++;
+            }
+            if (raisesBefore == 0 &&
+                callersBefore == 0 &&
+                seat != 'BB' &&
+                seat != 'SB') {
               firstIn++;
               final cur = rfi[seat] ?? (0, 0, 0);
               rfi[seat] =
@@ -396,6 +418,8 @@ class SessionReport {
       threeBet: tb,
       limpFirstIn: limped,
       firstInSpots: firstIn,
+      sbFirstIn: sbFirstIn,
+      sbComplete: sbComplete,
       rfiBySeat: rfi,
       foldToThreeBet: fold3,
       faced3Bet: faced3,

@@ -25,6 +25,8 @@ SessionReport _r({
       threeBet: 1,
       limpFirstIn: limps,
       firstInSpots: 35,
+      sbFirstIn: 9,
+      sbComplete: 4,
       rfiBySeat: const {'UTG': (14, 11, 3), 'BTN': (5, 2, 2), 'BB': (12, 0, 0)},
       foldToThreeBet: 0,
       faced3Bet: 1,
@@ -48,6 +50,8 @@ SessionReport _r({
       sessionId: 'T123',
       decisionCount: 177,
     );
+
+const _sample = '# Title\n\n## Section\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\n- a **bold** point and an _aside_\n';
 
 void main() {
   test('names the luck verdict rather than leaving it to the reader', () {
@@ -114,6 +118,25 @@ void main() {
     expect(md, contains('measured against money in'));
   });
 
+  test('leads with a verdict, worst first, and names one thing to fix', () {
+    // The report was all evidence and no conclusion; six tables of frequencies
+    // leave the reader to work out which number matters.
+    final md = SessionMarkdown.of(_r());
+    expect(md, contains('## The verdict'));
+    expect(md, contains('Fix next:'));
+    // The verdict has to come before the evidence, or it is just a footer.
+    expect(md.indexOf('## The verdict'), lessThan(md.indexOf('## Result')));
+  });
+
+  test('the small blind is not counted as an open-limp', () {
+    // Completing the small blind is often correct, and pooling it with an
+    // under-the-gun limp makes a good play read as the same leak.
+    final md = SessionMarkdown.of(_r());
+    expect(md, contains('Open-limp (first in, not SB)'));
+    expect(md, contains('SB complete (folded to you)'));
+    expect(md, contains('often right'));
+  });
+
   test('reports both sides of the blind battle', () {
     final md = SessionMarkdown.of(_r());
     expect(md, contains('Steal attempt'));
@@ -135,15 +158,31 @@ void main() {
     expect(md.indexOf('| BTN |'), lessThan(md.indexOf('| BB |')));
   });
 
-  testWidgets('the reader renders headings and tables, not raw pipes',
+  testWidgets('the reader renders markdown rather than showing its markers',
       (tester) async {
+    // Rendered directly rather than through the screen: the review is long and
+    // the screen's list is lazy, so anything below the fold is never built and
+    // an assertion on it would prove nothing either way.
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: Builder(
+          builder: (context) => ListView(
+            children: renderMarkdown(context, _sample),
+          ),
+        ),
+      ),
+    ));
+    expect(find.text('Title'), findsOneWidget);
+    expect(find.text('Section'), findsOneWidget);
+    expect(find.byType(Table), findsOneWidget);
+    expect(find.textContaining('**'), findsNothing);
+    expect(find.textContaining('|---'), findsNothing);
+  });
+
+  testWidgets('the review screen leads with the verdict', (tester) async {
     await tester.pumpWidget(MaterialApp(
       home: SessionReviewScreen(markdown: SessionMarkdown.of(_r())),
     ));
-    expect(find.text('Red line / blue line'), findsOneWidget);
-    expect(find.byType(Table), findsWidgets);
-    // Bold and italic markers must be consumed, not displayed.
-    expect(find.textContaining('**'), findsNothing);
-    expect(find.textContaining('|---'), findsNothing);
+    expect(find.text('The verdict'), findsOneWidget);
   });
 }
