@@ -65,10 +65,10 @@ class TournamentController {
     this._profileBySeat = const {},
     TriggerLog? triggerLog,
     MentalTable? mental,
-  })  : _deciders = Map.of(deciders),
-        _mental = mental ?? MentalTable(),
-        _enginePlayers = Map.of(enginePlayers),
-        _triggerLog = triggerLog ?? TriggerLog();
+  }) : _deciders = Map.of(deciders),
+       _mental = mental ?? MentalTable(),
+       _enginePlayers = Map.of(enginePlayers),
+       _triggerLog = triggerLog ?? TriggerLog();
 
   final TournamentState state;
   final SeatManager seatManager;
@@ -133,9 +133,7 @@ class TournamentController {
             ? 'You'
             : (state.players[humanId!]?.name ?? 'You'),
         structureName: structureName ?? _presetNameFor(state.structure),
-        profileIds: {
-          for (final e in _profileBySeat.entries) e.key: e.value.id,
-        },
+        profileIds: {for (final e in _profileBySeat.entries) e.key: e.value.id},
       );
 
   /// Which preset a structure came from, by matching its name.
@@ -186,24 +184,20 @@ class TournamentController {
         // Below roughly a dozen big blinds their game collapses to jam-or-fold
         // (see PushFoldChart) and should be played against completely
         // differently. That was modelled on their side and invisible on yours.
-        out.add(LiveRead('short — jamming ${depth.round()}bb',
-            LiveReadKind.stack));
-      }
-      if (me != null && them.id != me.id) {
-        if (them.chips > me.chips) {
-          out.add(const LiveRead('covers you', LiveReadKind.stack));
-        } else if (them.chips < me.chips) {
-          out.add(const LiveRead('you cover', LiveReadKind.stack));
-        }
+        out.add(
+          LiveRead('short — jamming ${depth.round()}bb', LiveReadKind.stack),
+        );
       }
     }
 
     final mood = _mental.stateFor(seatId);
     if (mood != null && mood.isTilted) {
-      out.add(LiveRead(
-        mood.tiltPressure >= 0.7 ? 'steaming' : 'rattled',
-        LiveReadKind.tilt,
-      ));
+      out.add(
+        LiveRead(
+          mood.tiltPressure >= 0.7 ? 'steaming' : 'rattled',
+          LiveReadKind.tilt,
+        ),
+      );
     }
     final rush = _recentNet[seatId] ?? 0;
     if (bb > 0 && rush >= 40 * bb) {
@@ -402,22 +396,32 @@ class TournamentController {
       for (final sp in restoreFrom.players) {
         final p = sp.toPlayer();
         players[p.id] = p;
-        engine[p.id] =
-            Player(id: p.id, name: p.name, stack: p.chips, isHuman: p.isHuman);
+        engine[p.id] = Player(
+          id: p.id,
+          name: p.name,
+          stack: p.chips,
+          isHuman: p.isHuman,
+        );
       }
     } else {
       for (var i = 0; i < entrants; i++) {
         final id = 'e$i';
-        final name =
-            (names != null && i < names.length) ? names[i] : 'P${i + 1}';
+        final name = (names != null && i < names.length)
+            ? names[i]
+            : 'P${i + 1}';
         final isHuman = humanSeat && i == 0;
         players[id] = TournamentPlayer(
-            id: id,
-            name: name,
-            isHuman: isHuman,
-            chips: structure.startingStack);
+          id: id,
+          name: name,
+          isHuman: isHuman,
+          chips: structure.startingStack,
+        );
         engine[id] = Player(
-            id: id, name: name, stack: structure.startingStack, isHuman: isHuman);
+          id: id,
+          name: name,
+          stack: structure.startingStack,
+          isHuman: isHuman,
+        );
       }
     }
     // Built in one go rather than mutated afterwards: the active-player count is
@@ -478,30 +482,41 @@ class TournamentController {
     for (var i = 0; i < entrants; i++) {
       final id = 'e$i';
       final isHuman = humanSeat && i == 0;
-      final profile =
-          (!isHuman && botProfiles != null) ? botProfiles[humanSeat ? i - 1 : i] : null;
+      final profile = (!isHuman && botProfiles != null)
+          ? botProfiles[humanSeat ? i - 1 : i]
+          : null;
       // Each bot reads from its own perspective: its impression of the human is
       // built only from the hands it shared (see [OpponentStatsService.readsFor]).
-      final reads = statsService?.readsFor(identityOfSeat,
-          observerId: identityBySeat[id]);
+      final reads = statsService?.readsFor(
+        identityOfSeat,
+        observerId: identityBySeat[id],
+      );
       final base = profile != null
-          ? deciderForProfile(profile,
+          ? deciderForProfile(
+              profile,
               random: Random(seed * 1000 + i),
               reads: reads,
               triggers: triggerLog,
-              mental: mental)
+              mental: mental,
+            )
           : (deciderBuilder?.call(id, i) ??
-              buildDecider(BotType.heuristic, random: Random(seed * 1000 + i)));
+                buildDecider(
+                  BotType.heuristic,
+                  random: Random(seed * 1000 + i),
+                ));
       // ICM discipline (short-stack push/fold + bubble caution) is a *skill*:
       // only competent players (pros, or the default heuristic) get it. A
       // recreational player keeps misplaying short stacks and the bubble, which
       // is exactly where a pro should out-earn them.
       final disciplined = profile == null || !isAmateurProfile(profile);
       deciders[id] = (icmAware && disciplined)
-          ? IcmAdjustedDecider(base, (g, p) => contextOf(state, p.stack, p.id),
+          ? IcmAdjustedDecider(
+              base,
+              (g, p) => contextOf(state, p.stack, p.id),
               profile: profile,
               triggers: triggerLog,
-              random: Random(seed * 977 + i))
+              random: Random(seed * 977 + i),
+            )
           : base;
     }
     final seatManager = SeatManager(Random(seed ^ 0x5f3759df));
@@ -530,7 +545,10 @@ class TournamentController {
   /// every remaining player's chips. Static so the decider closures can be built
   /// before the controller instance exists.
   static TournamentContext contextOf(
-      TournamentState state, int stack, String playerId) {
+    TournamentState state,
+    int stack,
+    String playerId,
+  ) {
     final bb = state.currentLevel.bigBlind;
     final remaining = state.playersRemaining;
     // ICM only differs from chip-neutral where the exact recursion runs (final
@@ -584,7 +602,8 @@ class TournamentController {
 
   /// Runs the tournament to a champion (bounded by [maxHands] as a safety net).
   void runToCompletion({int maxHands = 200000}) {
-    while (state.status != TournamentStatus.finished && _handCounter < maxHands) {
+    while (state.status != TournamentStatus.finished &&
+        _handCounter < maxHands) {
       step();
     }
   }
@@ -594,8 +613,9 @@ class TournamentController {
   /// rebalance and advance the level clock.
   void step() {
     final handForHand = seatManager.shouldGoHandForHand(state, tableSize);
-    state.status =
-        handForHand ? TournamentStatus.handForHand : TournamentStatus.running;
+    state.status = handForHand
+        ? TournamentStatus.handForHand
+        : TournamentStatus.running;
 
     final roundBusts = <String, int>{}; // id -> chips at start of hand
     for (final table in List.of(state.tables)) {
@@ -615,7 +635,8 @@ class TournamentController {
     }
 
     _noteTableBreak(
-        seatManager.rebalance(state, tableSize, protect: _featureTables()));
+      seatManager.rebalance(state, tableSize, protect: _featureTables()),
+    );
     _tickLevel();
     onRound?.call();
   }
@@ -628,16 +649,16 @@ class TournamentController {
     _handCounter++;
     final level = state.currentLevel;
     final seatIds = List<String>.of(table.playerIds);
-    final enginePlayers = [
-      for (final id in seatIds) _synced(id),
-    ];
+    final enginePlayers = [for (final id in seatIds) _synced(id)];
     final game = PokerGame(
       players: enginePlayers,
       smallBlind: level.smallBlind,
       bigBlind: level.bigBlind,
       ante: level.ante,
       chipUnit: _chipUnitFor(level),
-      deck: Deck(random: Random(seed * 131071 + table.id * 8191 + _handCounter)),
+      deck: Deck(
+        random: Random(seed * 131071 + table.id * 8191 + _handCounter),
+      ),
     )..buttonIndex = (_button[table.id] ?? 0) % enginePlayers.length;
 
     final pre = {for (final p in enginePlayers) p.id: p.stack};
@@ -652,13 +673,15 @@ class TournamentController {
       final street = game.round;
       final action = _deciders[cur.id]!.decide(game, cur);
       game.applyAction(action);
-      actions?.add(ActionRecord(
-        playerId: cur.id,
-        street: street,
-        type: action.type,
-        amount: action.amount,
-        potAfter: game.pot,
-      ));
+      actions?.add(
+        ActionRecord(
+          playerId: cur.id,
+          street: street,
+          type: action.type,
+          amount: action.amount,
+          potAfter: game.pot,
+        ),
+      );
     }
     _button[table.id] = game.buttonIndex;
 
@@ -666,7 +689,8 @@ class TournamentController {
     final busts = <String, int>{};
     for (final p in enginePlayers) {
       state.players[p.id]!.chips = p.stack;
-      if (p.stack == 0 && state.players[p.id]!.isActive) busts[p.id] = pre[p.id]!;
+      if (p.stack == 0 && state.players[p.id]!.isActive)
+        busts[p.id] = pre[p.id]!;
     }
     // Tilt accumulates at every table, not just the human's — a player moved to
     // your table part-way through a level should arrive in whatever state their
@@ -675,8 +699,7 @@ class TournamentController {
       seatIds: [for (final p in enginePlayers) p.id],
       bigBlind: level.bigBlind,
       profileOf: (id) => _profileBySeat[id],
-      netOf: (id) =>
-          (state.players[id]?.chips ?? 0) - (pre[id] ?? 0),
+      netOf: (id) => (state.players[id]?.chips ?? 0) - (pre[id] ?? 0),
       enteredPot: (id) => enginePlayers
           .firstWhere((p) => p.id == id, orElse: () => enginePlayers.first)
           .vpip,
@@ -711,7 +734,9 @@ class TournamentController {
   void _recordBusts(Map<String, int> busts, {bool removeFromTables = true}) {
     if (busts.isEmpty) return;
     final ordered = busts.keys.toList()
-      ..sort((a, b) => busts[a]!.compareTo(busts[b]!)); // fewest chips = worst place
+      ..sort(
+        (a, b) => busts[a]!.compareTo(busts[b]!),
+      ); // fewest chips = worst place
     state.recordBustouts(ordered, removeFromTables: removeFromTables);
   }
 
@@ -733,23 +758,26 @@ class TournamentController {
     if (store == null || _careerRecorded) return;
     _careerRecorded = true;
     final faced = _facedHuman;
-    store.record(TournamentResult(
-      timestampMs: DateTime.now().millisecondsSinceEpoch,
-      structureName: state.structure.name,
-      buyIn: buyIn,
-      entrants: state.players.length,
-      finishes: [
-        for (final p in state.players.values)
-          TournamentFinish(
-            profileId: _profileBySeat[p.id]?.id ?? (p.isHuman ? 'human' : p.id),
-            name: p.name,
-            place: p.finishPlace ?? 0,
-            prize: p.prizeWon,
-            isHuman: p.isHuman,
-            facedHuman: faced.contains(p.id),
-          ),
-      ],
-    ));
+    store.record(
+      TournamentResult(
+        timestampMs: DateTime.now().millisecondsSinceEpoch,
+        structureName: state.structure.name,
+        buyIn: buyIn,
+        entrants: state.players.length,
+        finishes: [
+          for (final p in state.players.values)
+            TournamentFinish(
+              profileId:
+                  _profileBySeat[p.id]?.id ?? (p.isHuman ? 'human' : p.id),
+              name: p.name,
+              place: p.finishPlace ?? 0,
+              prize: p.prizeWon,
+              isHuman: p.isHuman,
+              facedHuman: faced.contains(p.id),
+            ),
+        ],
+      ),
+    );
   }
 
   /// Everyone who has shared a table with the human at any point. A field-wide
@@ -769,16 +797,16 @@ class TournamentController {
     if (state.maybeAdvanceLevel()) {
       _maybeColorUp(before, state.currentLevel);
       _buildRecap(before.level, before.bigBlind);
-      _recorder.beginLevel(state.activePlayers); // snapshot the new level's starting stacks
+      _recorder.beginLevel(
+        state.activePlayers,
+      ); // snapshot the new level's starting stacks
     }
   }
 
   /// Builds and stores the recap for the level [levelJustFinished] just closed.
   void _buildRecap(int levelJustFinished, int bigBlind) {
     if (!_chronicling) return;
-    final currentChips = {
-      for (final p in state.activePlayers) p.id: p.chips,
-    };
+    final currentChips = {for (final p in state.activePlayers) p.id: p.chips};
     final finishPlaces = <String, int>{};
     final prizes = <String, int>{};
     for (final p in state.players.values) {
@@ -826,27 +854,34 @@ class TournamentController {
     final here = humanId == null
         ? null
         : state.tables
-            .where((t) => t.playerIds.contains(humanId))
-            .firstOrNull
-            ?.playerIds
-            .toSet();
+              .where((t) => t.playerIds.contains(humanId))
+              .firstOrNull
+              ?.playerIds
+              .toSet();
     final shown = here == null
         ? nonZero
         : {
             for (final e in nonZero.entries)
               if (here.contains(e.key)) e.key: e.value,
           };
-    lastColorUp =
-        ColorUpEvent(oldUnit: oldUnit, newUnit: newUnit, deltas: shown);
+    lastColorUp = ColorUpEvent(
+      oldUnit: oldUnit,
+      newUnit: newUnit,
+      deltas: shown,
+    );
   }
 
   // ---- Live play (M5): the human plays their table; others sim between hands --
 
   /// Begins interactive play. The human's table runs live (pausing on their
   /// turn); every other table simulates one hand between the human's hands.
-  Future<void> startLive({Duration botDelay = const Duration(milliseconds: 300)}) {
+  Future<void> startLive({
+    Duration botDelay = const Duration(milliseconds: 300),
+  }) {
     _botDelay = botDelay;
-    _recorder.beginLevel(state.activePlayers); // snapshot level 1's starting stacks
+    _recorder.beginLevel(
+      state.activePlayers,
+    ); // snapshot level 1's starting stacks
     _publishTournament();
     return _beginHumanHand();
   }
@@ -889,8 +924,10 @@ class TournamentController {
     }
     final tableId = _humanTableId;
     if (tableId == null) return;
-    final table =
-        state.tables.firstWhere((t) => t.id == tableId, orElse: () => state.tables.first);
+    final table = state.tables.firstWhere(
+      (t) => t.id == tableId,
+      orElse: () => state.tables.first,
+    );
     final level = state.currentLevel;
     final enginePlayers = [for (final pid in table.playerIds) _synced(pid)];
     _liveGame = PokerGame(
@@ -899,7 +936,9 @@ class TournamentController {
       bigBlind: level.bigBlind,
       ante: level.ante,
       chipUnit: _chipUnitFor(level),
-      deck: Deck(random: Random(seed * 131071 + tableId * 8191 + ++_handCounter)),
+      deck: Deck(
+        random: Random(seed * 131071 + tableId * 8191 + ++_handCounter),
+      ),
     )..buttonIndex = (_button[tableId] ?? 0) % enginePlayers.length;
     _preChipsLive = {for (final p in enginePlayers) p.id: p.stack};
     _facedHuman.addAll(enginePlayers.map((p) => p.id));
@@ -988,26 +1027,28 @@ class TournamentController {
           break;
         }
       }
-      players.add(EvalHandPlayer(
-        id: live.id,
-        name: live.name,
-        modelId: profile?.id ?? (live.id == humanId ? 'human' : 'unknown'),
-        modelLabel: profile?.name ?? live.name,
-        position: positionLabel(offset, n),
-        seatsFromButton: offset,
-        holeCards: [for (final c in live.hole) c.code],
-        startingStack: starting[live.id] ?? live.stack,
-        finalStack: live.stack,
-        folded: live.hasFolded,
-        foldStreet: foldStreet,
-        madeHand: game.board.length >= 3 && live.hole.length == 2
-            ? HandEvaluator.evaluate([...live.hole, ...game.board]).rank.label
-            : null,
-        skill: profile?.skill,
-        vpipTarget: profile?.strategicBaseline.vpipTarget,
-        pfrTarget: profile?.strategicBaseline.pfrTarget,
-        threeBetTarget: profile?.strategicBaseline.threeBetFrequency,
-      ));
+      players.add(
+        EvalHandPlayer(
+          id: live.id,
+          name: live.name,
+          modelId: profile?.id ?? (live.id == humanId ? 'human' : 'unknown'),
+          modelLabel: profile?.name ?? live.name,
+          position: positionLabel(offset, n),
+          seatsFromButton: offset,
+          holeCards: [for (final c in live.hole) c.code],
+          startingStack: starting[live.id] ?? live.stack,
+          finalStack: live.stack,
+          folded: live.hasFolded,
+          foldStreet: foldStreet,
+          madeHand: game.board.length >= 3 && live.hole.length == 2
+              ? HandEvaluator.evaluate([...live.hole, ...game.board]).rank.label
+              : null,
+          skill: profile?.skill,
+          vpipTarget: profile?.strategicBaseline.vpipTarget,
+          pfrTarget: profile?.strategicBaseline.pfrTarget,
+          threeBetTarget: profile?.strategicBaseline.threeBetFrequency,
+        ),
+      );
     }
     return EvalHand(
       handNumber: _liveHandNumber,
@@ -1067,24 +1108,26 @@ class TournamentController {
       final best = r.actions[r.recommendedIndex.clamp(0, r.actions.length - 1)];
       final chosen = _matchCoachAction(r.actions, action) ?? best;
       final bb = game.bigBlind <= 0 ? 1 : game.bigBlind;
-      _liveDecisions.add(EvalDecision(
-        playerId: p.id,
-        street: game.round.name,
-        actualType: action.type.name,
-        actualAmount: action.amount,
-        potBb: game.pot / bb,
-        toCallBb: game.callAmount(p) / bb,
-        spr: r.spr,
-        equity: r.equity,
-        potOdds: r.potOdds,
-        chosenLabel: chosen.label,
-        // HandCoach returns EV in **chips**. EvalDecision is documented in big
-        // blinds, and at tournament stacks the difference is not cosmetic: a
-        // session came back reporting 352,111bb of EV given up.
-        chosenEv: chosen.ev / bb,
-        bestLabel: best.label,
-        bestEv: best.ev / bb,
-      ));
+      _liveDecisions.add(
+        EvalDecision(
+          playerId: p.id,
+          street: game.round.name,
+          actualType: action.type.name,
+          actualAmount: action.amount,
+          potBb: game.pot / bb,
+          toCallBb: game.callAmount(p) / bb,
+          spr: r.spr,
+          equity: r.equity,
+          potOdds: r.potOdds,
+          chosenLabel: chosen.label,
+          // HandCoach returns EV in **chips**. EvalDecision is documented in big
+          // blinds, and at tournament stacks the difference is not cosmetic: a
+          // session came back reporting 352,111bb of EV given up.
+          chosenEv: chosen.ev / bb,
+          bestLabel: best.label,
+          bestEv: best.ev / bb,
+        ),
+      );
     } catch (_) {
       // Coaching telemetry must never cost the player a hand.
     }
@@ -1103,9 +1146,11 @@ class TournamentController {
       case ActionType.allIn:
         final sized = options.where((o) => o.toAmount != null).toList();
         if (sized.isEmpty) return null;
-        sized.sort((a, b) => (a.toAmount! - action.amount)
-            .abs()
-            .compareTo((b.toAmount! - action.amount).abs()));
+        sized.sort(
+          (a, b) => (a.toAmount! - action.amount).abs().compareTo(
+            (b.toAmount! - action.amount).abs(),
+          ),
+        );
         return sized.first;
     }
   }
@@ -1116,13 +1161,15 @@ class TournamentController {
     final street = game.round;
     game.applyAction(action);
     if (statsService != null || onEvalHandRecorded != null) {
-      _liveActions.add(ActionRecord(
-        playerId: actorId,
-        street: street,
-        type: action.type,
-        amount: action.amount,
-        potAfter: game.pot,
-      ));
+      _liveActions.add(
+        ActionRecord(
+          playerId: actorId,
+          street: street,
+          type: action.type,
+          amount: action.amount,
+          potAfter: game.pot,
+        ),
+      );
     }
   }
 
@@ -1173,8 +1220,10 @@ class TournamentController {
     );
     // Drop busts from the human's table seats locally (avoids the O(tables) scan).
     if (busts.isNotEmpty) {
-      final ht = state.tables
-          .firstWhere((t) => t.id == humanTableId, orElse: () => state.tables.first);
+      final ht = state.tables.firstWhere(
+        (t) => t.id == humanTableId,
+        orElse: () => state.tables.first,
+      );
       ht.playerIds.removeWhere(busts.containsKey);
     }
     _recordBusts(busts, removeFromTables: false);
@@ -1191,7 +1240,8 @@ class TournamentController {
     final finished = await _simulateBackgroundTables(humanTableId);
     if (finished) return;
     _noteTableBreak(
-        seatManager.rebalance(state, tableSize, protect: _featureTables()));
+      seatManager.rebalance(state, tableSize, protect: _featureTables()),
+    );
     _tickLevel();
     _publishTournament();
     await Future<void>.delayed(_botDelay);
@@ -1237,10 +1287,10 @@ class TournamentController {
   /// The smallest chip denomination still needed at [level] — the granularity
   /// every bet at that level must respect.
   int _chipUnitFor(BlindLevel level) => chips.smallestChip(
-        smallBlind: level.smallBlind,
-        bigBlind: level.bigBlind,
-        ante: level.ante,
-      );
+    smallBlind: level.smallBlind,
+    bigBlind: level.bigBlind,
+    ante: level.ante,
+  );
 
   /// The human is out (busted or railing): resolve the rest with real hands so
   /// there's a proper champion and full standings. Bounded — a deep 8,000-runner
@@ -1257,7 +1307,8 @@ class TournamentController {
     const resolveBelow = 72;
     if (state.playersRemaining <= resolveBelow) {
       final budget = _handCounter + 40000;
-      while (state.status != TournamentStatus.finished && _handCounter < budget) {
+      while (state.status != TournamentStatus.finished &&
+          _handCounter < budget) {
         step();
         await Future<void>.delayed(Duration.zero);
         if (_tourCtrl.isClosed) return;
@@ -1275,10 +1326,9 @@ class TournamentController {
     final active = state.activePlayers.toList()
       ..sort((a, b) => a.chips.compareTo(b.chips)); // worst (shortest) first
     if (active.length > 1) {
-      state.recordBustouts(
-        [for (final p in active.take(active.length - 1)) p.id],
-        removeFromTables: false,
-      );
+      state.recordBustouts([
+        for (final p in active.take(active.length - 1)) p.id,
+      ], removeFromTables: false);
     }
     state.declareChampion();
   }
@@ -1301,13 +1351,13 @@ class TournamentController {
   /// Tables holding two or more recognisable players. A tournament breaks
   /// somebody else's table before it breaks the one with the cameras on it.
   Set<int> _featureTables() => {
-        for (final t in state.tables)
-          if (t.playerIds
-                  .where((id) => _profileBySeat[id]?.generated == false)
-                  .length >=
-              2)
-            t.id,
-      };
+    for (final t in state.tables)
+      if (t.playerIds
+              .where((id) => _profileBySeat[id]?.generated == false)
+              .length >=
+          2)
+        t.id,
+  };
 
   /// The named personalities dealt into [game] — the ones a viewer would
   /// recognise, as opposed to the anonymous profiles that fill out a field.
@@ -1315,10 +1365,9 @@ class TournamentController {
   /// `FieldBuilder` marks auto-filled seats `generated`, so the flag is already
   /// there; nothing had ever asked it a question.
   List<String> _notablesAt(PokerGame game) => [
-        for (final p in game.players)
-          if (_profileBySeat[p.id]?.generated == false)
-            _profileBySeat[p.id]!.name,
-      ];
+    for (final p in game.players)
+      if (_profileBySeat[p.id]?.generated == false) _profileBySeat[p.id]!.name,
+  ];
 
   /// A table that has just broken, for the next publish. One-shot.
   TableBreakDisplay? _lastTableBreak;
@@ -1374,11 +1423,16 @@ class TournamentController {
 
   void _publishTournament() {
     if (humanId == null || _tourCtrl.isClosed) return;
-    _tourCtrl.add(TournamentSnapshot.of(state, humanId!,
+    _tourCtrl.add(
+      TournamentSnapshot.of(
+        state,
+        humanId!,
         chipSet: chips,
         colorUp: lastColorUp,
         recap: lastRecap,
-        tableBreak: _lastTableBreak));
+        tableBreak: _lastTableBreak,
+      ),
+    );
     lastColorUp = null; // one-shot: only the tick it happened carries it
     lastRecap = null;
     _lastTableBreak = null;
@@ -1391,8 +1445,10 @@ class TournamentController {
     final active = state.activePlayers.toList()
       ..sort((a, b) => b.chips.compareTo(a.chips));
     final busted = state.players.values.where((p) => !p.isActive).toList()
-      ..sort((a, b) =>
-          (a.finishPlace ?? 1 << 30).compareTo(b.finishPlace ?? 1 << 30));
+      ..sort(
+        (a, b) =>
+            (a.finishPlace ?? 1 << 30).compareTo(b.finishPlace ?? 1 << 30),
+      );
     StandingKind kindOf(TournamentPlayer p) {
       if (p.isHuman) return StandingKind.human;
       final prof = _profileBySeat[p.id];
@@ -1407,28 +1463,32 @@ class TournamentController {
     final rows = <StandingRow>[];
     var place = 1;
     for (final p in active) {
-      rows.add(StandingRow(
-        place: place++,
-        name: p.name,
-        isHuman: p.isHuman,
-        chips: p.chips,
-        busted: false,
-        prize: 0,
-        kind: kindOf(p),
-        generated: generatedOf(p),
-      ));
+      rows.add(
+        StandingRow(
+          place: place++,
+          name: p.name,
+          isHuman: p.isHuman,
+          chips: p.chips,
+          busted: false,
+          prize: 0,
+          kind: kindOf(p),
+          generated: generatedOf(p),
+        ),
+      );
     }
     for (final p in busted) {
-      rows.add(StandingRow(
-        place: p.finishPlace ?? place++,
-        name: p.name,
-        isHuman: p.isHuman,
-        chips: 0,
-        busted: true,
-        prize: p.prizeWon,
-        kind: kindOf(p),
-        generated: generatedOf(p),
-      ));
+      rows.add(
+        StandingRow(
+          place: p.finishPlace ?? place++,
+          name: p.name,
+          isHuman: p.isHuman,
+          chips: 0,
+          busted: true,
+          prize: p.prizeWon,
+          kind: kindOf(p),
+          generated: generatedOf(p),
+        ),
+      );
     }
     return rows;
   }
