@@ -170,10 +170,36 @@ per-policy and drifted:
   *postflop* commitment concept that falls as the pot grows. Reading depth off
   the *remaining* stack is the bug to watch for: it makes deep-stack discipline
   fade out exactly as a pot bloats.
-- **SPR-targeted sizing** — bets are not a blind pot fraction. A hand picks the
-  SPR it wants to face when the money goes in and solves for the per-street size.
-  Targets are *proportional* to the current SPR, since an absolute target demands
-  an enormous bet when deep, which is backwards.
+- **SPR-targeted sizing** — *postflop* bets are not a blind pot fraction. A hand
+  picks the SPR it wants to face when the money goes in and solves for the
+  per-street size. Targets are *proportional* to the current SPR, since an
+  absolute target demands an enormous bet when deep, which is backwards.
+- **`OpenSizing` (`open_sizing.dart`)** — the preflop counterpart, and it had no
+  model at all until it got one: every preflop raise was `minRaiseTo + 0.5·pot`,
+  which preflop is the **constant 2.75 BB** at every depth in every format. Open
+  size now comes from stack depth (deeper ⇒ larger, interpolated in *log* depth)
+  and dead money, plus a big blind per limper.
+  - **The ante term has the opposite sign to the one in `OpenRanges`.** More
+    dead money widens the *range* and shrinks the *size*. Getting this backwards
+    is what made the bots open *bigger* in tournaments (3.25 BB) than in cash
+    (2.75 BB), since the big-blind ante is the only large preflop pot lever.
+  - **No cash/tournament flag, deliberately** — the formats differ because
+    tournaments are shallow with antes and cash is deep without, so modelling
+    the physics makes the difference fall out. The known hole was a *deep*
+    tournament (300 BB, no ante — nothing here marks Main Event level 1 as a
+    tournament) — closed by `IcmAdjustedDecider`'s survival-pressure damping
+    below, not by shading these anchors further.
+- **All sizing arithmetic is in `engine/bet_sizing.dart`** (`potRaiseTo` /
+  `potBetTo` / `snapRaiseTo`). It was six identical copy-pasted closures across
+  five policies, which is why bet sizing was so hard to find and change: the
+  boring question buried the interesting one six times over.
+- **3-bet sizing is position-aware** (`ProfilePolicy.threeBetVsOpener`, via
+  `OpenRanges.actsAfterPostflop`): ~3x the open in position, ~4x out of it,
+  since acting last for the rest of the hand is what lets a smaller 3-bet get
+  away with it. The flat `0.6` pot fraction it replaced measured out to only
+  ~2.57x regardless of seat — below even the in-position number. Deliberately
+  *not* applied to `AmateurPolicy`: sizing the same 3-bet regardless of
+  position is itself a believable recreational leak, not a gap to close.
 - **`OpenRanges` (`open_ranges.dart`)** — open-raising frequency by seat and
   dead money, as **additive percentage points, not a multiplier**. Anchored to
   real 9/10-handed data: ~13% under the gun rising to ~42% on the button, which

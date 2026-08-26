@@ -3,12 +3,13 @@ import 'dart:math';
 import 'package:monte/core/domain/ai/hand_range.dart';
 import 'package:monte/core/domain/ai/player_profile.dart';
 import 'package:monte/core/domain/ai/mental_state.dart';
+import 'package:monte/core/domain/ai/open_sizing.dart';
 import 'package:monte/core/domain/ai/open_ranges.dart';
 import 'package:monte/core/domain/ai/postflop_equity.dart';
 import 'package:monte/core/domain/ai/stack_context.dart';
 import 'package:monte/core/domain/ai/preflop_ranges.dart';
 import 'package:monte/core/domain/engine/actions.dart';
-import 'package:monte/core/domain/engine/bet_snap.dart';
+import 'package:monte/core/domain/engine/bet_sizing.dart';
 import 'package:monte/core/domain/engine/decision_policy.dart';
 import 'package:monte/core/domain/engine/game.dart';
 import 'package:monte/core/domain/engine/hand_evaluator.dart';
@@ -135,13 +136,18 @@ class AmateurPolicy implements DecisionPolicy {
     final raises = game.raiseCountThisRound;
     final canRaise = p.stack > toCall;
 
-    GameAction raiseBy(double potFraction) {
-      final raw = game.minRaiseTo(p) + (game.pot * potFraction).round();
-      final raiseTo =
-          snapBet(raw, smallBlind: game.smallBlind, bigBlind: game.bigBlind)
-              .clamp(game.minRaiseTo(p), game.maxRaiseTo(p));
-      return GameAction.raise(raiseTo);
-    }
+    // Personality touches size here too — the same clamp `ProfilePolicy` and
+    // `ProfilePostflopPolicy` already use — so a loose-aggressive rec's raises
+    // look different from a nit's, not just how often they come.
+    final sizeScale = profile.behavioralModifiers.riskPremiumCoefficient.clamp(0.6, 1.6);
+
+    // Escalated pots stay on a pot fraction; a first-in open is sized from
+    // stack depth and dead money. See [OpenSizing].
+    GameAction raiseBy(double potFraction) =>
+        GameAction.raise(potRaiseTo(game, p, potFraction * sizeScale));
+    GameAction openRaise() => GameAction.raise(OpenSizing.raiseToFor(
+        game, p,
+        sizeScale: sizeScale, random: _random));
 
     // Deep-stack discipline (dormant at ≤100 BB): even a loose amateur doesn't
     // ship hundreds of BB in preflop — the deeper the stack, the tighter the
@@ -238,12 +244,12 @@ class AmateurPolicy implements DecisionPolicy {
     }
 
     if (toCall == 0) {
-      if (s >= pfrCut && p.stack > bb) return raiseBy(0.5);
+      if (s >= pfrCut && p.stack > bb) return openRaise();
       return const GameAction.check();
     }
     // First in / over limpers: raise the PFR range; the rest of the VPIP range
     // limps along (the passive gap), everything else folds.
-    if (s >= pfrCut && canRaise) return raiseBy(0.5);
+    if (s >= pfrCut && canRaise) return openRaise();
     if (s >= vpipCut) return const GameAction.call();
     return const GameAction.fold();
   }
@@ -303,20 +309,11 @@ class AmateurPolicy implements DecisionPolicy {
     final isDraw = eq >= 0.32 && eq <= 0.55;
     final noisy = (eq + _gaussian() * 0.26 * _k).clamp(0.0, 1.0);
 
-    GameAction betBy(double fraction) {
-      final raw = p.currentBet + (game.pot * fraction).round();
-      final to = snapBet(raw, smallBlind: game.smallBlind, bigBlind: bb)
-          .clamp(p.currentBet + bb, p.currentBet + p.stack);
-      return GameAction.bet(to);
-    }
+    GameAction betBy(double fraction) =>
+        GameAction.bet(potBetTo(game, p, fraction));
 
-    GameAction raiseBy(double fraction) {
-      final raw = game.minRaiseTo(p) + (game.pot * fraction).round();
-      final to =
-          snapBet(raw, smallBlind: game.smallBlind, bigBlind: game.bigBlind)
-              .clamp(game.minRaiseTo(p), game.maxRaiseTo(p));
-      return GameAction.raise(to);
-    }
+    GameAction raiseBy(double fraction) =>
+        GameAction.raise(potRaiseTo(game, p, fraction));
 
     // Occasional plausible blunder (bounded), scaled purely by incompetence.
     // Kept believable: a small stab or spew-fold, never a big call-off with air.

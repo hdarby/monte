@@ -4,7 +4,7 @@ import 'package:monte/core/domain/ai/hand_range.dart';
 import 'package:monte/core/domain/ai/personality.dart';
 import 'package:monte/core/domain/ai/postflop_equity.dart';
 import 'package:monte/core/domain/engine/actions.dart';
-import 'package:monte/core/domain/engine/bet_snap.dart';
+import 'package:monte/core/domain/engine/bet_sizing.dart';
 import 'package:monte/core/domain/engine/decision_policy.dart';
 import 'package:monte/core/domain/engine/game.dart';
 import 'package:monte/core/domain/engine/hand_strength.dart';
@@ -56,12 +56,11 @@ class PersonalityPolicy implements DecisionPolicy {
     final risk = profile.riskTolerance;
     final canRaise = p.stack > toCall;
 
-    GameAction openRaise() {
-      final raw = game.minRaiseTo(p) + (game.pot * (0.4 + 0.5 * aggr)).round();
-      final to = snapBet(raw, smallBlind: game.smallBlind, bigBlind: game.bigBlind)
-          .clamp(game.minRaiseTo(p), game.maxRaiseTo(p));
-      return GameAction.raise(to);
-    }
+    // Personality sizes its open off the aggression axis rather than from
+    // [OpenSizing]: that is the whole point of this brain, and the axes are
+    // calibrated against these numbers. It shares the chip arithmetic only.
+    GameAction openRaise() =>
+        GameAction.raise(potRaiseTo(game, p, 0.4 + 0.5 * aggr));
 
     // How strong a hand this style needs to play (tighter -> narrower opens;
     // risk appetite widens it a touch).
@@ -118,12 +117,8 @@ class PersonalityPolicy implements DecisionPolicy {
     final risk = profile.riskTolerance;
     final canRaise = p.stack > toCall;
 
-    GameAction raiseBy(double fraction) {
-      final raw = game.minRaiseTo(p) + (game.pot * fraction).round();
-      final to = snapBet(raw, smallBlind: game.smallBlind, bigBlind: game.bigBlind)
-          .clamp(game.minRaiseTo(p), game.maxRaiseTo(p));
-      return GameAction.raise(to);
-    }
+    GameAction raiseBy(double fraction) =>
+        GameAction.raise(potRaiseTo(game, p, fraction));
 
     // No bet to face: check, or bet for value (threshold falls with aggression)
     // or as a bluff (more likely with weaker hands and a higher bluff axis).
@@ -131,10 +126,7 @@ class PersonalityPolicy implements DecisionPolicy {
       final wantsValue = s > 0.72 - 0.30 * aggr;
       final wantsBluff = _random.nextDouble() < bluff * (1 - s) * 0.6;
       if ((wantsValue || wantsBluff) && p.stack > bb) {
-        final raw = p.currentBet + (game.pot * (0.4 + 0.6 * aggr)).round();
-        final to = snapBet(raw, smallBlind: game.smallBlind, bigBlind: bb)
-            .clamp(p.currentBet + bb, p.currentBet + p.stack);
-        return GameAction.bet(to);
+        return GameAction.bet(potBetTo(game, p, 0.4 + 0.6 * aggr));
       }
       return const GameAction.check();
     }
@@ -202,19 +194,11 @@ class PersonalityPolicy implements DecisionPolicy {
     // A semibluffing hand: not yet good, but with real equity to improve.
     final isDraw = eq >= 0.32 && eq <= 0.55;
 
-    GameAction betBy(double fraction) {
-      final raw = p.currentBet + (game.pot * fraction).round();
-      final to = snapBet(raw, smallBlind: game.smallBlind, bigBlind: bb)
-          .clamp(p.currentBet + bb, p.currentBet + p.stack);
-      return GameAction.bet(to);
-    }
+    GameAction betBy(double fraction) =>
+        GameAction.bet(potBetTo(game, p, fraction));
 
-    GameAction raiseBy(double fraction) {
-      final raw = game.minRaiseTo(p) + (game.pot * fraction).round();
-      final to = snapBet(raw, smallBlind: game.smallBlind, bigBlind: game.bigBlind)
-          .clamp(game.minRaiseTo(p), game.maxRaiseTo(p));
-      return GameAction.raise(to);
-    }
+    GameAction raiseBy(double fraction) =>
+        GameAction.raise(potRaiseTo(game, p, fraction));
 
     // No bet to face: value-bet when ahead of the range (aggression bets a bit
     // thinner), or (semi)bluff — weak hands and draws, gated by bluffFrequency.

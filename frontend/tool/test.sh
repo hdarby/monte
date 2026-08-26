@@ -20,6 +20,8 @@ NEW_TESTS=(
   # Poker judgement: stack depth / SPR, opening ranges, hand selection.
   test/ai/stack_context_test.dart
   test/ai/open_ranges_test.dart
+  test/ai/open_sizing_test.dart
+  test/ai/three_bet_sizing_test.dart
   test/ai/preflop_playability_test.dart
   test/ai/hand_range_test.dart
   test/ai/amateur_position_test.dart

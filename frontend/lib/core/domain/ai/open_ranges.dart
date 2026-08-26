@@ -110,6 +110,27 @@ class OpenRanges {
   /// no ante: the two blinds.
   static const _noAnteDeadMoney = 1.5;
 
+  /// Whether [a] acts after [b] on every postflop street.
+  ///
+  /// Postflop action starts left of the button (the small blind), so seat rank
+  /// counted from there — not raw seat index — is what determines who is "in
+  /// position". Used to size a preflop 3-bet: in position you can end the hand
+  /// or play a smaller pot since you act last for the rest of the hand; out of
+  /// position you cannot control the pot afterwards, so real players make it
+  /// bigger to compensate.
+  static bool actsAfterPostflop(PokerGame game, Player a, Player b) {
+    final n = game.players.length;
+    if (n < 2) return false;
+    final sbIndex = (game.buttonIndex + 1) % n;
+    double rankOf(Player x) {
+      final idx = game.players.indexOf(x);
+      if (idx < 0) return -1;
+      return ((idx - sbIndex + n) % n).toDouble();
+    }
+
+    return rankOf(a) > rankOf(b);
+  }
+
   /// Live opponents who still have to act behind [p] this round.
   ///
   /// Only meaningful for an unopened pot, where everyone before us has folded —

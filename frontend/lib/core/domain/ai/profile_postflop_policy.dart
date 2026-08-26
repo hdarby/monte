@@ -10,7 +10,7 @@ import 'package:monte/core/domain/ai/stack_context.dart';
 import 'package:monte/core/domain/ai/trigger_context.dart';
 import 'package:monte/core/domain/ai/trigger_observer.dart';
 import 'package:monte/core/domain/engine/actions.dart';
-import 'package:monte/core/domain/engine/bet_snap.dart';
+import 'package:monte/core/domain/engine/bet_sizing.dart';
 import 'package:monte/core/domain/engine/card.dart';
 import 'package:monte/core/domain/engine/hand_evaluator.dart';
 import 'package:monte/core/domain/engine/decision_policy.dart';
@@ -227,19 +227,11 @@ class ProfilePostflopPolicy implements DecisionPolicy {
         game.round == BettingRound.turn || game.round == BettingRound.river;
     final geoBoost = (geo > 0 && laterStreet && eq > 0.80) ? geo : 0.0;
 
-    GameAction betBy(double fraction) {
-      final raw = p.currentBet + (game.pot * fraction).round();
-      final to = snapBet(raw, smallBlind: game.smallBlind, bigBlind: bb)
-          .clamp(p.currentBet + bb, p.currentBet + p.stack);
-      return GameAction.bet(to);
-    }
+    GameAction betBy(double fraction) =>
+        GameAction.bet(potBetTo(game, p, fraction));
 
-    GameAction raiseBy(double fraction) {
-      final raw = game.minRaiseTo(p) + (game.pot * fraction).round();
-      final to = snapBet(raw, smallBlind: game.smallBlind, bigBlind: game.bigBlind)
-          .clamp(game.minRaiseTo(p), game.maxRaiseTo(p));
-      return GameAction.raise(to);
-    }
+    GameAction raiseBy(double fraction) =>
+        GameAction.raise(potRaiseTo(game, p, fraction));
 
     // No bet to face: value-bet (exploit bets thinner) or bluff (exploit and
     // draws bluff more; GTO still bluffs a small balanced amount).

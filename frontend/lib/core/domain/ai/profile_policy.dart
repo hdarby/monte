@@ -5,11 +5,12 @@ import 'package:monte/core/domain/ai/player_profile.dart';
 import 'package:monte/core/domain/ai/player_stats.dart';
 import 'package:monte/core/domain/ai/mental_state.dart';
 import 'package:monte/core/domain/ai/open_ranges.dart';
+import 'package:monte/core/domain/ai/open_sizing.dart';
 import 'package:monte/core/domain/ai/trigger_observer.dart';
 import 'package:monte/core/domain/ai/preflop_ranges.dart';
 import 'package:monte/core/domain/ai/stack_context.dart';
 import 'package:monte/core/domain/engine/actions.dart';
-import 'package:monte/core/domain/engine/bet_snap.dart';
+import 'package:monte/core/domain/engine/bet_sizing.dart';
 import 'package:monte/core/domain/engine/bot.dart';
 import 'package:monte/core/domain/engine/decision_policy.dart';
 import 'package:monte/core/domain/engine/game.dart';
@@ -79,6 +80,11 @@ class ProfilePolicy implements DecisionPolicy {
     final bb = game.bigBlind;
     final raises = game.raiseCountThisRound;
     final canRaise = p.stack > toCall;
+
+    // The same risk-premium clamp `ProfilePostflopPolicy._sizeFraction` already
+    // applies postflop, extended to preflop opens/3-bets: an aggressive
+    // personality genuinely raises bigger here too, not just after the flop.
+    final sizeScale = profile.behavioralModifiers.riskPremiumCoefficient.clamp(0.6, 1.6);
 
     // Position and dead money, for an unopened pot. See [OpenRanges]: opening
     // frequency is driven by how many players are still to act, and by how much
@@ -183,13 +189,27 @@ class ProfilePolicy implements DecisionPolicy {
       }
     }
 
-    GameAction raiseBy(double potFraction) {
-      final raw = game.minRaiseTo(p) + (game.pot * potFraction).round();
-      final raiseTo =
-          snapBet(raw, smallBlind: game.smallBlind, bigBlind: game.bigBlind)
-              .clamp(game.minRaiseTo(p), game.maxRaiseTo(p));
-      return GameAction.raise(raiseTo);
-    }
+    // Escalated pots (3-bet/4-bet) stay on a pot fraction: the pot already
+    // encodes the opener's size, so a fraction of it *is* a relative raise.
+    // `sizeScale` layers personality on top of that relative size.
+    GameAction raiseBy(double potFraction) =>
+        GameAction.raise(potRaiseTo(game, p, potFraction * sizeScale));
+
+    // A 3-bet's size is not just "the pot" — real players size it off whether
+    // they'll have position for the rest of the hand. In position you can
+    // control the pot postflop, so a smaller 3-bet (~3x the open) is enough; out
+    // of position you can't, so it goes up (~4x) to end the hand more often or
+    // charge the caller who does come along. `0.6` (~2.6x) was flat across both
+    // and landed under even the in-position number.
+    GameAction threeBetVsOpener(Player opener) => raiseBy(
+        OpenRanges.actsAfterPostflop(game, p, opener) ? 0.9 : 1.6);
+
+    // A first-in open has no such anchor — the pot is just the blinds — which is
+    // why a pot fraction degenerated into the constant 2.75 BB. Size it from
+    // stack depth and dead money instead. See [OpenSizing].
+    GameAction openRaise() => GameAction.raise(OpenSizing.raiseToFor(
+        game, p,
+        sizeScale: sizeScale, random: _random));
 
     // Deep-stack discipline: the deeper the effective stack, the tighter the
     // range willing to put it in preflop. At ~100 BB it's the baseline; by a few
@@ -217,7 +237,10 @@ class ProfilePolicy implements DecisionPolicy {
     // and every player still to act can squeeze. Flatting the full opening range
     // here was what pushed half of all flops multiway.
     if (raises == 1) {
-      if (s >= threeBetCut && canRaise) return raiseBy(0.6);
+      if (s >= threeBetCut && canRaise) {
+        final opener = _biggestBettor(game, p);
+        return opener == null ? raiseBy(0.9) : threeBetVsOpener(opener);
+      }
       // Tilt reaches the cold-call too — and this is the spot where a chaser's
       // character actually lives. First-in on the button it is raise or fold,
       // so a widened *entry* range has nowhere to express itself; facing a
@@ -236,7 +259,7 @@ class ProfilePolicy implements DecisionPolicy {
     // Unraised.
     if (toCall == 0) {
       // Big blind option: raise the PFR range, else take the free flop.
-      if (s >= pfrCut && p.stack > bb) return raiseBy(0.5);
+      if (s >= pfrCut && p.stack > bb) return openRaise();
       return const GameAction.check();
     }
     // Unraised, hero must call the big blind (so hero isn't the BB). Is anyone
@@ -271,7 +294,7 @@ class ProfilePolicy implements DecisionPolicy {
     // fold. *Over*-limping — flatting behind an existing limper — is fine, and is
     // where the VPIP≫PFR gap gets realised, so over-limp the rest of the VPIP
     // range only when a limper is already in.
-    if (s >= pfrCut && canRaise) return raiseBy(0.5);
+    if (s >= pfrCut && canRaise) return openRaise();
     // Over-limping is cheap, but piling into a family pot with a marginal hand
     // is still how stacks get lost — tighten as the limpers stack up.
     if (hasLimper && s >= _coldCallCut(game, p, vpipCut)) {
@@ -303,15 +326,21 @@ class ProfilePolicy implements DecisionPolicy {
     return cut.clamp(0.0, 1.0);
   }
 
-  /// The read on the opponent who has put the most chips in this round (the
-  /// preflop opener/raiser we'd be 3-betting), or null.
-  PlayerStats? _readOfBiggestBettor(PokerGame game, Player p) {
-    if (_reads == null) return null;
+  /// The opponent who has put the most chips in this round — the preflop
+  /// opener/raiser hero would be 3-betting — or null in an unopened pot.
+  Player? _biggestBettor(PokerGame game, Player p) {
     final opps =
         game.players.where((x) => x.inHand && !identical(x, p)).toList();
     if (opps.isEmpty) return null;
     opps.sort((a, b) => b.currentBet.compareTo(a.currentBet));
-    return _reads.forSeat(opps.first.id);
+    return opps.first;
+  }
+
+  /// The read on [_biggestBettor], or null.
+  PlayerStats? _readOfBiggestBettor(PokerGame game, Player p) {
+    if (_reads == null) return null;
+    final opener = _biggestBettor(game, p);
+    return opener == null ? null : _reads.forSeat(opener.id);
   }
 
   /// The read on the blind seat behind us most likely to fold to a steal — the

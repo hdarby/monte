@@ -59,7 +59,8 @@ can reuse it as the rules authority in phase 2.
 | `hand_strength.dart` | Two **different** preflop metrics, and the difference matters. `preflopOf` is heads-up all-in equity vs a random hand — right for push/fold and ICM shoves, and nothing else. `playabilityOf` adds suitedness, connectedness, pair value and a domination penalty, and is what every *hand-selection* path uses. Ranking selection by raw equity put K4o (top 45%) above 76s (top 68%) and filled opening ranges with disconnected offsuit junk. |
 | `board_texture.dart` | Reads the board against the six textures — **dry, wet, monochrome, dynamic, static, paired** — plus suitedness, connectedness, live draws, and whether the board favours the raiser or the caller. Not mutually exclusive: a board is usually several at once. |
 | `actions.dart` | `GameAction` / `ActionType` / `BettingRound`. |
-| `bet_snap.dart` | Rounding bets to legal chip denominations. |
+| `bet_snap.dart` | Rounding bets to legal, human-looking chip denominations. |
+| `bet_sizing.dart` | `potRaiseTo` / `potBetTo` / `snapRaiseTo` — the arithmetic turning a *decision about size* into a legal chip amount. Nothing here decides a size; it exists because this was six identical copy-pasted closures, which is why sizing used to be impossible to find. |
 | `player.dart` | `Player` — a seat's stack, hole cards, in-hand state. |
 | `decision_policy.dart` | **`DecisionPolicy`** — `decide(game, player) → GameAction`. The one interface every brain implements. |
 | `bot.dart` | The simple heuristic bot (the default brain). |
@@ -102,6 +103,15 @@ carried the same bug, so they live in one place now:
   commitment concept that **falls** as the pot grows. Also does SPR-targeted bet
   sizing — pick the SPR you want to face when the money goes in, solve for the
   per-street bet.
+- `open_sizing.dart` — **`OpenSizing`**: how *large* a first-in open-raise is,
+  the preflop counterpart to `StackContext.fractionToReachSpr`. Derived from
+  effective **stack depth** (deeper ⇒ larger, interpolated in log depth) and
+  **dead money** (antes ⇒ *smaller*), plus a big blind per limper. Deliberately
+  has **no cash/tournament flag**: the two formats differ because tournaments
+  are shallow with antes and cash is deep without, so modelling the physics
+  makes the format difference fall out. Note the ante term is the **opposite
+  sign** to the one in `open_ranges.dart` — more dead money widens the *range*
+  and shrinks the *size*.
 - `open_ranges.dart` — **`OpenRanges`**: how much wider a seat opens an unopened
   pot, driven by players left to act *preflop* (not postflop order — the small
   blind is second-to-last preflop) and by dead money, so big-blind antes widen
@@ -323,7 +333,9 @@ seat), captured at the same `_finalizeHand` seam via
 | add a condition a move can test | `core/domain/ai/trigger_context.dart` |
 | change which hands a bot plays | `core/domain/engine/hand_strength.dart` (`playabilityOf`) |
 | change opening ranges by seat, or ante/steal maths | `core/domain/ai/open_ranges.dart` |
-| change deep-stack or SPR behaviour, or bet sizing | `core/domain/ai/stack_context.dart` |
+| change **postflop** bet sizing, or deep-stack/SPR behaviour | `core/domain/ai/stack_context.dart` |
+| change how big a **preflop open-raise** is | `core/domain/ai/open_sizing.dart` |
+| change 3-bet / 4-bet sizing | the `raiseBy(...)` call sites in `core/domain/ai/profile_policy.dart` (still pot fractions) |
 | change how a villain's range is read | `core/domain/ai/hand_range.dart` |
 | change how players tilt | `core/domain/ai/mental_state.dart` |
 | change the chip graphic or its hover legend | `core/presentation/widgets/chip_stack_view.dart`, `chip_legend.dart` |
