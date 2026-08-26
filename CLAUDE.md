@@ -236,6 +236,47 @@ per-policy and drifted:
   pfr:vpip ratio (fewer hands, played harder), and `FieldBuilder` weights the pro
   pool by buy-in. A $10k field is both tougher players *and* better ones.
 
+- **`sizeScale` (personality) now reaches preflop.** `ProfilePostflopPolicy`
+  already scaled its bet-size fraction by `riskPremiumCoefficient.clamp(0.6,
+  1.6)` — postflop, an aggressive player genuinely bet bigger. `ProfilePolicy`/
+  `AmateurPolicy` now apply the same clamp to `OpenSizing` and the 3-bet
+  fraction. Before this, every profile opened and 3-bet identically at a given
+  depth: no signal to read, because there was no variance to produce one —
+  which is exactly what made preflop sizing feel exploitable. `OpenSizing` also
+  takes an optional `Random` for a small, zero-mean jitter, for the same reason
+  postflop already jitters: a perfectly deterministic open size is a tell.
+- **`IcmAdjustedDecider` survival-pressure size damping** closes `OpenSizing`'s
+  known deep-tournament hole. `TournamentController._ladderPressure` is
+  provably zero at 300 BB / level 1 of a large field (`zone` needs to be near
+  the money bubble; `vulnerability` needs `stackInBb < 40`) — both conditions
+  fail simultaneously at the exact spot the "tournaments bust too many players
+  early" complaint was about, so the *entire* ICM layer used to be inert there.
+  `_survivalPressure` adds a `0.18` baseline that fires on **every** tournament
+  hand regardless of ladder/bubble state — "this bust is permanent" is true on
+  hand one, not just near the money — then `_dampSize` shrinks a surviving
+  bet/raise toward the legal minimum proportionally. Proportional, not
+  absolute, so an aggressive player's bigger `sizeScale`-driven open still
+  comes out bigger than a nit's after damping — personality survives, the
+  whole table just plays smaller than the identical lineup would in cash.
+  Never touches `ActionType.allIn` (a jam is a deliberate full commitment
+  already gated by `stackOff`/`vs3betCall`) and is exactly 0 for
+  `TournamentContext.cash` (`playersLeft <= 0`), which is what makes cash stay
+  the "spicier" format without touching anything cash-specific.
+- **`icmDiscipline` splits the ICM *math* from ICM *instinct*.** Push/fold
+  charts, bubble/ladder folding, and `Bubble_Predator` are a skill — amateurs
+  are deliberately excluded (`TournamentController` passes
+  `icmDiscipline: !isAmateurProfile(profile)`), same as before. But "I probably
+  shouldn't call raises with any two cards as often when busting is permanent"
+  isn't ICM math, it's survival instinct, and even bad players have some —
+  survival-pressure size damping and the new garbage-call trim
+  (`_trimGarbageCall`: a small, capped *chance* to fold a genuinely weak call,
+  scaled by the same baseline pressure) apply to **every** wrapped seat
+  regardless of the flag. `TournamentController` now wraps every seat in
+  `IcmAdjustedDecider` rather than excluding amateurs from it outright — this
+  is what tempers amateur pot-bloat in tournaments without flattening them
+  into nits (the trim only touches calls well below any defensible continue,
+  and only probabilistically, so a station's character survives).
+
 ### Signature moves — where the *fidelity* lives
 
 Shared logic makes everyone play better and, unavoidably, more alike. Each

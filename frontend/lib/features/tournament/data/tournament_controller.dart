@@ -504,17 +504,24 @@ class TournamentController {
                   BotType.heuristic,
                   random: Random(seed * 1000 + i),
                 ));
-      // ICM discipline (short-stack push/fold + bubble caution) is a *skill*:
-      // only competent players (pros, or the default heuristic) get it. A
-      // recreational player keeps misplaying short stacks and the bubble, which
-      // is exactly where a pro should out-earn them.
+      // ICM discipline (short-stack push/fold + bubble/ladder folding caution)
+      // is a *skill*: only competent players (pros, or the default heuristic)
+      // get it. A recreational player keeps misplaying short stacks and the
+      // bubble, which is exactly where a pro should out-earn them.
+      //
+      // Survival-pressure size damping and the garbage-call trim are not that
+      // skill, though — every seat is wrapped so both apply universally
+      // (`IcmAdjustedDecider`'s `icmDiscipline` flag gates only the ICM-math
+      // pieces), which is what tempers amateur pot-bloat without erasing their
+      // looseness.
       final disciplined = profile == null || !isAmateurProfile(profile);
-      deciders[id] = (icmAware && disciplined)
+      deciders[id] = icmAware
           ? IcmAdjustedDecider(
               base,
               (g, p) => contextOf(state, p.stack, p.id),
               profile: profile,
               triggers: triggerLog,
+              icmDiscipline: disciplined,
               random: Random(seed * 977 + i),
             )
           : base;

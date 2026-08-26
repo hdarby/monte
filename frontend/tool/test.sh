@@ -33,10 +33,14 @@ NEW_TESTS=(
   # Calibration gates — slow, and the ones most likely to move.
   test/ai/postflop_discipline_test.dart
   test/ai/deep_stack_discipline_test.dart
-  # Tournament: saving, and which hand the recap picks.
+  # Tournament: saving, which hand the recap picks, and ICM/survival-pressure
+  # discipline (short-stack push/fold, bubble/ladder folding, size damping,
+  # the garbage-call trim).
   test/features/tournament/tournament_save_test.dart
   test/features/tournament/saved_tournaments_dialog_test.dart
   test/features/tournament/feature_hand_choice_test.dart
+  test/features/tournament/icm_bots_test.dart
+  test/features/tournament/tournament_survival_sizing_test.dart
   # Table UI.
   test/table/chip_legend_test.dart
   test/reads/clear_reads_test.dart

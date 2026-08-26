@@ -5,6 +5,7 @@ import 'package:monte/core/domain/ai/push_fold_chart.dart';
 import 'package:monte/core/domain/ai/trigger_observer.dart';
 import 'package:monte/core/domain/ai/tournament_context.dart';
 import 'package:monte/core/domain/engine/actions.dart';
+import 'package:monte/core/domain/engine/bet_sizing.dart';
 import 'package:monte/core/domain/engine/decision_policy.dart';
 import 'package:monte/core/domain/engine/game.dart';
 import 'package:monte/core/domain/engine/hand_strength.dart';
@@ -18,10 +19,29 @@ import 'package:monte/core/domain/engine/player.dart';
 /// 2. **Bubble discipline** — near the money (bubble factor above [_tightenAt]),
 ///    a big call that risks a large chunk of stack is demoted to a fold unless
 ///    the hand clears a bar that rises with the ICM pressure.
+/// 3. **Survival-pressure size damping** — every real tournament hand (not just
+///    near the bubble) shrinks bets/raises toward the legal minimum, because
+///    busting is permanent in a way a cash buy-in never is. See
+///    [_survivalPressure]: this is the piece that's active at 300 BB on hand
+///    one of a Main Event, where [ladderPressure]/[bubbleFactor] are both
+///    exactly zero and nothing else in this class does anything at all.
+/// 4. **A universal garbage-call trim** — a small, skill-*independent* chance
+///    to fold a genuinely weak call instead of making it, gated by
+///    [icmDiscipline] being irrelevant to it (see below).
+///
+/// [icmDiscipline] splits (1), (2) and the `Bubble_Predator` move from (3)/(4):
+/// misplaying the *ICM math* — push/fold charts, bubble folding discipline — is
+/// a skill gap a pro should have and a recreational player should not, so
+/// `TournamentController` passes `icmDiscipline: false` for amateur seats. But
+/// "I shouldn't call raises with any two cards as often when busting ends my
+/// tournament" isn't ICM math, it's survival instinct — even bad players have
+/// some of it — so (3) and (4) apply to every wrapped seat regardless of the
+/// flag.
 ///
 /// The [TournamentContext] is supplied per decision by the controller (which
-/// knows every table's stacks + the payouts). With the neutral cash context it's
-/// a pass-through, so the same decider works in cash games too.
+/// knows every table's stacks + the payouts). With the neutral cash context
+/// ([TournamentContext.cash]) every piece here is a no-op, so the same decider
+/// works in cash games too.
 class IcmAdjustedDecider implements DecisionPolicy {
   IcmAdjustedDecider(
     this._inner,
@@ -29,6 +49,7 @@ class IcmAdjustedDecider implements DecisionPolicy {
     this._chart = const PushFoldChart(),
     this.profile,
     this.triggers,
+    this.icmDiscipline = true,
     Random? random,
   }) : _random = random ?? Random();
 
@@ -41,6 +62,12 @@ class IcmAdjustedDecider implements DecisionPolicy {
   final PlayerProfile? profile;
   /// Records signature moves when they fire (see [TriggerObserver]).
   final TriggerObserver? triggers;
+
+  /// Whether this seat gets the ICM-*math* pieces: push/fold charts, bubble/
+  /// ladder folding discipline, and `Bubble_Predator`. `false` for amateur
+  /// seats — see the class doc. Survival-pressure size damping and the
+  /// garbage-call trim apply either way.
+  final bool icmDiscipline;
   final Random _random;
 
   static const double _pushFoldMax = 12;
@@ -49,17 +76,17 @@ class IcmAdjustedDecider implements DecisionPolicy {
   @override
   GameAction decide(PokerGame game, Player p) {
     final ctx = _contextFor(game, p);
-    if (game.board.isEmpty && ctx.stackInBb <= _pushFoldMax) {
+    if (icmDiscipline && game.board.isEmpty && ctx.stackInBb <= _pushFoldMax) {
       return _chart.decide(game, p, ctx);
     }
-    final action = _inner.decide(game, p);
+    var action = _inner.decide(game, p);
 
     // Bubble predator: the mirror image of bubble tightening. ICM makes
     // *everyone else* risk-averse near a pay jump, which makes their folding
     // range enormous -- so the player with this move attacks instead of
     // shrinking. Turns a fold or a check into a raise when the pot is unopened
     // and the opponents are the ones who cannot afford to call.
-    final predator = profile?.proficiencyOf('Bubble_Predator') ?? 0.0;
+    final predator = icmDiscipline ? profile?.proficiencyOf('Bubble_Predator') ?? 0.0 : 0.0;
     if (predator > 0 &&
         game.board.isEmpty &&
         ctx.bubbleFactor >= _tightenAt &&
@@ -74,12 +101,95 @@ class IcmAdjustedDecider implements DecisionPolicy {
       }
     }
 
-    if (ctx.bubbleFactor >= _tightenAt) return _bubbleTighten(game, p, action, ctx);
-    // Large-field bubble / in-the-money laddering, where exact ICM isn't run:
-    // a stack-scaled survival premium demotes marginal stack-offs so a short/mid
-    // stack doesn't bust when there's pay-jump value in simply surviving.
-    if (ctx.ladderPressure >= 0.15) return _ladderTighten(game, p, action, ctx);
-    return action;
+    if (icmDiscipline) {
+      if (ctx.bubbleFactor >= _tightenAt) {
+        action = _bubbleTighten(game, p, action, ctx);
+      } else if (ctx.ladderPressure >= 0.15) {
+        // Large-field bubble / in-the-money laddering, where exact ICM isn't
+        // run: a stack-scaled survival premium demotes marginal stack-offs so
+        // a short/mid stack doesn't bust when there's pay-jump value in simply
+        // surviving.
+        action = _ladderTighten(game, p, action, ctx);
+      }
+    }
+
+    action = _trimGarbageCall(game, p, action, ctx);
+    return _dampSize(game, p, action, _survivalPressure(ctx));
+  }
+
+  /// A continuous survival premium in `[0, 0.75]`, active on **every**
+  /// tournament hand — 0 only for [TournamentContext.cash] (`playersLeft <= 0`).
+  ///
+  /// The `0.18` baseline is deliberately not derived from [ladderPressure] or
+  /// [bubbleFactor]: both are exactly zero far from the money in a large field
+  /// (see `TournamentController._ladderPressure`), which is precisely the 300
+  /// BB / level-1 spot the baseline exists for. "This bust is permanent" is
+  /// true from hand one, not just near the bubble — [ladderPressure]/
+  /// [bubbleFactor] only sharpen the pressure further as the money approaches.
+  ///
+  /// A first-pass, reasoned constant rather than a measured one, in the same
+  /// spirit as `OpenRanges.tableFactor`'s "a first stab, deliberately" — the
+  /// tournament-vs-cash sizing test is what makes it checkable going forward.
+  double _survivalPressure(TournamentContext ctx) {
+    if (ctx.playersLeft <= 0) return 0; // the cash sentinel: no tournament
+    final pressure = 0.18 +
+        0.4 * ctx.ladderPressure +
+        0.15 * (ctx.bubbleFactor - 1).clamp(0.0, 2.0);
+    return pressure.clamp(0.0, 0.75);
+  }
+
+  /// Shrinks a surviving bet/raise toward the smallest legal size by
+  /// [pressure], leaving the action type and every other action untouched.
+  ///
+  /// Never touches [ActionType.allIn] — a jam is a deliberate full commitment
+  /// already gated by the inner policy's own stack-off thresholds, and must not
+  /// be silently resized into something smaller than the hand's owner decided.
+  GameAction _dampSize(
+      PokerGame game, Player p, GameAction action, double pressure) {
+    if (pressure <= 0) return action;
+    final int floor;
+    switch (action.type) {
+      case ActionType.bet:
+        floor = p.currentBet + game.bigBlind;
+      case ActionType.raise:
+        floor = game.minRaiseTo(p);
+      case ActionType.allIn:
+      case ActionType.call:
+      case ActionType.fold:
+      case ActionType.check:
+        return action;
+    }
+    if (action.amount <= floor) return action;
+    final to = (floor + (action.amount - floor) * (1 - pressure)).round();
+    return action.type == ActionType.bet
+        ? GameAction.bet(snapRaiseTo(game, p, to))
+        : GameAction.raise(snapRaiseTo(game, p, to));
+  }
+
+  /// A small, skill-*independent* chance to fold a genuinely weak call instead
+  /// of making it — see the class doc's point (4).
+  ///
+  /// Deliberately narrow: only calls (never the marginal-but-defensible ones
+  /// that make a station or a chaser who they are — [_weakBar] is well below
+  /// any hand a real player would call with a straight face), and only a
+  /// *chance* scaled by [_survivalPressure], so garbage calls still happen —
+  /// less relentlessly, not never. A hard cutoff here would be a nit-fest, not
+  /// a discipline fix.
+  static const _weakBar = 0.30;
+
+  GameAction _trimGarbageCall(
+      PokerGame game, Player p, GameAction action, TournamentContext ctx) {
+    if (action.type != ActionType.call) return action;
+    final pressure = _survivalPressure(ctx);
+    if (pressure <= 0) return action;
+    final toCall = game.callAmount(p);
+    if (toCall == 0) return action; // a free check, not a call worth trimming
+    final strength = game.board.isEmpty
+        ? HandStrength.preflop(p)
+        : HandStrength.estimate(game, p);
+    if (strength >= _weakBar) return action;
+    if (_random.nextDouble() >= 0.5 * pressure) return action;
+    return const GameAction.fold();
   }
 
   /// Refuses to commit a large chunk of a laddering stack without a real hand:

@@ -149,7 +149,10 @@ carried the same bug, so they live in one place now:
   their whole continuing range, which is what stops a bluff-catcher measuring
   huge equity against a pile of unpaired big cards and calling forever.
 - `tournament_context.dart`, `icm_adjusted_decider.dart` — ICM pressure applied
-  to a decision.
+  to a decision: short-stack push/fold, bubble/ladder folding discipline (both
+  gated by `icmDiscipline`, off for amateurs — a skill gap), plus
+  survival-pressure bet/raise size damping and a universal garbage-call trim
+  (neither gated — even bad players feel "busting is permanent" some).
 - `profile_calibrator.dart` — nudges a profile toward target stats.
 
 ### `core/domain/hand_history.dart`
