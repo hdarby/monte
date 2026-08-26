@@ -5,6 +5,13 @@ class AppTheme {
   static const felt = Color(0xFF35654D);
   static const feltDark = Color(0xFF234A38);
   static const feltEdge = Color(0xFF6B4423);
+
+  /// Final-table dressing — same seats, cards and chip colours, just a
+  /// distinctive red-felt/black-rail table so the moment reads as different
+  /// the instant the screen appears, not just via the HUD text above it.
+  static const finalTableFelt = Color(0xFF7A1620);
+  static const finalTableFeltDark = Color(0xFF3D0A10);
+  static const finalTableEdge = Color(0xFF0D0D0D);
   static const gold = Color(0xFFE6B655);
   static const chip = Color(0xFFE63946);
   static const surface = Color(0xFF1B2A22);

@@ -378,6 +378,7 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
             snapshot: table,
             isAllBots: false,
             humanName: widget.humanName,
+            isFinalTable: tour.atFinalTable,
             // The human's current table size drives the felt layout.
             playerCount: table.seats.length,
             sidePanel: StandingsPanel(rows: controller.standings()),

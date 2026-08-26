@@ -39,6 +39,7 @@ class TableScreen extends StatefulWidget {
     this.showOpponentRanges = false,
     this.readForSeat,
     this.humanName = 'You',
+    this.isFinalTable = false,
   });
 
   final TableSnapshot snapshot;
@@ -48,6 +49,10 @@ class TableScreen extends StatefulWidget {
   /// The human's display name, used where a read refers back to the hero (e.g.
   /// "⟨opponent⟩'s read of ⟨humanName⟩") instead of a bare "you".
   final String humanName;
+
+  /// Whether this is the tournament's final table — dresses the felt
+  /// distinctively (red felt, black rail) instead of the standard green.
+  final bool isFinalTable;
 
   /// Whether to show each bot's behavior model (brain + style) on its seat.
   final bool showBehavior;
@@ -307,12 +312,19 @@ class _TableScreenState extends State<TableScreen> {
     return Container(
       margin: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: const RadialGradient(
-          colors: [AppTheme.felt, AppTheme.feltDark],
+        gradient: RadialGradient(
+          colors: widget.isFinalTable
+              ? const [AppTheme.finalTableFelt, AppTheme.finalTableFeltDark]
+              : const [AppTheme.felt, AppTheme.feltDark],
           radius: 0.9,
         ),
         borderRadius: BorderRadius.circular(180),
-        border: Border.all(color: AppTheme.feltEdge, width: 10),
+        border: Border.all(
+          color: widget.isFinalTable
+              ? AppTheme.finalTableEdge
+              : AppTheme.feltEdge,
+          width: 10,
+        ),
         boxShadow: const [
           BoxShadow(
             color: Colors.black54,
