@@ -1,6 +1,8 @@
 import 'package:monte/core/domain/ai/player_profile.dart';
+import 'package:monte/core/domain/engine/actions.dart';
 import 'package:monte/core/domain/engine/game.dart';
 import 'package:monte/core/domain/engine/hand_evaluator.dart';
+import 'package:monte/core/domain/engine/player.dart';
 import 'package:monte/core/domain/hand_history.dart';
 import 'package:monte/core/domain/ai/trigger_observer.dart';
 import 'package:monte/features/tournament/data/replay_builder.dart';
@@ -88,6 +90,8 @@ class ChronicleRecorder {
       firedTriggers: firedTriggers,
     );
 
+    final preflop = _humanPreflopFacts(game, actions);
+
     chronicle.record(
       HandDigest(
         levelIndex: levelIndex,
@@ -99,8 +103,79 @@ class ChronicleRecorder {
         busted: busted.toList(),
         humanTable: humanTable,
         replay: replay,
+        vpipHuman: preflop.vpip,
+        rfiHuman: preflop.rfi,
+        stealChanceHuman: preflop.stealChance,
+        stealAttemptHuman: preflop.stealAttempt,
       ),
       avgStack: averageStack,
+    );
+  }
+
+  /// The human's preflop play this hand, for "how you played this level" —
+  /// derived from the ordered [actions] rather than tracked live, since
+  /// nothing upstream needed this level of preflop detail before. Only the
+  /// human's *first* preflop action is examined: what happens after they've
+  /// already voluntarily entered the pot isn't a steal or an open anymore.
+  ///
+  /// Position is read off [PokerGame.buttonIndex] and the fixed seat order in
+  /// [PokerGame.players] — the same button-relative rank every other seat/steal
+  /// calculation in this codebase uses (`OpenRanges`, `ProfilePolicy`), not
+  /// live fold state, which by the time a hand is fully recorded no longer
+  /// reflects who was live when the human actually acted.
+  ({bool vpip, bool rfi, bool stealChance, bool stealAttempt})
+      _humanPreflopFacts(PokerGame game, List<ActionRecord> actions) {
+    Player? human;
+    for (final p in game.players) {
+      if (p.isHuman) {
+        human = p;
+        break;
+      }
+    }
+    if (human == null) {
+      return (vpip: false, rfi: false, stealChance: false, stealAttempt: false);
+    }
+
+    final n = game.players.length;
+    final heroIdx = game.players.indexOf(human);
+    // Heads-up, the button posts the small blind — the same special case
+    // `AmateurPolicy._isSmallBlind` already carries.
+    final sbIndex = n == 2 ? game.buttonIndex : (game.buttonIndex + 1) % n;
+    final rank = (heroIdx - sbIndex + n) % n; // 0 = SB … n-1 = button
+    // A steal spot: the small blind (one player left to act) or the two seats
+    // right before it (cutoff, button).
+    final lateSeat = rank == 0 || rank == n - 1 || rank == n - 2;
+
+    // Whether anyone — a raiser *or a limper* — has voluntarily entered the
+    // pot ahead of the human. A raise over a live limper is an isolation
+    // raise, not a steal, and isn't RFI either: both terms mean nobody had
+    // acted before you, not merely "nobody has raised yet".
+    var enteredYet = false;
+    var vpip = false, rfi = false, stealChance = false, stealAttempt = false;
+    var seenHuman = false;
+    for (final a in actions) {
+      if (a.street != BettingRound.preflop || seenHuman) continue;
+      final isRaiseType = a.type == ActionType.raise ||
+          a.type == ActionType.bet ||
+          a.type == ActionType.allIn;
+      final isVoluntary = isRaiseType || a.type == ActionType.call;
+      if (a.playerId == human.id) {
+        seenHuman = true;
+        vpip = isVoluntary;
+        rfi = !enteredYet && isRaiseType;
+        if (!enteredYet && lateSeat) {
+          stealChance = true;
+          stealAttempt = isRaiseType;
+        }
+        continue;
+      }
+      if (isVoluntary) enteredYet = true;
+    }
+    return (
+      vpip: vpip,
+      rfi: rfi,
+      stealChance: stealChance,
+      stealAttempt: stealAttempt
     );
   }
 

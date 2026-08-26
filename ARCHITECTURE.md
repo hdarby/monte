@@ -242,8 +242,21 @@ the rest.
 - `level_recap.dart` — `LevelRecap`, `NotablePot`, `ChipLeaderLine`: what the UI
   renders. `NotablePot.describe()` generates its own sentence, so *all* recap
   prose is domain-side and testable without Flutter.
-- `tournament_chronicle.dart` — the narrator. Accumulates per-level tallies and
-  generates the prose. One long file, but one coherent job.
+- `player_meta.dart` — `PlayerMeta`: the running per-player counters every
+  generator below reads/mutates. `L`-suffixed fields reset each level; the rest
+  (`bestRankEver`, `wasCrippledEarlier`, `knockouts`) are tournament-wide.
+- `chronicle_grammar.dart` — `ChronicleGrammar`: second-person agreement ("you
+  are" vs "Alex is") so every generator can address the human without
+  duplicating the he-said/you-said branch per template.
+- `leaderboard_storylines.dart` — `LeaderboardStorylines`: swings that span the
+  *whole tournament* — a former big name busting or fading levels after they
+  last led, a genuine multi-level comeback from crippled. Kept apart from
+  `tournament_chronicle.dart`'s own same-level storylines (a table bully, a
+  within-level comeback), which only ever compare a level's start to its end.
+- `tournament_chronicle.dart` — the orchestrator. Owns `beginLevel`/`record`/
+  `buildRecap`, the single-level generators (intro, bubble, eliminations,
+  risers, fallers, bounty, "your level"), and delegates grammar and cross-level
+  storylines to the two modules above.
 
 **data:**
 - `tournament_controller.dart` — the orchestrator. Owns entrants, builds a fresh
@@ -378,8 +391,14 @@ seat), captured at the same `_finalizeHand` seam via
   (`tournament_chronicle.dart`, `hand_coach.dart`, `local_game_repository.dart`).
   Existing imports keep working; new code should import the specific file.
 - **Big files that are fine.** `name_pool.dart` (2.4k), `famous_pros.dart`,
-  `home_game_profiles.dart` are pure data. `tournament_controller.dart` (846)
-  and `chronicle/tournament_chronicle.dart` (612) are each one coherent job.
+  `home_game_profiles.dart` are pure data — size isn't a smell there.
+- **Big files that got split.** `chronicle/tournament_chronicle.dart` grew past
+  ~950 lines adding cross-level leaderboard storylines and the play-style
+  breakdown; `player_meta.dart`, `chronicle_grammar.dart` and
+  `leaderboard_storylines.dart` were pulled out (see above), landing the
+  orchestrator back under 800. `tournament_controller.dart` (1.5k) is the next
+  candidate — it hasn't been split yet, so treat any further growth there as a
+  reason to look for a seam, not to keep appending.
 - **Widget naming.** Public widgets live in `widgets/` and are named for what
   they show (`StandingsPanel`, `MetricBars`). Widgets private to one file keep
   the `_Underscore` prefix.

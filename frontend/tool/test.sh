@@ -43,6 +43,9 @@ NEW_TESTS=(
   test/features/tournament/tournament_survival_sizing_test.dart
   # Payouts: real pay jumps.
   test/features/tournament/domain/payout_structure_test.dart
+  # Recap: cross-level leaderboard storylines, play-style breakdown.
+  test/features/tournament/chronicle_test.dart
+  test/features/tournament/chronicle_recorder_test.dart
   # Table UI.
   test/table/chip_legend_test.dart
   test/reads/clear_reads_test.dart

@@ -87,6 +87,8 @@ class LevelRecap {
     required this.featureHand,
     this.featureTable,
     required this.yourStory,
+    this.yourPlayStyle = const [],
+    this.debugBustRates,
   });
   final int levelJustFinished;
   final int playersLeft;
@@ -129,6 +131,14 @@ class LevelRecap {
   /// personalities — the one a broadcast would have had cameras on.
   final FeatureTable? featureTable;
   final String? yourStory;
+
+  /// Concrete, numbers-included lines about how the human played this level
+  /// (VPIP rate, steal rate, luck) — see `TournamentChronicle._yourPlayStyleLines`.
+  final List<String> yourPlayStyle;
+
+  /// TEMP diagnostic (bust rate by skill tier), not a real recap feature —
+  /// see `TournamentChronicle._debugBustRatesByKind`. Remove alongside it.
+  final String? debugBustRates;
 }
 
 /// The table the feature hand came from, when it was a notable one.

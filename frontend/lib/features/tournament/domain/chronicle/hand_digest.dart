@@ -47,6 +47,10 @@ class HandDigest {
     required this.busted,
     this.humanTable = false,
     this.replay,
+    this.vpipHuman = false,
+    this.rfiHuman = false,
+    this.stealChanceHuman = false,
+    this.stealAttemptHuman = false,
   });
 
   final int levelIndex;
@@ -75,4 +79,29 @@ class HandDigest {
   /// Full hand detail for a showdown (hole cards, board, street action), so the
   /// recap can replay the level's biggest pot. Null for folds / uncontested pots.
   final HandReplay? replay;
+
+  // ---- human preflop play-style facts, for "how you played this level" ----
+  //
+  // Scoped to the human only, not every seat — the same boundary this file
+  // already draws for `notables`: an anonymous filler at a huge field doesn't
+  // get individual treatment, only named personalities and the human do, and
+  /// only the human's play style is ever narrated back to them.
+
+  /// The human voluntarily put money in preflop (called, bet, raised, or
+  /// shoved) — VPIP for this hand.
+  final bool vpipHuman;
+
+  /// The human's first preflop action was a raise/bet, and nobody — a raiser
+  /// *or a limper* — had voluntarily entered the pot before it. A raise over
+  /// a live limper is an isolation raise, not this.
+  final bool rfiHuman;
+
+  /// The human's first preflop action came with the pot genuinely folded to
+  /// them (no raise, no limp yet) and their seat late enough (button/cutoff/
+  /// small blind) that raising would be a steal attempt — whether or not they
+  /// actually raised.
+  final bool stealChanceHuman;
+
+  /// A [stealChanceHuman] where the human's action was in fact a raise.
+  final bool stealAttemptHuman;
 }

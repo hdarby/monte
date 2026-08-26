@@ -23,6 +23,16 @@ class RecapDialog extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // TEMP diagnostic — see LevelRecap.debugBustRates.
+              if (recap.debugBustRates != null)
+                Text(
+                  recap.debugBustRates!,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: Colors.orangeAccent,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
               Text(
                 recap.intro,
                 style: const TextStyle(fontSize: 13, height: 1.3),
@@ -115,6 +125,7 @@ class RecapDialog extends StatelessWidget {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
+                for (final line in recap.yourPlayStyle) _RecapLine(line),
               ],
             ],
           ),

@@ -291,6 +291,103 @@ void main() {
     expect(recap.yourStory, contains('set'));
   });
 
+  group('cross-level leaderboard swings', () {
+    test('a former chip leader who busts gets a "fallen star" storyline', () {
+      final c = fresh();
+      // Level 1: Al is the runaway chip leader (rank 1) — sets bestRankEver.
+      recapOf(c,
+          level: 1,
+          playersLeft: 4,
+          currentChips: {'a': 500, 'b': 100, 'gen': 100, 'you': 100});
+      c.beginLevel({'a': 500, 'b': 100, 'gen': 100, 'you': 100}, names, kinds,
+          personalities);
+      // Level 2: nothing eventful, Al is still around.
+      recapOf(c,
+          level: 2,
+          playersLeft: 4,
+          currentChips: {'a': 500, 'b': 150, 'gen': 100, 'you': 150});
+      c.beginLevel({'a': 500, 'b': 150, 'gen': 100, 'you': 150}, names, kinds,
+          personalities);
+      // Level 3: Al busts, several levels after having led the field.
+      final recap = recapOf(c,
+          level: 3,
+          playersLeft: 3,
+          currentChips: {'b': 150, 'gen': 100, 'you': 150},
+          finishPlaces: {'a': 50});
+      final text = recap.notables.join(' ');
+      expect(text, contains('Al Pro'));
+      expect(text, contains('as high as 1st'));
+      expect(text, contains('50th'));
+      // A generated filler never gets this treatment, even if it once led.
+      expect(text, isNot(contains('Random Reg')));
+    });
+
+    test('a former leader who fades but stays in gets a "faded leader" line, '
+        'once', () {
+      final c = fresh();
+      recapOf(c,
+          level: 1,
+          playersLeft: 4,
+          currentChips: {'a': 500, 'b': 100, 'gen': 100, 'you': 100});
+      c.beginLevel({'a': 500, 'b': 100, 'gen': 100, 'you': 100}, names, kinds,
+          personalities);
+      // Level 2: Al craters to crumbs but survives.
+      final level2 = recapOf(c,
+          level: 2,
+          playersLeft: 4,
+          currentChips: {'a': 10, 'b': 300, 'gen': 150, 'you': 150});
+      expect(level2.notables.join(' '), contains('Al Pro'));
+      expect(level2.notables.join(' '), contains('once cracked the top 100'));
+
+      c.beginLevel({'a': 10, 'b': 300, 'gen': 150, 'you': 150}, names, kinds,
+          personalities);
+      // Level 3: still crippled — the line does not repeat.
+      final level3 = recapOf(c,
+          level: 3,
+          playersLeft: 4,
+          currentChips: {'a': 12, 'b': 300, 'gen': 150, 'you': 150});
+      expect(level3.notables.join(' '), isNot(contains('once cracked')));
+    });
+
+    test('a genuine multi-level comeback gets "back from the dead", not the '
+        'same-level comeback line', () {
+      final c = fresh();
+      // Level 1 ends with Al crippled.
+      recapOf(c,
+          level: 1,
+          playersLeft: 4,
+          currentChips: {'a': 10, 'b': 100, 'gen': 100, 'you': 100});
+      c.beginLevel(
+          {'a': 10, 'b': 100, 'gen': 100, 'you': 100}, names, kinds, personalities);
+      // Level 2 starts crippled (marks wasCrippledEarlier at level 2) and ends
+      // still short — too soon for "back from the dead".
+      final level2 = recapOf(c,
+          level: 2,
+          playersLeft: 4,
+          currentChips: {'a': 15, 'b': 100, 'gen': 100, 'you': 100});
+      expect(level2.notables.join(' '), isNot(contains('down to fumes')));
+      c.beginLevel(
+          {'a': 15, 'b': 100, 'gen': 100, 'you': 100}, names, kinds, personalities);
+      // Level 3: still short, still too soon.
+      final level3 = recapOf(c,
+          level: 3,
+          playersLeft: 4,
+          currentChips: {'a': 20, 'b': 100, 'gen': 100, 'you': 100});
+      expect(level3.notables.join(' '), isNot(contains('down to fumes')));
+      c.beginLevel(
+          {'a': 20, 'b': 100, 'gen': 100, 'you': 100}, names, kinds, personalities);
+      // Level 4: healthy again, well after the crippling level — the real arc.
+      final level4 = recapOf(c,
+          level: 4,
+          playersLeft: 4,
+          currentChips: {'a': 150, 'b': 100, 'gen': 100, 'you': 100});
+      final text = level4.notables.join(' ');
+      expect(text, contains('Al Pro'));
+      expect(text, contains('down to fumes back on level 2'));
+      expect(text, contains('clawed all the way back into contention'));
+    });
+  });
+
   group('the human is a character in their own tournament', () {
     test('a human wrecking-ball level gets a storyline, in second person', () {
       final c = fresh();

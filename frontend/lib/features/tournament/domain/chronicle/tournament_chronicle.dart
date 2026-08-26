@@ -1,45 +1,14 @@
 import 'package:monte/core/domain/engine/hand_evaluator.dart';
 import 'package:monte/core/util/format.dart';
+import 'package:monte/features/tournament/domain/chronicle/chronicle_grammar.dart';
 import 'package:monte/features/tournament/domain/chronicle/hand_digest.dart';
 import 'package:monte/features/tournament/domain/chronicle/hand_narrator.dart';
 import 'package:monte/features/tournament/domain/chronicle/hand_replay.dart';
+import 'package:monte/features/tournament/domain/chronicle/leaderboard_storylines.dart';
 import 'package:monte/features/tournament/domain/chronicle/level_recap.dart';
+import 'package:monte/features/tournament/domain/chronicle/player_meta.dart';
 import 'package:monte/features/tournament/domain/tournament_snapshot.dart'
     show StandingKind;
-
-/// Running per-player metagame counters. The `L`-suffixed fields are reset each
-/// level (recaps talk about "this level"); the rest are tournament-wide.
-class _Meta {
-  _Meta(this.name, this.kind);
-  String name;
-  StandingKind kind;
-
-  /// A real, named personality (a chosen pro/reg) or the human — i.e. not an
-  /// anonymous generated filler. These are the players the recap tells stories
-  /// about. The human is included deliberately: they are as much a character in
-  /// the tournament as anyone else, and leaving them out made the recap read
-  /// like it was about somebody else's game.
-  bool isPersonality = false;
-
-  /// True for the human's seat, so prose can address them in second person
-  /// ("you are running hot") instead of third ("Alex is running hot").
-  bool get isHuman => kind == StandingKind.human;
-
-  int levelStartChips = 0;
-
-  // Per-level.
-  int handsWonL = 0;
-  int showdownsL = 0;
-  int knockoutsL = 0;
-  int luckyWinsL = 0; // won an all-in while behind on the flop
-  int badBeatsL = 0; // lost an all-in while ahead on the flop
-  int bigLossesL = 0; // lost a big pot at showdown holding a strong hand
-  int biggestPotL = 0;
-  String? biggestPotHandL; // hero's hand in their biggest won pot this level
-
-  // Tournament-wide.
-  int knockouts = 0;
-}
 
 /// Accumulates real results across every table and turns each completed level
 /// into a [LevelRecap]. Pure and deterministic — fed [HandDigest]s by the
@@ -47,7 +16,7 @@ class _Meta {
 /// ends. Flavor lines are only ever emitted when the underlying counts justify
 /// them, so the prose stays grounded in what actually happened.
 class TournamentChronicle {
-  final Map<String, _Meta> _meta = {};
+  final Map<String, PlayerMeta> _meta = {};
 
   /// The biggest handful of pots this level, best-first, with what was shown.
   final List<NotablePot> _potsThisLevel = [];
@@ -74,8 +43,8 @@ class TournamentChronicle {
   /// The big blind of the level being recapped, for expressing stacks in BBs.
   int _bb = 0;
 
-  _Meta _of(String id, String name, StandingKind kind) =>
-      _meta.putIfAbsent(id, () => _Meta(name, kind))
+  PlayerMeta _of(String id, String name, StandingKind kind) =>
+      _meta.putIfAbsent(id, () => PlayerMeta(name, kind))
         ..name = name
         ..kind = kind;
 
@@ -102,6 +71,11 @@ class TournamentChronicle {
       m.bigLossesL = 0;
       m.biggestPotL = 0;
       m.biggestPotHandL = null;
+      m.handsDealtL = 0;
+      m.vpipL = 0;
+      m.rfiL = 0;
+      m.stealChancesL = 0;
+      m.stealAttemptsL = 0;
     }
   }
 
@@ -110,6 +84,21 @@ class TournamentChronicle {
   void record(HandDigest d, {required int avgStack}) {
     final winners = d.winners.toSet();
     final big = d.pot >= _bigPotBar(avgStack);
+
+    // Human preflop play-style — every hand at the human's table is a hand
+    // they were dealt into, whether or not they ever acted (a walk is still a
+    // hand seen).
+    if (d.humanTable) {
+      final humanId = _humanIdOrNull();
+      final m = humanId == null ? null : _meta[humanId];
+      if (m != null) {
+        m.handsDealtL++;
+        if (d.vpipHuman) m.vpipL++;
+        if (d.rfiHuman) m.rfiL++;
+        if (d.stealChanceHuman) m.stealChancesL++;
+        if (d.stealAttemptHuman) m.stealAttemptsL++;
+      }
+    }
 
     // Per-player showdown bookkeeping.
     ShowdownEntry? aheadLoser;
@@ -279,10 +268,28 @@ class TournamentChronicle {
         _levelStartIds.where((id) => !currentChips.containsKey(id)).toList();
     final eliminatedCount = eliminated.length;
 
+    // TEMP diagnostic, requested to eyeball bust rates by skill tier before
+    // deciding whether to act on them — not a real feature, rip out once
+    // reviewed.
+    final debugBustRates = _debugBustRatesByKind(eliminated);
+
     // Ranking (for chip leaders + "top 100" personality watch).
     final ranked = currentChips.keys.toList()
       ..sort((a, b) => currentChips[b]!.compareTo(currentChips[a]!));
     final rankOf = {for (var i = 0; i < ranked.length; i++) ranked[i]: i + 1};
+
+    // Tournament-wide leaderboard-history bookkeeping — every player's best
+    // rank ever and whether they've ever started a level on crumbs, so a bust
+    // or a comeback many levels later can still be recognised as one. Must run
+    // before anything below reads `bestRankEver`/`wasCrippledEarlier`.
+    final crumbs = _crumbs(averageStack);
+    LeaderboardStorylines.updateHistory(
+      meta: _meta,
+      ranked: ranked,
+      rankOf: rankOf,
+      crumbs: crumbs,
+      levelJustFinished: levelJustFinished,
+    );
 
     // 1) Intro: field size + this level's carnage.
     final intro = _intro(salt, levelJustFinished, playersLeft, eliminatedCount);
@@ -326,11 +333,30 @@ class TournamentChronicle {
     final bountyLine = _bountyLeader(currentChips);
 
     // 9) Storylines: a table bully and comebacks first (from real stack moves),
-    //    then the generic hand-driven notes (hot / coolered / KO / card-dead).
+    //    then cross-level leaderboard swings, then the generic hand-driven
+    //    notes (hot / coolered / KO / card-dead).
     final notables = <String>[];
     final bully = _bullyLine(ranked, currentChips, averageStack);
     if (bully != null) notables.add(bully);
     notables.addAll(_comebackLines(currentChips, averageStack));
+    notables.addAll(LeaderboardStorylines.fallenStar(
+      meta: _meta,
+      eliminated: eliminated,
+      finishPlaces: finishPlaces,
+      prizes: prizes,
+    ));
+    notables.addAll(LeaderboardStorylines.fadedLeader(
+      meta: _meta,
+      currentChips: currentChips,
+      crumbs: crumbs,
+      bigBlind: bigBlind,
+    ));
+    notables.addAll(LeaderboardStorylines.backFromDead(
+      meta: _meta,
+      levelJustFinished: levelJustFinished,
+      currentChips: currentChips,
+      avgStack: averageStack,
+    ));
     notables.addAll(_storylines(currentChips));
 
     // 10) A full replay of the level's most interesting hand (see
@@ -351,8 +377,9 @@ class TournamentChronicle {
           )
         : null;
 
-    // 11) The player's own story.
+    // 11) The player's own story, plus a concrete breakdown of how they played.
     final yourStory = _yourStory(humanId, currentChips);
+    final yourPlayStyle = _yourPlayStyleLines(humanId);
 
     return LevelRecap(
       levelJustFinished: levelJustFinished,
@@ -373,7 +400,37 @@ class TournamentChronicle {
       featureHand: featureHand,
       featureTable: featureTable,
       yourStory: yourStory,
+      yourPlayStyle: yourPlayStyle,
+      debugBustRates: debugBustRates,
     );
+  }
+
+  /// TEMP: "N% of pros busted, M% of amateurs busted" this level, so bust
+  /// rates by skill tier can be eyeballed across a run. Remove this method,
+  /// the `debugBustRates` field on [LevelRecap], and its render line once
+  /// that's done — it is diagnostic, not a recap feature.
+  String? _debugBustRatesByKind(List<String> eliminated) {
+    final startByKind = <StandingKind, int>{};
+    for (final id in _levelStartIds) {
+      final k = _meta[id]?.kind;
+      if (k == null) continue;
+      startByKind[k] = (startByKind[k] ?? 0) + 1;
+    }
+    final bustedByKind = <StandingKind, int>{};
+    for (final id in eliminated) {
+      final k = _meta[id]?.kind;
+      if (k == null) continue;
+      bustedByKind[k] = (bustedByKind[k] ?? 0) + 1;
+    }
+    String pct(StandingKind k) {
+      final start = startByKind[k] ?? 0;
+      if (start == 0) return 'n/a';
+      final busted = bustedByKind[k] ?? 0;
+      return '${(100 * busted / start).toStringAsFixed(1)}% ($busted/$start)';
+    }
+
+    return 'DEBUG bust rate — pros: ${pct(StandingKind.pro)}, '
+        'amateurs: ${pct(StandingKind.amateur)}';
   }
 
   /// A big-stack "bully": the chip leader who's well above average and racking
@@ -386,25 +443,31 @@ class TournamentChronicle {
     final m = _meta[id];
     if (m == null || chips < avgStack * 2 || m.knockoutsL < 2) return null;
     final xAvg = (chips / avgStack).toStringAsFixed(1);
-    return '${_who(m, capital: true)} ${_is(m)} bullying the table — $xAvg× the '
+    return '${ChronicleGrammar.who(m, capital: true)} ${ChronicleGrammar.isVerb(m)} bullying the table — $xAvg× the '
         'average stack and ${m.knockoutsL} knockouts this level; nobody can win '
-        'a pot off ${_whom(m)}.';
+        'a pot off ${ChronicleGrammar.whom(m)}.';
   }
 
+  /// "Crumbs": the stack a player entering a level with this little is
+  /// considered left for dead — ≲8 BB, or a tenth of average when there's no
+  /// blind level to measure against (used both within a level and, via
+  /// `wasCrippledEarlier`, across the whole tournament).
+  int _crumbs(int avgStack) => _bb > 0 ? 8 * _bb : avgStack ~/ 10;
+
   /// Comebacks: players who came into the level on fumes and clawed back to a
-  /// healthy stack.
+  /// healthy stack. Same-level only — see `LeaderboardStorylines.backFromDead`
+  /// for a recovery that took several levels.
   List<String> _comebackLines(Map<String, int> currentChips, int avgStack) {
     if (avgStack <= 0) return const [];
     final out = <String>[];
+    final crumbs = _crumbs(avgStack);
     _meta.forEach((id, m) {
       final chips = currentChips[id];
       if (chips == null) return;
-      // Started the level with crumbs (≲8 BB or a tenth of average), now healthy.
-      final crumbs = _bb > 0 ? 8 * _bb : avgStack ~/ 10;
       if (m.levelStartChips <= crumbs && chips >= avgStack) {
-        out.add('${_who(m, capital: true)} ${_was(m)} left for dead at '
-            '${_amt(m.levelStartChips)} and ${_has(m)} clawed all the way back '
-            'to ${_amt(chips)}.');
+        out.add('${ChronicleGrammar.who(m, capital: true)} ${ChronicleGrammar.was(m)} left for dead at '
+            '${ChronicleGrammar.amt(m.levelStartChips, _bb)} and ${ChronicleGrammar.has(m)} clawed all the way back '
+            'to ${ChronicleGrammar.amt(chips, _bb)}.');
       }
     });
     return out.take(2).toList();
@@ -425,35 +488,13 @@ class TournamentChronicle {
     if (bestId == null || best < 2) return null;
     final m = _meta[bestId];
     if (m == null) return null;
-    return 'Bounty leader: ${_who(m, capital: true)} ${_has(m)} sent $best '
+    return 'Bounty leader: ${ChronicleGrammar.who(m, capital: true)} ${ChronicleGrammar.has(m)} sent $best '
         'players to the rail.';
   }
 
 
-  // ---- second-person grammar -----------------------------------------------
-  //
-  // The human appears in the recap alongside everyone else, so every line that
-  // names a player needs to work in both third person ("Negreanu is running
-  // hot") and second ("you are running hot"). These keep the agreement right
-  // without duplicating every template.
-
-  /// How to refer to a player: their name, or "you" for the human.
-  /// [capital] for sentence-initial use.
-  static String _who(_Meta m, {bool capital = false}) =>
-      m.isHuman ? (capital ? 'You' : 'you') : m.name;
-
-  /// "are still" / "is still" — the leader follow-up's only agreement wrinkle.
-  static String _areStill(_Meta m) => m.isHuman ? 'are still' : 'is still';
-
-  /// Object form, for "nobody can win a pot off them / you".
-  static String _whom(_Meta m) => m.isHuman ? 'you' : 'them';
-
-  static String _is(_Meta m) => m.isHuman ? 'are' : 'is';
-  static String _has(_Meta m) => m.isHuman ? 'have' : 'has';
-  static String _was(_Meta m) => m.isHuman ? 'were' : 'was';
-  static String _keeps(_Meta m) => m.isHuman ? 'keep' : 'keeps';
-
   // ---- section generators --------------------------------------------------
+  // Second-person grammar ("you are" vs. "Alex is") lives in ChronicleGrammar.
 
   String _intro(int salt, int level, int left, int out) {
     final tail = out == 0
@@ -503,9 +544,9 @@ class TournamentChronicle {
       if (prize > 0) {
         final placeStr = place != null ? ' in ${ordinal(place)}' : '';
         cashes.add(
-            '${_who(m, capital: true)} banked \$${formatChips(prize)}$placeStr.');
+            '${ChronicleGrammar.who(m, capital: true)} banked \$${formatChips(prize)}$placeStr.');
       } else {
-        names.add(_who(m));
+        names.add(ChronicleGrammar.who(m));
       }
     }
     final out = <String>[];
@@ -516,7 +557,7 @@ class TournamentChronicle {
         'The field claimed a few big names — out this level: ',
         'Rail news: no more bullets for ',
       ];
-      out.add('${intros[salt % intros.length]}${_nameList(names)}.');
+      out.add('${intros[salt % intros.length]}${ChronicleGrammar.nameList(names)}.');
     }
     for (final c in cashes) {
       out.add(c);
@@ -556,10 +597,10 @@ class TournamentChronicle {
         : thirdPerson[salt % thirdPerson.length].replaceAll(_ph, lead.name));
 
     // Everyone else still in the top 100 — the human included, as "you".
-    final others = deep.skip(1).map((id) => _who(_meta[id]!)).toList();
+    final others = deep.skip(1).map((id) => ChronicleGrammar.who(_meta[id]!)).toList();
     if (others.isNotEmpty) {
       const lead = ['Also cruising: ', 'Also deep in it: ', 'Still dangerous: '];
-      out.add('${lead[salt % lead.length]}${_nameList(others)}.');
+      out.add('${lead[salt % lead.length]}${ChronicleGrammar.nameList(others)}.');
     }
     return out;
   }
@@ -573,7 +614,7 @@ class TournamentChronicle {
       final chips = currentChips[id];
       if (chips == null) return; // busted — handled by eliminations
       final delta = chips - m.levelStartChips;
-      if (chips <= avgStack ~/ 3 && delta < 0) short.add(_who(m));
+      if (chips <= avgStack ~/ 3 && delta < 0) short.add(ChronicleGrammar.who(m));
     });
     if (short.isEmpty) return const [];
     final names = short.take(4).toList();
@@ -582,7 +623,7 @@ class TournamentChronicle {
       'Nursing short stacks: ',
       'On the ropes: ',
     ];
-    return ['${pool[salt % pool.length]}${_nameList(names)}.'];
+    return ['${pool[salt % pool.length]}${ChronicleGrammar.nameList(names)}.'];
   }
 
   String? _leaderFollowUp(int level, Map<String, int> currentChips,
@@ -594,10 +635,10 @@ class TournamentChronicle {
     final chips = currentChips[id];
     if (chips != null) {
       return m != null && m.isHuman
-          ? 'You were last level\'s chip leader and ${_areStill(m)} in the mix '
-              'with ${_amt(chips)}.'
+          ? 'You were last level\'s chip leader and ${ChronicleGrammar.areStill(m)} in the mix '
+              'with ${ChronicleGrammar.amt(chips, _bb)}.'
           : 'Last level\'s chip leader $name is still in the mix with '
-              '${_amt(chips)}.';
+              '${ChronicleGrammar.amt(chips, _bb)}.';
     }
     // The former leader busted since.
     final place = finishPlaces[id];
@@ -610,7 +651,7 @@ class TournamentChronicle {
   List<String> _storylines(Map<String, int> currentChips) {
     final scored = <({int score, String line})>[];
     _meta.forEach((id, m) {
-      final who = _who(m, capital: true);
+      final who = ChronicleGrammar.who(m, capital: true);
       // The human's own storylines outrank the field's: it is their tournament,
       // and a line about their level is the one they most want to read.
       final bump = m.isHuman ? 1000 : 0;
@@ -618,14 +659,14 @@ class TournamentChronicle {
       if (m.knockoutsL >= 3) {
         scored.add((
           score: bump + 100 + m.knockoutsL,
-          line: '$who ${_is(m)} a wrecking ball — ${m.knockoutsL} knockouts '
+          line: '$who ${ChronicleGrammar.isVerb(m)} a wrecking ball — ${m.knockoutsL} knockouts '
               'this level.'
         ));
       }
       if (m.luckyWinsL >= 2) {
         scored.add((
           score: bump + 90 + m.luckyWinsL,
-          line: '$who ${_is(m)} running hot — won ${m.luckyWinsL} all-ins from '
+          line: '$who ${ChronicleGrammar.isVerb(m)} running hot — won ${m.luckyWinsL} all-ins from '
               'behind this level.'
         ));
       }
@@ -637,7 +678,7 @@ class TournamentChronicle {
       } else if (m.bigLossesL >= 2) {
         scored.add((
           score: bump + 70 + m.bigLossesL,
-          line: '$who ${_keeps(m)} getting coolered — lost ${m.bigLossesL} big '
+          line: '$who ${ChronicleGrammar.keeps(m)} getting coolered — lost ${m.bigLossesL} big '
               'pots with a real hand.'
         ));
       }
@@ -647,7 +688,7 @@ class TournamentChronicle {
         if (delta <= -(m.levelStartChips ~/ 3)) {
           scored.add((
             score: bump + 40,
-            line: '$who ${_is(m)} card dead — blinded off ${formatChips(-delta)} '
+            line: '$who ${ChronicleGrammar.isVerb(m)} card dead — blinded off ${formatChips(-delta)} '
                 'without a showdown.'
           ));
         }
@@ -662,10 +703,10 @@ class TournamentChronicle {
     if (you == null || !currentChips.containsKey(humanId)) return null;
     final delta = currentChips[humanId]! - you.levelStartChips;
     final swing = delta >= 0 ? 'up ${formatChips(delta)}' : 'down ${formatChips(-delta)}';
-    final buf = StringBuffer('You sit ${_amt(currentChips[humanId]!)} ($swing).');
+    final buf = StringBuffer('You sit ${ChronicleGrammar.amt(currentChips[humanId]!, _bb)} ($swing).');
     if (you.biggestPotHandL != null && you.biggestPotL > 0) {
       buf.write(
-          ' Your best pot: ${formatChips(you.biggestPotL)} with ${_phrase(you.biggestPotHandL!)}.');
+          ' Your best pot: ${formatChips(you.biggestPotL)} with ${ChronicleGrammar.phrase(you.biggestPotHandL!)}.');
     } else if (you.knockoutsL > 0) {
       buf.write(' You scored ${you.knockoutsL} knockout'
           '${you.knockoutsL == 1 ? '' : 's'}.');
@@ -673,17 +714,51 @@ class TournamentChronicle {
     return buf.toString();
   }
 
+  /// Concrete, numbers-included lines about *how* the human played this level
+  /// — not just the chip swing `_yourStory` already covers. Each line is
+  /// independently gated on its own sample size, the same rule every other
+  /// flavor line in this file follows: don't claim a trend a handful of hands
+  /// can't support.
+  ///
+  /// No "mixing it up"/bluff-variety line yet — the only existing proxy
+  /// (postflop aggression factor, `features/analytics`) is computed from a
+  /// separate pipeline and doesn't capture bet-sizing or bluff variety
+  /// anyway, so there is no real metric for it in this codebase yet.
+  List<String> _yourPlayStyleLines(String humanId) {
+    final you = _meta[humanId];
+    if (you == null || you.handsDealtL < 5) return const [];
+    final out = <String>[];
+
+    final vpipPct = (100 * you.vpipL / you.handsDealtL).round();
+    final style = vpipPct <= 15
+        ? 'playing tight'
+        : vpipPct >= 40
+            ? 'getting involved a lot'
+            : 'playing a balanced range';
+    out.add('You\'ve played ${you.vpipL} of ${you.handsDealtL} hands this '
+        'level ($vpipPct%) — $style.');
+
+    if (you.stealChancesL >= 3) {
+      out.add('You\'ve taken ${you.stealAttemptsL} of ${you.stealChancesL} '
+          'late-position steal chances this level.');
+    }
+
+    if (you.luckyWinsL > 0) {
+      out.add('Cards have been kind: ${you.luckyWinsL} all-in'
+          '${you.luckyWinsL == 1 ? '' : 's'} won from behind.');
+    }
+    if (you.badBeatsL > 0) {
+      out.add('Cards have been cruel: ${you.badBeatsL} bad beat'
+          '${you.badBeatsL == 1 ? '' : 's'} this level.');
+    }
+
+    return out;
+  }
+
   // ---- helpers -------------------------------------------------------------
 
   /// Placeholder token for name substitution in hype templates.
   static const _ph = '@';
-
-  /// Joins names as "A, B and C".
-  static String _nameList(List<String> names) {
-    if (names.isEmpty) return '';
-    if (names.length == 1) return names.first;
-    return '${names.sublist(0, names.length - 1).join(', ')} and ${names.last}';
-  }
 
   int _bigPotBar(int avgStack) => avgStack <= 0 ? 1 : (avgStack * 0.6).round();
 
@@ -717,21 +792,4 @@ class TournamentChronicle {
     );
   }
 
-  /// A natural-language phrase for a made hand ("a flush", "a set", …).
-  static String _phrase(String label) {
-    switch (label) {
-      case 'Three of a Kind':
-        return 'a set';
-      case 'Two Pair':
-        return 'two pair';
-      case 'High Card':
-        return 'ace-high';
-      default:
-        return 'a ${label.toLowerCase()}';
-    }
-  }
-
-  /// A chip amount with its big-blind equivalent, e.g. "250,000 (125 BB)",
-  /// using the big blind of the level being recapped.
-  String _amt(int chips) => formatChipsWithBb(chips, _bb);
 }
