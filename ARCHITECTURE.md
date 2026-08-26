@@ -222,7 +222,7 @@ the rest.
 | `tournament_snapshot.dart` | Flat snapshot for the UI, incl. `StandingRow`, `SimProgress`, `ColorUpDisplay`. Stack-in-BB and vs-average maths live here as getters, not in widgets. |
 | `field_builder.dart` | Composes the bot field from selections + auto-fill. Seedable and reproducible. |
 | `name_pool.dart` | ~2,400 lines of first/last names. Pure data — the reason this file is huge and the reason that's fine. |
-| `payout_structure.dart`, `icm.dart` | Prize ladders and ICM equity. |
+| `payout_structure.dart`, `icm.dart` | Prize ladders (real pay jumps — tiers of tied places, not a distinct number per place) and ICM equity. |
 | `seat_manager.dart` | Table balancing and seat moves. |
 | `chip_set.dart` | Denominations and colour-ups. |
 | `chronicle/` | See below. |

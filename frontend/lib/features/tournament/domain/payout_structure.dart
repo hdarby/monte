@@ -32,6 +32,18 @@ class PrizePool {
 /// makes the min cash 15,000 and the first-place cap 10,000,000 — the real
 /// numbers — while the cap simply never binds on a small field, which is also
 /// how real structures work.
+///
+/// **Pay jumps, not a continuous curve.** A real published table never lists
+/// a distinct number for every one of 1,500 paid places — it lists a few
+/// dozen *tiers* of tied places, with the last tier (the min cash) covering a
+/// large share of the field. The fractions here are still derived from a
+/// smooth decay curve internally (`_decay`, the cap logic below), but
+/// [_flattenIntoTiers] is the step that turns that curve into the blocks of
+/// identical payouts a real table actually shows — see its doc for how a
+/// tier's shared value is chosen and where the min-cash tier's savings go.
+/// Below [_tierSizes]'s `minPlacesForTiers` threshold every place is still
+/// paid individually: pay jumps are a large-field phenomenon, and a small
+/// tournament barely has room for a final table, let alone ties.
 @immutable
 class PayoutStructure {
   const PayoutStructure(this.fractions);
@@ -90,7 +102,7 @@ class PayoutStructure {
         }
       }
     }
-    return PayoutStructure(fractions);
+    return PayoutStructure(_flattenIntoTiers(fractions, base));
   }
 
   static int _paidPlacesFor(int entrants) {
@@ -99,6 +111,114 @@ class PayoutStructure {
     if (entrants <= 9) return 3;
     // ~top 15% of the field, at least 3, never the whole field.
     return (entrants * 0.15).round().clamp(3, entrants - 1);
+  }
+
+  /// Groups a smoothly-decaying per-place curve into **pay jumps**: blocks of
+  /// consecutive places that all cash for exactly the same amount, the way a
+  /// real published payout table reads. A large field never quotes 1,500
+  /// distinct numbers — it quotes a few dozen tiers, with the last one, the
+  /// min cash, covering a large share of the paid field (in the 2024 Main
+  /// Event, roughly the bottom half of the money finishes at the flat $15,000
+  /// floor). [smooth] must already be the final per-place curve (post first-
+  /// place cap) so this only regroups, never re-derives, the shape.
+  ///
+  /// Every tier except the last is paid the **average** of the smooth curve
+  /// across its place range — this is exactly what a real payout table does
+  /// when several close finishes are collapsed onto one line, and it preserves
+  /// the tier's total share exactly (an average redistributes a sum, it never
+  /// changes it). The last tier is forced to the pure floor (`base`) instead of
+  /// its average, because a real min-cash tier pays the advertised minimum
+  /// exactly, not "the average of the last few hundred places" — the tail of
+  /// the smooth curve sits just *above* the floor (only the very last place
+  /// hits it exactly), so flattening it down frees up a small surplus, which
+  /// is added back to the tier directly above the min cash. That is where a
+  /// real pay jump chart shows the money going: the jump *out of* min cash is
+  /// bigger than the smooth curve implies, and the min cash itself is flatter.
+  static List<double> _flattenIntoTiers(List<double> smooth, double base) {
+    final places = smooth.length;
+    final tiers = _tierSizes(places);
+    final out = List<double>.filled(places, 0);
+    var start = 0;
+    for (var t = 0; t < tiers.length; t++) {
+      final size = tiers[t];
+      final isLast = t == tiers.length - 1;
+      final groupSum =
+          smooth.sublist(start, start + size).fold<double>(0, (a, b) => a + b);
+      final value = isLast ? base : groupSum / size;
+      for (var i = start; i < start + size; i++) {
+        out[i] = value;
+      }
+      start += size;
+    }
+    // The last tier's surplus above the pure floor, handed to the tier just
+    // above it so the total payout is unchanged.
+    final lastSize = tiers.last;
+    final lastStart = places - lastSize;
+    final surplus =
+        smooth.sublist(lastStart).fold<double>(0, (a, b) => a + b) -
+            base * lastSize;
+    if (surplus > 0 && tiers.length > 1) {
+      final priorSize = tiers[tiers.length - 2];
+      final priorStart = lastStart - priorSize;
+      final bump = surplus / priorSize;
+      for (var i = priorStart; i < lastStart; i++) {
+        out[i] += bump;
+      }
+    } else if (surplus > 0) {
+      // No tier above the min cash to absorb it (the whole field is one min-
+      // cash tier) — keep the total exact by handing it to first place.
+      out[0] += surplus;
+    }
+    return out;
+  }
+
+  /// Sizes of each pay-jump tier, top to bottom, summing to [paidPlaces].
+  ///
+  /// Places pay individually near the top (a 2nd-place finish is never worth
+  /// the same as 3rd), then tiers widen going down — reasoned rather than
+  /// measured (a real table's exact groupings vary by series), in the same
+  /// spirit as `OpenRanges.tableFactor`'s "a first stab, deliberately": the
+  /// `1.6`× growth and the min-cash share below are a first pass, checkable
+  /// against `payout_structure_test.dart`'s published-table numbers.
+  static List<int> _tierSizes(int paidPlaces) {
+    // Below this many paid places, a real table just lists every place
+    // individually — pay jumps are a large-field phenomenon. A field this
+    // small barely has room for a final table, let alone tiers of ties, which
+    // is the other half of what "small tournaments, it doesn't matter" means.
+    const minPlacesForTiers = 10;
+    if (paidPlaces < minPlacesForTiers) return List.filled(paidPlaces, 1);
+
+    // How much of the pay table is the flat min-cash tier. A real Main-Event-
+    // scale structure spends roughly the bottom half of the money on min
+    // cash; a smaller field has less room for it, so it scales down with the
+    // number of paid places rather than being fixed.
+    final minCashShare = paidPlaces >= 200
+        ? 0.45
+        : paidPlaces >= 50
+            ? 0.35
+            : 0.2;
+    final minCashSize =
+        (paidPlaces * minCashShare).round().clamp(1, paidPlaces - 3);
+    final ladderTarget = paidPlaces - minCashSize;
+
+    final tiers = <int>[];
+    var placed = 0;
+    // The very top is always individual — a 2nd-place finish is never tied
+    // with 3rd on a real table. Ties only start appearing a few spots down.
+    final uniqueTop = min(3, ladderTarget);
+    for (var i = 0; i < uniqueTop; i++) {
+      tiers.add(1);
+    }
+    placed += uniqueTop;
+    var size = 2;
+    while (placed < ladderTarget) {
+      final take = min(size, ladderTarget - placed);
+      tiers.add(take);
+      placed += take;
+      size = max(1, (size * 1.6).round());
+    }
+    tiers.add(paidPlaces - placed); // the min-cash tier takes the remainder
+    return tiers;
   }
 
   /// The chip prize for a 1-indexed [place] out of [prizePool].

@@ -10,14 +10,41 @@ void main() {
       expect(PayoutStructure.forFieldSize(100).paidPlaces, 15); // ~15%
     });
 
-    test('fractions sum to 1.0 and decay top-heavy', () {
-      for (final n in [2, 6, 9, 27, 100]) {
+    test('fractions sum to 1.0 and never increase down the table', () {
+      // Pay jumps mean consecutive places can *tie* (same tier) — the old
+      // "strictly decreasing" bar was actually the bug this rewrite fixes: a
+      // real published table never quotes a distinct number per place.
+      for (final n in [2, 6, 9, 27, 100, 1500, 10000]) {
         final p = PayoutStructure.forFieldSize(n);
         expect(p.fractions.reduce((a, b) => a + b), closeTo(1.0, 1e-9));
         for (var i = 1; i < p.fractions.length; i++) {
-          expect(p.fractions[i], lessThan(p.fractions[i - 1]));
+          expect(p.fractions[i], lessThanOrEqualTo(p.fractions[i - 1]));
         }
       }
+    });
+
+    test('small fields pay every place individually, no ties', () {
+      // "Not that many players get paid anyway, so it doesn't matter" — pay
+      // jumps are a large-field phenomenon; below the tiering threshold every
+      // place is still its own distinct number, exactly as before.
+      for (final n in [9, 27, 60]) {
+        final f = PayoutStructure.forFieldSize(n).fractions;
+        for (var i = 1; i < f.length; i++) {
+          expect(f[i], lessThan(f[i - 1]),
+              reason: 'field of $n should have no ties yet');
+        }
+      }
+    });
+
+    test('a large field pays real pay jumps: ties, not 1,500 distinct numbers',
+        () {
+      final f = PayoutStructure.forFieldSize(10000).fractions;
+      final distinct = f.toSet().length;
+      expect(distinct, lessThan(f.length ~/ 4),
+          reason: 'a real table has a few dozen lines, not one per place');
+      // The min-cash tier alone should collapse many places onto one number.
+      final minCashCount = f.where((v) => v == f.last).length;
+      expect(minCashCount, greaterThan(100));
     });
 
     test('payouts are whole chips that sum exactly to the pool', () {
@@ -59,15 +86,24 @@ void main() {
       expect(payouts.last, 15000);
     });
 
-    test('the middle of the table is not flattened to the min cash', () {
+    test('the top of the table is not flattened to the min cash', () {
       // The old geometric curve collapsed to the min cash by ~30th place, so a
-      // deep run was worth nothing until the final table. Every one of these
-      // must be a real, distinct step up.
+      // deep run was worth nothing until the final table.
       expect(payouts[8], greaterThan(900000)); // 9th: real table ~1.0M
       expect(payouts[99], greaterThan(80000)); // 100th: real table ~70k
-      expect(payouts[999], greaterThan(17000)); // 1000th: real table ~20k
+      expect(payouts[499], greaterThan(30000)); // 500th: a real, distinct step
       expect(payouts[29], greaterThan(2 * payouts.last),
           reason: '30th place used to be worth the min cash');
+    });
+
+    test('a large late-table share genuinely pays the flat min cash', () {
+      // This is the actual real-world shape: a significant chunk of a huge
+      // field's paid places cash for exactly the minimum, not a smoothly
+      // declining number that happens to approach it.
+      final minCashCount = payouts.where((v) => v == payouts.last).length;
+      expect(minCashCount, greaterThan(p.paidPlaces ~/ 3));
+      expect(payouts[999], payouts.last, // 1000th: within the min-cash tier
+          reason: '1000th of 1500 is deep in a real min-cash tier');
     });
 
     test('still sums exactly to the pool', () {

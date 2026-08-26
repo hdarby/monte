@@ -41,6 +41,8 @@ NEW_TESTS=(
   test/features/tournament/feature_hand_choice_test.dart
   test/features/tournament/icm_bots_test.dart
   test/features/tournament/tournament_survival_sizing_test.dart
+  # Payouts: real pay jumps.
+  test/features/tournament/domain/payout_structure_test.dart
   # Table UI.
   test/table/chip_legend_test.dart
   test/reads/clear_reads_test.dart
