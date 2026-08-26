@@ -46,6 +46,8 @@ NEW_TESTS=(
   # Recap: cross-level leaderboard storylines, play-style breakdown.
   test/features/tournament/chronicle_test.dart
   test/features/tournament/chronicle_recorder_test.dart
+  # Session review: this event's own finish, duplicate-run progress.
+  test/eval_history/session_markdown_test.dart
   # Table UI.
   test/table/chip_legend_test.dart
   test/reads/clear_reads_test.dart

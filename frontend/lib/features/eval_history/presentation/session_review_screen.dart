@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -11,6 +12,7 @@ class SessionReviewScreen extends StatefulWidget {
     super.key,
     required this.markdown,
     this.pending,
+    this.progress,
   });
 
   final String markdown;
@@ -21,6 +23,11 @@ class SessionReviewScreen extends StatefulWidget {
   /// Started before this screen opens, so it is already running while the first
   /// page is being read. It resolves to markdown appended at the end.
   final Future<String>? pending;
+
+  /// How far [pending] has gotten: (hands checked, hands total). Optional so
+  /// callers that don't report progress still work — the row falls back to an
+  /// indeterminate spinner.
+  final ValueListenable<(int, int)>? progress;
 
   @override
   State<SessionReviewScreen> createState() => _SessionReviewScreenState();
@@ -68,20 +75,17 @@ class _SessionReviewScreenState extends State<SessionReviewScreen> {
               children: [
                 ...renderMarkdown(context, markdown),
                 if (widget.pending != null && _extra == null && _failed == null)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 18),
-                    child: Row(
-                      children: [
-                        SizedBox(
-                          width: 14,
-                          height: 14,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                        SizedBox(width: 10),
-                        Text('Replaying your hands with someone else in your '
-                            'seat…'),
-                      ],
-                    ),
+                  Padding(
+                    key: const Key('duplicateProgressRow'),
+                    padding: const EdgeInsets.symmetric(vertical: 18),
+                    child: widget.progress == null
+                        ? const _DuplicateProgressRow(done: 0, total: 0)
+                        : ValueListenableBuilder<(int, int)>(
+                            valueListenable: widget.progress!,
+                            builder: (_, value, _) =>
+                                _DuplicateProgressRow(
+                                    done: value.$1, total: value.$2),
+                          ),
                   ),
                 if (_failed != null)
                   const Padding(
@@ -94,6 +98,36 @@ class _SessionReviewScreenState extends State<SessionReviewScreen> {
           ),
         ),
       );
+}
+
+/// The duplicate-run progress row: a determinate bar once there is a real
+/// [total] to measure against, an indeterminate one before the first hand
+/// reports in (or when the caller doesn't track progress at all).
+class _DuplicateProgressRow extends StatelessWidget {
+  const _DuplicateProgressRow({required this.done, required this.total});
+  final int done;
+  final int total;
+
+  @override
+  Widget build(BuildContext context) {
+    final value = total > 0 ? done / total : null;
+    return Row(
+      children: [
+        SizedBox(
+          width: 14,
+          height: 14,
+          child: CircularProgressIndicator(strokeWidth: 2, value: value),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(total > 0
+              ? 'Replaying your hands with someone else in your seat… '
+                  '($done of $total)'
+              : 'Replaying your hands with someone else in your seat…'),
+        ),
+      ],
+    );
+  }
 }
 
 /// Turns the report's markdown into widgets. Public so it can be tested and
