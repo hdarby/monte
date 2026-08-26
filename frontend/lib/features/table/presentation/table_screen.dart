@@ -312,18 +312,20 @@ class _TableScreenState extends State<TableScreen> {
     return Container(
       margin: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: RadialGradient(
-          colors: widget.isFinalTable
-              ? const [AppTheme.finalTableFelt, AppTheme.finalTableFeltDark]
-              : const [AppTheme.felt, AppTheme.feltDark],
-          radius: 0.9,
-        ),
+        // The final table is a flat, saturated red — no radial gradient. A
+        // gradient always shows a second, darker hue at the rim, which read
+        // as "still greenish" even after the base colour changed.
+        color: widget.isFinalTable ? AppTheme.finalTableFelt : null,
+        gradient: widget.isFinalTable
+            ? null
+            : const RadialGradient(
+                colors: [AppTheme.felt, AppTheme.feltDark],
+                radius: 0.9,
+              ),
         borderRadius: BorderRadius.circular(180),
         border: Border.all(
-          color: widget.isFinalTable
-              ? AppTheme.finalTableEdge
-              : AppTheme.feltEdge,
-          width: 10,
+          color: widget.isFinalTable ? AppTheme.finalTableEdge : AppTheme.feltEdge,
+          width: widget.isFinalTable ? 18 : 10,
         ),
         boxShadow: const [
           BoxShadow(
