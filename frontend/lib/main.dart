@@ -16,7 +16,6 @@ import 'package:monte/core/presentation/money_format.dart';
 import 'package:monte/features/coach/domain/hand_coach.dart';
 import 'package:monte/features/coach/presentation/coach_screen.dart';
 import 'package:monte/core/theme/app_theme.dart';
-import 'package:monte/features/analytics/presentation/analytics_screen.dart';
 import 'package:monte/features/history/presentation/history_screen.dart';
 import 'package:monte/features/tournament/presentation/lobby_screen.dart';
 import 'package:monte/features/settings/domain/game_settings.dart';
@@ -192,12 +191,6 @@ class _GamePageState extends ConsumerState<GamePage> {
     Navigator.of(
       context,
     ).push(MaterialPageRoute(builder: (_) => const SettingsScreen()));
-  }
-
-  void _openAnalytics() {
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const AnalyticsScreen()));
   }
 
   void _openHistory() {
@@ -464,7 +457,6 @@ class _GamePageState extends ConsumerState<GamePage> {
               onNewGame: () => _openNewGame(snapshot, settings, vm),
               onNextHand: () => _dealNext(vm),
               onOpenSettings: _openSettings,
-              onOpenAnalytics: _openAnalytics,
               onOpenHistory: _openHistory,
               onOpenTournament: _openTournament,
               onCoach: () => _openCoach(snapshot, settings, vm),

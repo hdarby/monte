@@ -5,6 +5,7 @@ import 'package:monte/core/domain/ai/player_profile.dart';
 import 'package:monte/core/util/format.dart';
 import 'package:monte/features/tournament/domain/field_builder.dart';
 import 'package:monte/features/tournament/domain/tournament_preset.dart';
+import 'package:monte/features/tournament/presentation/career_screen.dart';
 import 'package:monte/features/tournament/presentation/tournament_screen.dart';
 import 'package:monte/features/tournament/presentation/widgets/lobby_widgets.dart';
 
@@ -122,7 +123,18 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Tournament lobby')),
+      appBar: AppBar(
+        title: const Text('Tournament lobby'),
+        actions: [
+          IconButton(
+            tooltip: 'Career',
+            icon: const _CareerIcon(),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const CareerScreen()),
+            ),
+          ),
+        ],
+      ),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -240,6 +252,44 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen> {
       'start ${s.startingStack} ($startingBb BB) · '
       'pool \$${_buyIn * _entrants} · top ~$paidApprox paid',
       style: Theme.of(context).textTheme.bodySmall,
+    );
+  }
+}
+
+/// The career button's icon: a dollar sign riding an upward trend line — the
+/// mashup reads clearly as "money, going up" at toolbar size, where either
+/// icon alone is more ambiguous (a bare $ could be buy-in; a bare arrow could
+/// be chip count).
+class _CareerIcon extends StatelessWidget {
+  const _CareerIcon();
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 24,
+      height: 24,
+      child: Stack(
+        alignment: Alignment.center,
+        children: const [
+          Icon(Icons.trending_up, size: 24, color: Colors.white70),
+          Positioned(
+            right: -2,
+            bottom: -2,
+            child: CircleAvatar(
+              radius: 7,
+              backgroundColor: Colors.black87,
+              child: Text(
+                r'$',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.greenAccent,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

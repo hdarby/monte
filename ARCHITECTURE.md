@@ -22,7 +22,6 @@ monte/
 │       ├── table/         playing a cash-game hand
 │       ├── tournament/    playing an MTT
 │       ├── coach/         in-hand advice
-│       ├── analytics/     stats + simulation + tuning UI
 │       ├── eval_history/  permanent full-info tuning record
 │       ├── history/       hand log
 │       ├── reads/         persistent per-opponent stats
@@ -277,7 +276,12 @@ the rest.
   the controller. Swapping to a remote controller is a change here only.
 - `tournament_screen.dart` — layout + turning one-shot events into dialogs.
 - `lobby_screen.dart` — collects the choices; delegates composition to
-  `FieldBuilder`.
+  `FieldBuilder`. Its app bar is also the one entry point to `career_screen.dart`
+  — before this there was no way to see career stats without first finishing a
+  tournament and tapping through the session review to its last page.
+- `career_screen.dart` — career winnings for the player and every named
+  personality, built from the same `CareerRow.from(...)` aggregation
+  `SessionMarkdown`'s career table uses, so the two never disagree.
 - `widgets/` — `tournament_hud.dart` (the stat bar), `hud_detail_dialogs.dart`
   (the popup behind each stat), `standings_panel.dart`, `recap_dialog.dart`,
   `feature_hand_view.dart`, `results_overlay.dart`, `color_up_dialog.dart`,
@@ -292,13 +296,17 @@ the rest.
   the table actually plays. Re-exports `coach_report.dart`.
 - `presentation/coach_screen.dart`.
 
-### `features/analytics/` — stats, simulation, tuning
+### `features/analytics/domain/analytics.dart` — a domain leftover, not a feature
 
-- `domain/analytics.dart` — VPIP / PFR / AF / bb-100 from hand histories.
-- `presentation/analytics_view_model.dart` — simulation control + derived state.
-- `presentation/analytics_screen.dart` — layout only.
-- `presentation/widgets/` — `simulation_controls.dart`, `metric_bars.dart`,
-  `data_tables.dart`, `tuning_section.dart`.
+The analytics **screen** (simulation controls, tuning UI) was removed — it had
+stopped earning its keep. `PokerAnalytics`/`PlayerStats` (VPIP/PFR/AF/bb-100
+from hand histories) survived the cut because it's load-bearing test
+infrastructure (`test/analytics_test.dart`, `test/analytics/`,
+`test/ai/amateur_strength_test.dart`, `profile_calibration_test.dart`, and
+others compute stats through it), not because it's still a "feature." Per this
+file's own rule 2 it belongs in `core/domain/` now that nothing under
+`features/` uses it — left in place to avoid a many-file import churn nobody
+asked for; move it there the next time it's touched for an unrelated reason.
 
 ### `features/eval_history/` — the tuning record
 
@@ -371,6 +379,7 @@ seat), captured at the same `_finalizeHand` seam via
 | change blind structures | `features/tournament/domain/tournament_structure.dart` (+ `tournament_preset.dart` to expose it) |
 | change who's in the field | `features/tournament/domain/field_builder.dart` |
 | add a lobby option | `features/tournament/presentation/lobby_screen.dart` |
+| change career stats | `features/tournament/domain/tournament_result.dart` (`CareerRow`) + `features/tournament/presentation/career_screen.dart` |
 | format a chip count | `core/util/format.dart` |
 | switch $ vs BB display | `core/presentation/money_format.dart` |
 | point the app at a server | `core/di/game_providers.dart` (one line) |

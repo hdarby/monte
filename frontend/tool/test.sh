@@ -48,6 +48,9 @@ NEW_TESTS=(
   test/features/tournament/chronicle_recorder_test.dart
   # Session review: this event's own finish, duplicate-run progress.
   test/eval_history/session_markdown_test.dart
+  # Career: the standalone screen and its aggregation.
+  test/features/tournament/career_screen_test.dart
+  test/features/tournament/career_test.dart
   # Table UI.
   test/table/chip_legend_test.dart
   test/reads/clear_reads_test.dart

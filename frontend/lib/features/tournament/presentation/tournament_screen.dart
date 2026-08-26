@@ -388,7 +388,6 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
             onNewGame: _noop,
             onNextHand: _noop,
             onOpenSettings: _noop,
-            onOpenAnalytics: _noop,
             onOpenHistory: _noop,
           ),
           Positioned(

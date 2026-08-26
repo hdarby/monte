@@ -29,7 +29,6 @@ class TableScreen extends StatefulWidget {
     required this.onNewGame,
     required this.onNextHand,
     required this.onOpenSettings,
-    required this.onOpenAnalytics,
     required this.onOpenHistory,
     this.showBehavior = false,
     this.autoDeal = false,
@@ -56,7 +55,6 @@ class TableScreen extends StatefulWidget {
   final VoidCallback onNewGame;
   final VoidCallback onNextHand;
   final VoidCallback onOpenSettings;
-  final VoidCallback onOpenAnalytics;
   final VoidCallback onOpenHistory;
 
   /// All-bots only: whether hands deal continuously until toggled off.
@@ -107,7 +105,6 @@ class _TableScreenState extends State<TableScreen> {
   VoidCallback get onNewGame => widget.onNewGame;
   VoidCallback get onNextHand => widget.onNextHand;
   VoidCallback get onOpenSettings => widget.onOpenSettings;
-  VoidCallback get onOpenAnalytics => widget.onOpenAnalytics;
   VoidCallback get onOpenHistory => widget.onOpenHistory;
 
   void _onReadHover(SeatRead? read, String name, bool isSelf) {
@@ -200,11 +197,6 @@ class _TableScreenState extends State<TableScreen> {
           tooltip: 'Hand history',
           icon: const Icon(Icons.history, color: Colors.white70),
           onPressed: onOpenHistory,
-        ),
-        IconButton(
-          tooltip: 'Analytics',
-          icon: const Icon(Icons.bar_chart, color: Colors.white70),
-          onPressed: onOpenAnalytics,
         ),
         IconButton(
           tooltip: 'Table settings',
