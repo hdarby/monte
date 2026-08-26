@@ -201,10 +201,16 @@ class TournamentChronicle {
     var interest = 0.0;
 
     // A signature move is the whole reason the personalities have character;
-    // seeing one is the point of having authored it.
+    // seeing one is the point of having authored it. Was 0.25 — measured
+    // against a real level, that left a hand with a genuine, named move still
+    // needing to be roughly a third the size of the biggest pot to win the
+    // slot, so moves essentially never got shown even after being correctly
+    // wired and templated. 0.6 is still capped (at 2 moves) and pot is still
+    // the multiplicative base, so a trivial pot cannot win on flags alone —
+    // but a real move now meaningfully competes rather than barely registering.
     final moves =
         r.streets.fold<int>(0, (a, s) => a + s.triggers.length).clamp(0, 2);
-    interest += 0.25 * moves;
+    interest += 0.6 * moves;
 
     // The hand everyone in the room talks about afterwards.
     if (r.suckout) interest += 0.60;

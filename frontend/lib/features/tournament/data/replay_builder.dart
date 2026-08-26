@@ -1,6 +1,10 @@
+import 'dart:math';
+
 import 'package:monte/core/domain/ai/player_profile.dart';
 import 'package:monte/core/domain/ai/trigger_observer.dart';
 import 'package:monte/core/domain/engine/actions.dart';
+import 'package:monte/core/domain/engine/allin_equity.dart';
+import 'package:monte/core/domain/engine/card.dart';
 import 'package:monte/core/domain/engine/game.dart';
 import 'package:monte/core/domain/engine/hand_evaluator.dart';
 import 'package:monte/core/domain/engine/player.dart';
@@ -100,6 +104,7 @@ class ReplayBuilder {
       allIn: game.players.any((p) => p.isAllIn),
       suckout: _suckout(game, seats, winners),
       reachedRiver: game.board.length >= 5,
+      equityWhenAllIn: _equityWhenAllIn(game, streets),
     );
 
     return replay;
@@ -283,6 +288,55 @@ class ReplayBuilder {
       }
     }
     return bestId != null && !winners.contains(bestId);
+  }
+
+  /// Exact equity for every all-in contender at the moment the money actually
+  /// went in, keyed by playerId — the fix for `_suckout`'s hardcoded-flop bug,
+  /// which judged "who was ahead" using the flop board regardless of when
+  /// stacks actually went all-in. Null when nobody was ever all-in
+  /// pre-showdown (folds and river-decided pots don't have an "all-in point").
+  static Map<String, double>? _equityWhenAllIn(
+    PokerGame game,
+    List<ReplayStreet> streets,
+  ) {
+    final contenders = game.players
+        .where((p) => p.inHand && p.isAllIn)
+        .toList();
+    if (contenders.length < 2) return null;
+    final contenderIds = contenders.map((p) => p.id).toSet();
+
+    // The earliest street on which a contender actually went all-in — the
+    // board known at that moment is that street's `boardAfter`, since no
+    // further cards had been dealt yet.
+    final street = streets
+        .where(
+          (s) => s.actions.any(
+            (a) => a.isAllIn && contenderIds.contains(a.playerId),
+          ),
+        )
+        .firstOrNull;
+    if (street == null) return null;
+
+    final board = [for (final c in street.boardAfter) Card.fromCode(c)];
+    // A preflop all-in Monte-Carlos the runout; seed it from the cards
+    // themselves (not `Random()`, and not `hashCode` — unstable across
+    // processes per the engine's own determinism rule) so the same hand
+    // always gets the same equity number.
+    var seed = 0;
+    for (final p in contenders) {
+      for (final c in p.hole) {
+        seed = seed * 31 + c.rank.value * 4 + c.suit.index;
+      }
+    }
+    final equities = AllInEquity.compute(
+      [for (final p in contenders) p.hole],
+      board,
+      random: Random(seed),
+    );
+    return {
+      for (var i = 0; i < contenders.length; i++)
+        contenders[i].id: equities[i],
+    };
   }
 
   /// A one-word style tag for a personality, for commentary colour.

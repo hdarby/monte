@@ -241,6 +241,7 @@ class HandReplay {
     required this.allIn,
     required this.suckout,
     required this.reachedRiver,
+    this.equityWhenAllIn,
     this.commentary = const [],
     this.verdicts = const [],
   });
@@ -266,6 +267,12 @@ class HandReplay {
   final bool allIn;
   final bool suckout;
   final bool reachedRiver;
+
+  /// Exact head-to-head equity at the moment the money actually went in,
+  /// keyed by playerId, for every contender who was all-in before showdown.
+  /// Null when nobody was ever all-in pre-showdown — there is no "equity when
+  /// all-in" for a hand that was never at risk.
+  final Map<String, double>? equityWhenAllIn;
 
   /// Bart's closing take on the hand as a whole.
   final List<String> commentary;
@@ -298,6 +305,7 @@ class HandReplay {
     allIn: allIn,
     suckout: suckout,
     reachedRiver: reachedRiver,
+    equityWhenAllIn: equityWhenAllIn,
     commentary: commentary ?? this.commentary,
     verdicts: verdicts ?? this.verdicts,
   );

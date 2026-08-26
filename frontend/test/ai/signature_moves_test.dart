@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:monte/core/domain/ai/characteristic_catalog.dart';
 import 'package:monte/core/domain/ai/home_game_profiles.dart';
+import 'package:monte/core/domain/ai/mental_state.dart';
 import 'package:monte/core/domain/ai/player_profile.dart';
 import 'package:monte/core/domain/ai/player_profiles.dart';
 import 'package:monte/core/domain/ai/profile_decider.dart';
@@ -84,6 +85,16 @@ void _toFlop(PokerGame g) {
 }
 
 Player _p(PokerGame g, String id) => g.players.firstWhere((x) => x.id == id);
+
+/// A [MentalReads] fake reporting the same fixed, tilted state for every seat
+/// — the unit-spot equivalent of a real [MentalTable] mid-tilt, without
+/// needing a whole session's worth of bad beats to build the pressure up.
+class _FixedMental implements MentalReads {
+  const _FixedMental(this.state);
+  final MentalState state;
+  @override
+  MentalState? stateFor(String seatId) => state;
+}
 
 /// Runs [n] decisions and reports how often each action type came back.
 Map<ActionType, int> _mix(
@@ -396,5 +407,160 @@ void main() {
       // unit spot instead. Asserting it here would be asserting a bug.
       expect(observer.count('Underbluff_Exploit'), 0);
     }, timeout: const Timeout(Duration(minutes: 5)));
+
+    /// The seven characteristics that already had real behavioral effect
+    /// (`profile_postflop_policy.dart`'s `sr`/`pv`/`geoBoost` terms,
+    /// `profile_policy.dart`'s `posProf`) but never called `onFired` — so no
+    /// `FiredTrigger` ever reached the narrator, no matter how often the
+    /// behavior itself fired. This is the fix for that half of the bug: they
+    /// must show up in the same diagnostic the other moves already do.
+    test('the newly-wired characteristics fire in an ordinary session',
+        () async {
+      final observer = CountingTriggerObserver();
+      final movers = <PlayerProfile>[
+        _pro([_c('Positional_Warfare', 0.9)]).renamed('Positional'),
+        _pro([_c('Leverage_Pressure', 0.9)]).renamed('Leverager'),
+        _pro([_c('Soul_Read', 0.9)]).renamed('Reader'),
+        _pro([_c('Geometric_Overbet_Execution', 0.9)]).renamed('Overbetter'),
+        _pro(const []).renamed('Baseline1'),
+        _pro(const []).renamed('Baseline2'),
+      ];
+      final repo = LocalGameRepository(
+        config: TableConfig(
+          allBots: true,
+          playerCount: movers.length,
+          smallBlind: 1,
+          bigBlind: 3,
+          startingStack: 300,
+          botThinkTime: Duration.zero,
+          deckBuilder: () => Deck(random: Random(13)),
+          deciderBuilder: (i) => deciderForProfile(
+            movers[i],
+            random: Random(700 + i),
+            triggers: observer,
+          ),
+        ),
+      );
+      await repo.simulate(1500);
+
+      for (final id in const [
+        'Positional_Warfare',
+        'Leverage_Pressure',
+        'Soul_Read',
+        'Geometric_Overbet_Execution',
+      ]) {
+        expect(observer.count(id), greaterThan(0),
+            reason: '$id never fired in 1500 hands — it is dead weight');
+      }
+    }, timeout: const Timeout(Duration(minutes: 5)));
+
+    /// Tilt moves need real tilt pressure, which needs a shared [MentalTable]
+    /// across the session — `deciderBuilder` bypasses `LocalGameRepository`'s
+    /// own wiring of one, so this uses the plain `seatBots` path instead,
+    /// exactly the way live play actually constructs these bots.
+  });
+
+  /// Tilt moves need real tilt pressure, which normally takes a whole
+  /// session's bad beats to build up via a shared `MentalTable`. Unit spots
+  /// with a fixed, already-tilted `MentalReads` instead — the same choice
+  /// `Sticky_Showdown`/`Underbluff_Exploit` above make for their own
+  /// "records only when it changes the decision" tests, one level up: these
+  /// callBar shifts are exactly the same shape, just tilt-driven instead of
+  /// read-driven.
+  group('tilt moves', () {
+    const tilted = _FixedMental(MentalState(tiltPressure: 0.8));
+
+    /// The same worst-kicker-top-pair river spot `Sticky_Showdown` uses:
+    /// disciplined pros fold it, so it isolates the tilt shift cleanly.
+    PokerGame spot() {
+      final g = _game(_stack(
+        p0: cards('7h 6s'),
+        p1: cards('Kc 2d'),
+        flop: cards('Kh Qs Jd'),
+        turnRiver: cards('9c 5h'),
+      ));
+      _toFlop(g);
+      while (g.round != BettingRound.river) {
+        g.applyAction(const GameAction.check());
+        g.applyAction(const GameAction.check());
+      }
+      g.applyAction(const GameAction.check());
+      final villain = g.currentPlayer!;
+      g.applyAction(GameAction.bet(villain.currentBet + g.pot));
+      return g;
+    }
+
+    test('Tilt_Chase pays off a hand a baseline pro folds, while tilted', () {
+      final g = spot();
+      final observer = CountingTriggerObserver();
+      final pol = ProfilePostflopPolicy(_pro([_c('Tilt_Chase', 0.9)]),
+          random: Random(3), triggers: observer, mental: tilted);
+      final mix = _mix(pol, g, _p(g, 'p1'), trials);
+      expect((mix[ActionType.fold] ?? 0) / trials, lessThan(0.5),
+          reason: 'a chaser calls this down to prove a point while tilted');
+      expect(observer.count('Tilt_Chase'), greaterThan(0),
+          reason: 'it flipped these calls, so it should be recorded');
+    });
+
+    test('Tilt_Shutdown folds more than baseline, while tilted', () {
+      // A cheap enough river bet that a baseline pro still calls.
+      final g = _game(_stack(
+        p0: cards('7h 6s'),
+        p1: cards('Kc 2d'),
+        flop: cards('Kh Qs Jd'),
+        turnRiver: cards('9c 5h'),
+      ));
+      _toFlop(g);
+      while (g.round != BettingRound.river) {
+        g.applyAction(const GameAction.check());
+        g.applyAction(const GameAction.check());
+      }
+      g.applyAction(const GameAction.check());
+      final villain = g.currentPlayer!;
+      g.applyAction(GameAction.bet(villain.currentBet + (g.pot * 0.4).round()));
+
+      final observer = CountingTriggerObserver();
+      final pol = ProfilePostflopPolicy(_pro([_c('Tilt_Shutdown', 0.9)]),
+          random: Random(3), triggers: observer, mental: tilted);
+      final mix = _mix(pol, g, _p(g, 'p1'), trials);
+      final baselineMix = _mix(
+          ProfilePostflopPolicy(_pro(const []), random: Random(3)),
+          g,
+          _p(g, 'p1'),
+          trials);
+      expect((mix[ActionType.fold] ?? 0) / trials,
+          greaterThan((baselineMix[ActionType.fold] ?? 0) / trials),
+          reason: 'a shut-down player folds more than baseline here');
+      expect(observer.count('Tilt_Shutdown'), greaterThan(0),
+          reason: 'it flipped these calls, so it should be recorded');
+    });
+
+    test('Tilt_Blowup bluffs more than baseline, while tilted', () {
+      // A dry board, checked to the hero with nothing — a pure bluff-or-check
+      // spot, so any extra betting frequency is the blow-up talking.
+      final g = _game(_stack(
+        p0: cards('7h 6s'),
+        p1: cards('2c 3d'),
+        flop: cards('Kh 8s 4d'),
+      ));
+      _toFlop(g);
+      g.applyAction(const GameAction.check()); // p0 checks to p1
+
+      final observer = CountingTriggerObserver();
+      final pol = ProfilePostflopPolicy(_pro([_c('Tilt_Blowup', 0.9)]),
+          random: Random(5), triggers: observer, mental: tilted);
+      final mix = _mix(pol, g, _p(g, 'p1'), trials);
+      final baselineMix = _mix(
+          ProfilePostflopPolicy(_pro(const []), random: Random(5)),
+          g,
+          _p(g, 'p1'),
+          trials);
+      final betRate = (mix[ActionType.bet] ?? 0) / trials;
+      final baselineBetRate = (baselineMix[ActionType.bet] ?? 0) / trials;
+      expect(betRate, greaterThan(baselineBetRate),
+          reason: 'a blow-up bluffs pots it has no business firing at');
+      expect(observer.count('Tilt_Blowup'), greaterThan(0),
+          reason: 'it produced extra bluffs, so it should be recorded');
+    });
   });
 }

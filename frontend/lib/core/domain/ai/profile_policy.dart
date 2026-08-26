@@ -207,9 +207,17 @@ class ProfilePolicy implements DecisionPolicy {
     // A first-in open has no such anchor — the pot is just the blinds — which is
     // why a pot fraction degenerated into the constant 2.75 BB. Size it from
     // stack depth and dead money instead. See [OpenSizing].
-    GameAction openRaise() => GameAction.raise(OpenSizing.raiseToFor(
-        game, p,
-        sizeScale: sizeScale, random: _random));
+    GameAction openRaise() {
+      // Positional_Warfare already only sharpens a per-seat shift that exists
+      // for everyone (see the comment above `posProf`) — firing whenever it's
+      // authored and an open actually goes out is the same "spot already
+      // gated" reasoning `Limp_Reraise`/`Float_And_Take_Away` use elsewhere in
+      // this file, not a claim that this exact hand only opened because of it.
+      if (posProf > 0) _triggers?.onFired('Positional_Warfare', p.id, game.round);
+      return GameAction.raise(OpenSizing.raiseToFor(
+          game, p,
+          sizeScale: sizeScale, random: _random));
+    }
 
     // Deep-stack discipline: the deeper the effective stack, the tighter the
     // range willing to put it in preflop. At ~100 BB it's the baseline; by a few

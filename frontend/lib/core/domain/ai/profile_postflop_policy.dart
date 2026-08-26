@@ -339,6 +339,21 @@ class ProfilePostflopPolicy implements DecisionPolicy {
         final risked = b.amount - p.currentBet;
         if (_commitOk(p, risked, eq, deepFactor, aggressive: true) &&
             _flushCommitOk(game, p, risked, eq)) {
+          // Fired here, not where `pv`/`geoBoost` were computed: those are
+          // gated to a genuine spot already (a real jam threat; a later-street
+          // nut advantage), but only firing once the sized bet actually goes
+          // out keeps this consistent with "record only when it changed the
+          // decision" rather than "the condition merely held."
+          if (pv > 0) _fired('Leverage_Pressure', p, game.round);
+          if (geoBoost > 0) _fired('Geometric_Overbet_Execution', p, game.round);
+          if (sr > 0) _fired('Soul_Read', p, game.round);
+          if (wantsBluff &&
+              !wantsValue &&
+              mood != null &&
+              mood.isTilted &&
+              profile.proficiencyOf('Tilt_Blowup') > 0) {
+            _fired('Tilt_Blowup', p, game.round);
+          }
           return b;
         }
       }
@@ -407,6 +422,8 @@ class ProfilePostflopPolicy implements DecisionPolicy {
       final risked = r.amount - p.currentBet;
       if (_commitOk(p, risked, eq, deepFactor, aggressive: true) &&
           _flushCommitOk(game, p, risked, eq)) {
+        if (pv > 0) _fired('Leverage_Pressure', p, game.round);
+        if (geoBoost > 0) _fired('Geometric_Overbet_Execution', p, game.round);
         if (isCheckRaise && checkRaiseProf > 0) {
           _fired('Check_Raise_Merchant', p, game.round);
         }
@@ -443,28 +460,39 @@ class ProfilePostflopPolicy implements DecisionPolicy {
     // below are untouched: sticky means one more crying call, not stacking off
     // 300 BB deep.
     final sticky = profile.proficiencyOf('Sticky_Showdown');
-    if (sticky > 0 && (tc.hasTopPair || tc.madeAtLeast(HandRank.twoPair))) {
-      callBar -= 0.14 * sticky;
-    }
+    final stickyDelta =
+        sticky > 0 && (tc.hasTopPair || tc.madeAtLeast(HandRank.twoPair))
+            ? -0.14 * sticky
+            : 0.0;
+    callBar += stickyDelta;
 
     // Tilt, postflop. A chaser calls down to prove a point; a player who has
     // shut down folds anything marginal and waits. The commitment gates below
     // are untouched — tilt shifts *frequencies*, and a rattled player should
     // lose money believably rather than absurdly.
     final mind = _mental?.stateFor(p.id);
+    var chaseDelta = 0.0;
+    var shutdownDelta = 0.0;
     if (mind != null && mind.isTilted) {
       final t = mind.tiltPressure;
-      callBar -= 0.16 * t * profile.proficiencyOf('Tilt_Chase');
-      callBar += 0.14 * t * profile.proficiencyOf('Tilt_Shutdown');
+      chaseDelta = -0.16 * t * profile.proficiencyOf('Tilt_Chase');
+      shutdownDelta = 0.14 * t * profile.proficiencyOf('Tilt_Shutdown');
+      callBar += chaseDelta + shutdownDelta;
     }
 
     // Record only when the move actually *changed the decision*, not merely
     // when its condition held. A counter that ticks every time a bar shifts by
-    // a hair says nothing about whether the move matters.
+    // a hair says nothing about whether the move matters — so this only fires
+    // the traits that pushed the bar past this hand's actual equity, in either
+    // direction, not every trait that happened to be authored on the profile.
     if (callBar < baseBar && eq >= callBar && eq < baseBar) {
-      _fired('Sticky_Showdown', p, game.round);
+      if (stickyDelta < 0) _fired('Sticky_Showdown', p, game.round);
+      if (chaseDelta < 0) _fired('Tilt_Chase', p, game.round);
     } else if (callBar > baseBar && eq < callBar && eq >= baseBar) {
-      _fired('Underbluff_Exploit', p, game.round);
+      if (underbluff > 0 && onRiver && tc.villainIsRecreational) {
+        _fired('Underbluff_Exploit', p, game.round);
+      }
+      if (shutdownDelta > 0) _fired('Tilt_Shutdown', p, game.round);
     }
 
     if (eq >= callBar &&
