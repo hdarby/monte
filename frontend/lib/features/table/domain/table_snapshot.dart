@@ -33,6 +33,7 @@ class SeatView {
     this.behavior,
     this.kind,
     this.generated = false,
+    this.actionReason,
   });
 
   final String id;
@@ -97,6 +98,11 @@ class SeatView {
   /// explicitly-chosen personality. Filler gets a softer tint so the players
   /// you actually picked stand out.
   final bool generated;
+
+  /// Human-readable label for the last action this seat took: "call", "bluff",
+  /// "tight fold", etc. Communicates what personality trait or heuristic drove
+  /// the decision. Null when no action has been recorded or the label is empty.
+  final String? actionReason;
 }
 
 /// What the human can legally do right now. Null unless it's their turn.

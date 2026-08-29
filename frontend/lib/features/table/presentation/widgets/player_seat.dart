@@ -244,6 +244,8 @@ class _PlayerSeatState extends State<PlayerSeat> {
           cardsChild,
           const SizedBox(height: 6),
           _name(),
+          if (seat.actionReason != null && seat.actionReason!.isNotEmpty)
+            _actionReasonLabel(),
           if (showBehavior && seat.behavior != null) _behaviorBadge(),
           // Chips, drawn side-on. The numbers stay right below — this is
           // flavour and at-a-glance stack depth, not a replacement for them.
@@ -445,6 +447,21 @@ class _PlayerSeatState extends State<PlayerSeat> {
       ],
     );
   }
+
+  /// A small label showing the action just taken (call, fold, bet, etc.).
+  /// Fades quickly so it doesn't clutter the seat for multiple actions.
+  Widget _actionReasonLabel() => Padding(
+    padding: const EdgeInsets.only(top: 2),
+    child: Text(
+      seat.actionReason!,
+      style: TextStyle(
+        color: Colors.white54,
+        fontSize: compact ? 9 : 10,
+        fontWeight: FontWeight.w500,
+        fontStyle: FontStyle.italic,
+      ),
+    ),
+  );
 
   /// A small muted badge naming the bot's behavior model (brain + style),
   /// bounded to the seat width and ellipsised if a label is unusually long.
