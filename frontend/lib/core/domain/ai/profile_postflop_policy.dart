@@ -8,6 +8,7 @@ import 'package:monte/core/domain/ai/personality_post_processor.dart';
 import 'package:monte/core/domain/ai/player_profile.dart';
 import 'package:monte/core/domain/ai/player_stats.dart';
 import 'package:monte/core/domain/ai/postflop_equity.dart';
+import 'package:monte/core/domain/ai/postflop_search_evaluator.dart';
 import 'package:monte/core/domain/ai/stack_context.dart';
 import 'package:monte/core/domain/ai/trigger_context.dart';
 import 'package:monte/core/domain/ai/trigger_observer.dart';
@@ -36,18 +37,34 @@ class ProfilePostflopPolicy implements DecisionPolicy {
     OpponentReads? reads,
     TriggerObserver? triggers,
     MentalReads? mental,
+    int Function()? tableCountProvider,
   }) : _random = random ?? Random() {
     _reads = reads;
     _triggers = triggers;
     _mental = mental;
     _evaluator = HeuristicPostflopEvaluator(_random);
+    _searchEvaluator = PostflopSearchEvaluator(_random, profile);
     _postProcessor = PersonalityPostProcessor(_random);
+    _tableCountProvider = tableCountProvider;
   }
 
   final PlayerProfile profile;
   final Random _random;
   late final HeuristicPostflopEvaluator _evaluator;
+  late final PostflopSearchEvaluator _searchEvaluator;
   late final PersonalityPostProcessor _postProcessor;
+
+  /// Reports the number of tables still live in the tournament this seat
+  /// belongs to (null outside a tournament, or for the cash table). Read at
+  /// decision time, not captured at construction, so the search cutover
+  /// activates the moment the field consolidates to the true final table —
+  /// including via `TournamentController._finishHeadless`'s resolve-below-72
+  /// branch, which reuses these same constructed deciders.
+  late final int Function()? _tableCountProvider;
+
+  /// Locked decision: the search-backed postflop evaluator only ever plays
+  /// the true final table.
+  static const int finalTableCutoff = 1;
 
   /// Accumulated reads on the opponents (null = no data / GTO seat).
   late final OpponentReads? _reads;
@@ -230,7 +247,18 @@ class ProfilePostflopPolicy implements DecisionPolicy {
         game.round == BettingRound.turn || game.round == BettingRound.river;
     final geoBoost = (geo > 0 && laterStreet && eq > 0.80) ? geo : 0.0;
 
-    final result = _evaluator.decide(
+    // Locked scope: preflop always uses the heuristic percentile-cutoff
+    // system; only postflop swaps evaluators, and only at the true final
+    // table (`tableCount <= 1`) — everywhere else this reads as `false`
+    // (`tableCountProvider` null outside a tournament).
+    final atFinalTable =
+        (_tableCountProvider?.call() ?? finalTableCutoff + 1) <=
+            finalTableCutoff;
+
+    final evaluator = atFinalTable
+        ? _searchEvaluator.decide
+        : _evaluator.decide;
+    final result = evaluator(
       game: game,
       p: p,
       profile: profile,
@@ -260,7 +288,13 @@ class ProfilePostflopPolicy implements DecisionPolicy {
     // Only the two genuine two-live-candidate spots (call vs. fold near
     // `callBar`; bet vs. check near the value/bluff threshold) carry a
     // runnerUp — mix is a no-op everywhere else.
-    final candidate = _postProcessor.mix(result.chosen, result.runnerUp);
+    final candidate = _postProcessor.mix(
+      result.chosen,
+      result.runnerUp,
+      marginScale: atFinalTable
+          ? PersonalityPostProcessor.closeDecisionMarginSearch
+          : null,
+    );
     _postProcessor.fireTriggers(candidate, (id) => _fired(id, p, game.round));
     return candidate.action;
   }

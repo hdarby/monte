@@ -41,8 +41,25 @@ class PersonalityPostProcessor {
   /// its own bar.
   static const double closeDecisionMargin = 0.01;
 
+  /// The search-backed counterpart of [closeDecisionMargin]. `Postflop
+  /// SearchEvaluator`'s candidate margins are `IsmctsEngine` mean-reward
+  /// differences — hero net chips normalized to ~[-1, 1] by total chips in
+  /// play (see `IsmctsEngine._heroPayoff`) — a different, larger-scale unit
+  /// than the heuristic evaluator's equity-fraction margins, so reusing
+  /// [closeDecisionMargin] here would either almost never fire (a chip-scale
+  /// gap rarely lands under 0.01) or, if the scales happened to overlap by
+  /// coincidence, would have been tuned for the wrong noise source (equity
+  /// sampling noise vs. search variance across a fixed 500 iterations).
+  /// Started at 0.02 — a similar order of magnitude to `closeDecisionMargin`
+  /// but re-derived rather than copied — and verified against
+  /// `signature_moves_test` forced onto the search backend: signature moves
+  /// still fire at that value, so it was left there rather than narrowed
+  /// further (the calibration tests don't run the search backend, since the
+  /// cutover only ever activates at `tableCount <= 1`).
+  static const double closeDecisionMarginSearch = 0.02;
+
   /// Bounded logistic mix between a [chosen] candidate and its nearest live
-  /// alternative, when they are within [closeDecisionMargin] of each other.
+  /// alternative, when they are within [marginScale] of each other.
   ///
   /// [chosen] is what the evaluator's hard-cutoff logic picked; [runnerUp] is
   /// the next-best candidate at the same decision point (e.g. fold, when the
@@ -50,14 +67,23 @@ class PersonalityPostProcessor {
   /// [chosen] is returned untouched — this only ever perturbs genuine
   /// coin-flips, never a hand that clearly wants one action.
   ///
+  /// [marginScale] defaults to [closeDecisionMargin] (the heuristic
+  /// evaluator's equity-fraction scale); pass [closeDecisionMarginSearch]
+  /// when [chosen]/[runnerUp] came from `PostflopSearchEvaluator` instead.
+  ///
   /// The mix probability is a logistic in the margin between the two
   /// candidates, saturating well before the bound so a "close" decision at
   /// the edge of the window still favours the hard-cutoff winner more often
   /// than not.
-  ActionCandidate mix(ActionCandidate chosen, ActionCandidate? runnerUp) {
+  ActionCandidate mix(
+    ActionCandidate chosen,
+    ActionCandidate? runnerUp, {
+    double? marginScale,
+  }) {
     if (runnerUp == null) return chosen;
+    final scale = marginScale ?? closeDecisionMargin;
     final gap = (chosen.margin - runnerUp.margin).abs();
-    if (gap >= closeDecisionMargin) return chosen;
+    if (gap >= scale) return chosen;
     // Logistic in the gap: at gap == 0 the two are 50/50; by
     // closeDecisionMargin the hard-cutoff winner is picked ~88% of the time.
     // Scale (k=40) is tuned so the curve reaches that saturation right at the

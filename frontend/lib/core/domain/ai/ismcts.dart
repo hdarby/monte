@@ -105,11 +105,40 @@ class IsmctsEngine implements DecisionPolicy {
   /// Synchronous and deterministic under a fixed seed — runs exactly
   /// [IsmctsConfig.iterations] playouts.
   GameAction chooseAction(PokerGame game, Player hero) {
+    final root = _search(game, hero);
+    return _bestAction(root, game, hero);
+  }
+
+  /// Runs the same fixed-iteration synchronous search as [chooseAction], but
+  /// exposes every root edge's raw visit/mean-reward stats instead of
+  /// collapsing them to a single winner — for callers (e.g.
+  /// `PostflopSearchEvaluator`) that need to compare the runner-up too.
+  List<({GameAction action, int visits, double meanReward})> evaluateEdges(
+    PokerGame game,
+    Player hero,
+  ) {
+    final root = _search(game, hero);
+    final actions = _config.abstraction.actionsFor(game, hero);
+    return [
+      for (var k = 0; k < actions.length; k++)
+        (
+          action: actions[k],
+          visits: root.edges[k]?.visits ?? 0,
+          meanReward: (root.edges[k] == null || root.edges[k]!.visits == 0)
+              ? 0.0
+              : root.edges[k]!.totalReward / root.edges[k]!.visits,
+        ),
+    ];
+  }
+
+  /// Shared search loop backing both [chooseAction] and [evaluateEdges] —
+  /// same playouts, same seeded random draws either way.
+  _Node _search(PokerGame game, Player hero) {
     final root = _prepareRoot(game, hero);
     for (var i = 0; i < _config.iterations; i++) {
       _descend(root, _determinizer.determinize(game, hero));
     }
-    return _bestAction(root, game, hero);
+    return root;
   }
 
   /// Time-budgeted search: keeps running playouts (in cooperative batches that

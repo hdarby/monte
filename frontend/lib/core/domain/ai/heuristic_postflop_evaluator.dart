@@ -86,8 +86,13 @@ class HeuristicPostflopEvaluator {
     // draws bluff more; GTO still bluffs a small balanced amount).
     if (toCall == 0) {
       final wantsValue = eq >
-          0.60 - 0.10 * exploit - 0.10 * pv - 0.08 * sr + 0.10 * deepFactor -
-              rValueThin;
+          valueThreshold(
+            exploit: exploit,
+            pv: pv,
+            sr: sr,
+            deepFactor: deepFactor,
+            rValueThin: rValueThin,
+          );
       final mood = mental?.stateFor(p.id);
       final tiltBluff = mood == null || !mood.isTilted
           ? 1.0
@@ -114,7 +119,7 @@ class HeuristicPostflopEvaluator {
           _random.nextDouble() < 0.65 * float) {
         final b = betBy((0.55 * sizeScale).clamp(0.33, 0.75));
         final risked = b.amount - p.currentBet;
-        if (_commitOk(p, risked, eq, deepFactor, aggressive: true)) {
+        if (commitOk(p, risked, eq, deepFactor, aggressive: true)) {
           return (
             chosen: ActionCandidate(b, label: 'floatTakeAway'),
             runnerUp: null,
@@ -165,8 +170,8 @@ class HeuristicPostflopEvaluator {
           ),
         );
         final risked = b.amount - p.currentBet;
-        if (_commitOk(p, risked, eq, deepFactor, aggressive: true) &&
-            _flushCommitOk(game, p, risked, eq)) {
+        if (commitOk(p, risked, eq, deepFactor, aggressive: true) &&
+            flushCommitOk(game, p, risked, eq)) {
           return (
             chosen: ActionCandidate(
               b,
@@ -196,7 +201,6 @@ class HeuristicPostflopEvaluator {
     }
 
     // Facing a bet.
-    final potOdds = toCall / (game.pot + toCall);
     final isCheckRaise = p.checkedThisRound;
     final crEdge = isCheckRaise ? 0.15 + 0.10 * checkRaiseProf : 0.0;
     final wantsValueRaise =
@@ -234,8 +238,8 @@ class HeuristicPostflopEvaluator {
         ),
       );
       final risked = r.amount - p.currentBet;
-      if (_commitOk(p, risked, eq, deepFactor, aggressive: true) &&
-          _flushCommitOk(game, p, risked, eq)) {
+      if (commitOk(p, risked, eq, deepFactor, aggressive: true) &&
+          flushCommitOk(game, p, risked, eq)) {
         return only(ActionCandidate(
           r,
           label: 'raise',
@@ -249,48 +253,34 @@ class HeuristicPostflopEvaluator {
       // Too committing to raise deep without the goods — just continue if priced.
     }
 
-    final riverMargin = onRiver ? 0.02 : 0.0;
-    var callBar =
-        potOdds + riverMargin + 0.06 * deepFactor * betFraction.clamp(0.0, 1.5);
-    final baseBar = callBar;
-    final underbluff = profile.proficiencyOf('Underbluff_Exploit');
-    if (underbluff > 0 && onRiver && tc.villainIsRecreational) {
-      callBar += 0.18 * underbluff;
-    }
-
-    final sticky = profile.proficiencyOf('Sticky_Showdown');
-    final stickyDelta =
-        sticky > 0 && (tc.hasTopPair || tc.madeAtLeast(HandRank.twoPair))
-            ? -0.14 * sticky
-            : 0.0;
-    callBar += stickyDelta;
-
-    final mind = mental?.stateFor(p.id);
-    var chaseDelta = 0.0;
-    var shutdownDelta = 0.0;
-    if (mind != null && mind.isTilted) {
-      final t = mind.tiltPressure;
-      chaseDelta = -0.16 * t * profile.proficiencyOf('Tilt_Chase');
-      shutdownDelta = 0.14 * t * profile.proficiencyOf('Tilt_Shutdown');
-      callBar += chaseDelta + shutdownDelta;
-    }
+    final barInputs = callBarMeta(
+      game: game,
+      p: p,
+      profile: profile,
+      tc: tc,
+      mental: mental,
+      deepFactor: deepFactor,
+      betFraction: betFraction,
+      toCall: toCall,
+    );
+    final callBar = barInputs.callBar;
 
     // The comparisons that decide *which* bar-shift traits actually pushed
     // the bar past this hand's equity (not merely held) live in
     // `PersonalityPostProcessor` — this is just the raw data it needs.
     final barShiftMeta = {
-      'callBar': callBar,
-      'baseBar': baseBar,
+      'callBar': barInputs.callBar,
+      'baseBar': barInputs.baseBar,
       'eq': eq,
-      'stickyDelta': stickyDelta,
-      'chaseDelta': chaseDelta,
-      'shutdownDelta': shutdownDelta,
-      'underbluffFires': underbluff > 0 && onRiver && tc.villainIsRecreational,
+      'stickyDelta': barInputs.stickyDelta,
+      'chaseDelta': barInputs.chaseDelta,
+      'shutdownDelta': barInputs.shutdownDelta,
+      'underbluffFires': barInputs.underbluffFires,
     };
 
     if (eq >= callBar &&
-        _commitOk(p, toCall, eq, deepFactor) &&
-        _flushCommitOk(game, p, toCall, eq)) {
+        commitOk(p, toCall, eq, deepFactor) &&
+        flushCommitOk(game, p, toCall, eq)) {
       return (
         chosen: ActionCandidate(
           const GameAction.call(),
@@ -318,7 +308,7 @@ class HeuristicPostflopEvaluator {
         betFraction <= 0.75 &&
         canRaise &&
         _random.nextDouble() < 0.5 * floatProf &&
-        _commitOk(p, toCall, eq, deepFactor)) {
+        commitOk(p, toCall, eq, deepFactor)) {
       return only(ActionCandidate(
         const GameAction.call(),
         label: 'floatCall',
@@ -329,8 +319,8 @@ class HeuristicPostflopEvaluator {
     final heroCallChance = (0.01 + rSuspect).clamp(0.0, 0.30);
     if (eq >= callBar - 0.05 &&
         _random.nextDouble() < heroCallChance &&
-        _commitOk(p, toCall, eq, deepFactor) &&
-        _flushCommitOk(game, p, toCall, eq)) {
+        commitOk(p, toCall, eq, deepFactor) &&
+        flushCommitOk(game, p, toCall, eq)) {
       return only(ActionCandidate(
         const GameAction.call(),
         label: 'heroCall',
@@ -356,10 +346,93 @@ class HeuristicPostflopEvaluator {
     );
   }
 
+  /// The equity bar (with no bet to face) above which a hand wants to value
+  /// bet rather than check it back. Shared with `PostflopSearchEvaluator` so
+  /// both evaluators classify a bet/check spot identically off the same `eq`
+  /// read, regardless of which one actually picked the action.
+  static double valueThreshold({
+    required double exploit,
+    required double pv,
+    required double sr,
+    required double deepFactor,
+    required double rValueThin,
+  }) =>
+      0.60 -
+      0.10 * exploit -
+      0.10 * pv -
+      0.08 * sr +
+      0.10 * deepFactor -
+      rValueThin;
+
+  /// The call-vs-fold equity bar facing a bet, plus every bar-shift trait's
+  /// contribution — shared with `PostflopSearchEvaluator` so a search-backed
+  /// call/fold candidate carries the same `meta` a heuristic one would, for
+  /// `PersonalityPostProcessor.fireTriggers` bookkeeping. Pure data
+  /// derivation (no branch decision), so duplicating it as a static method
+  /// rather than threading it through both evaluators' return values is the
+  /// smaller surface.
+  static ({
+    double callBar,
+    double baseBar,
+    double stickyDelta,
+    double chaseDelta,
+    double shutdownDelta,
+    bool underbluffFires,
+  }) callBarMeta({
+    required PokerGame game,
+    required Player p,
+    required PlayerProfile profile,
+    required TriggerContext tc,
+    required MentalReads? mental,
+    required double deepFactor,
+    required double betFraction,
+    required int toCall,
+  }) {
+    final onRiver = game.round == BettingRound.river;
+    final potOdds = toCall / (game.pot + toCall);
+    final riverMargin = onRiver ? 0.02 : 0.0;
+    var callBar =
+        potOdds + riverMargin + 0.06 * deepFactor * betFraction.clamp(0.0, 1.5);
+    final baseBar = callBar;
+    final underbluff = profile.proficiencyOf('Underbluff_Exploit');
+    final underbluffFires =
+        underbluff > 0 && onRiver && tc.villainIsRecreational;
+    if (underbluffFires) callBar += 0.18 * underbluff;
+
+    final sticky = profile.proficiencyOf('Sticky_Showdown');
+    final stickyDelta =
+        sticky > 0 && (tc.hasTopPair || tc.madeAtLeast(HandRank.twoPair))
+            ? -0.14 * sticky
+            : 0.0;
+    callBar += stickyDelta;
+
+    final mind = mental?.stateFor(p.id);
+    var chaseDelta = 0.0;
+    var shutdownDelta = 0.0;
+    if (mind != null && mind.isTilted) {
+      final t = mind.tiltPressure;
+      chaseDelta = -0.16 * t * profile.proficiencyOf('Tilt_Chase');
+      shutdownDelta = 0.14 * t * profile.proficiencyOf('Tilt_Shutdown');
+      callBar += chaseDelta + shutdownDelta;
+    }
+
+    return (
+      callBar: callBar,
+      baseBar: baseBar,
+      stickyDelta: stickyDelta,
+      chaseDelta: chaseDelta,
+      shutdownDelta: shutdownDelta,
+      underbluffFires: underbluffFires,
+    );
+  }
+
   /// The commitment gate that stops a bot playing a whole stack off on a
   /// pot-odds call. See the original `ProfilePostflopPolicy` docs for the
-  /// rationale — unchanged by this move.
-  bool _commitOk(
+  /// rationale — unchanged by this move. Static (like [valueThreshold]/
+  /// [callBarMeta]) so [PostflopSearchEvaluator] can veto a search-chosen
+  /// call/raise/all-in with the identical floor, rather than trusting the
+  /// search's own (currently unreliable at 500 iterations) judgment alone.
+  static bool commitOk(
     Player p,
     int risked,
     double equity,
@@ -378,7 +451,9 @@ class HeuristicPostflopEvaluator {
   }
 
   /// A disciplined player won't stack off with a non-nut flush into a big pot.
-  bool _flushCommitOk(PokerGame game, Player p, int risked, double equity) {
+  /// Static for the same reason as [commitOk].
+  static bool flushCommitOk(
+      PokerGame game, Player p, int risked, double equity) {
     final sev = _overflushRisk(p.hole, game.board);
     if (sev <= 0) return true;
     final total = p.stack + p.currentBet;

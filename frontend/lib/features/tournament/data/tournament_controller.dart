@@ -517,6 +517,12 @@ class TournamentController {
               reads: reads,
               triggers: triggerLog,
               mental: mental,
+              // Read live, not captured here: the cutover to the search
+              // evaluator activates the moment the field consolidates to the
+              // true final table (`tableCount <= 1`), including through
+              // `_finishHeadless`'s resolve-below-72 branch, which reuses
+              // these same constructed deciders every hand.
+              tableCountProvider: () => state.tables.length,
             )
           : (deciderBuilder?.call(id, i) ??
                 buildDecider(
