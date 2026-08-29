@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:monte/core/di/game_providers.dart';
 import 'package:monte/core/domain/ai/player_profile.dart';
@@ -125,6 +126,7 @@ class TournamentViewModel extends Notifier<TournamentUiState> {
     // the only hands that produced no record at all.
     onEvalHandRecorded: ref.read(evalHistoryStoreProvider).record,
     resultStore: ref.read(tournamentResultStoreProvider),
+    yieldToFrame: () => SchedulerBinding.instance.endOfFrame,
   );
 
   /// The full live standings, built on demand — the field can be thousands of
