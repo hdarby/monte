@@ -31,6 +31,7 @@ DecisionPolicy deciderForProfile(
   OpponentReads? reads,
   TriggerObserver? triggers,
   MentalReads? mental,
+  int Function()? tableCountProvider,
 }) {
   if (isAmateurProfile(profile)) {
     return AmateurPolicy(profile, random: random, mental: mental);
@@ -40,7 +41,11 @@ DecisionPolicy deciderForProfile(
     random: random,
     ranges: const ProfileCalibrator().rangesFor(profile),
     postflop: ProfilePostflopPolicy(profile,
-        random: random, reads: reads, triggers: triggers, mental: mental),
+        random: random,
+        reads: reads,
+        triggers: triggers,
+        mental: mental,
+        tableCountProvider: tableCountProvider),
     reads: reads,
     triggers: triggers,
     mental: mental,

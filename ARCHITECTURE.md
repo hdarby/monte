@@ -87,10 +87,36 @@ This is the "Monte" in Monte Carlo. Also pure Dart.
 - `famous_pros.dart`, `home_game_profiles.dart`, `player_profiles.dart`,
   `custom_players.dart` — the actual cast. Mostly **data**, which is why they're
   long files; there's no logic to extract.
-- `profile_policy.dart`, `profile_postflop_policy.dart`, `profile_decider.dart`,
-  `amateur_policy.dart` — how a profile turns into decisions.
+- `profile_policy.dart` (preflop), `profile_postflop_policy.dart`,
+  `profile_decider.dart`, `amateur_policy.dart` — how a profile turns into
+  decisions. `ProfilePostflopPolicy.decide()` is now a thin shell: it computes
+  the threshold-shifting inputs (read-derived exploit terms, personality, tilt)
+  and hands them to `heuristic_postflop_evaluator.dart` /
+  `personality_post_processor.dart` below — see that pair for the actual
+  postflop judgement.
 - `decider_factory.dart` — **`buildDecider(BotType, profile, iterations)`**, the
   one factory. `BotType` lives here.
+- `action_candidate.dart` — **`ActionCandidate`**: the small data contract
+  (action, label, margin, a `meta` bag) the postflop evaluator and its
+  post-processor pass between them.
+- `heuristic_postflop_evaluator.dart` — **`HeuristicPostflopEvaluator`**: the
+  postflop branch logic itself (value/bluff/check-raise-plan/slow-play-trap
+  lines, sizing, the commitment gates `_commitOk`/`_flushCommitOk`) — moved out
+  of `ProfilePostflopPolicy` so "what does this hand's math say" is separate
+  from "how does personality distort it". It has no opinion on *why* a
+  threshold moved; that's computed once by the caller and passed in as plain
+  numbers. Returns the chosen `ActionCandidate` plus, at the two genuine
+  two-live-candidate forks (call vs. fold near `callBar`; bet vs. check near
+  the value/bluff threshold), a `runnerUp` for the post-processor to mix
+  against — every other branch (float, trap, check-raise-plan, hero-call) is
+  already probabilistic/commitment-gated with no well-defined alternative, so
+  it leaves `runnerUp` null.
+- `personality_post_processor.dart` — **`PersonalityPostProcessor`**: signature-
+  move trigger bookkeeping (moved here from being scattered across every
+  `ProfilePostflopPolicy` return point) plus `mix()`, a bounded logistic that
+  treats a hand sitting within `closeDecisionMargin` (0.01) of its own
+  threshold as the coin-flip it actually is, instead of a hard cutoff. Only
+  perturbs genuine near-ties — nothing outside the margin is affected.
 
 **Stack depth, SPR and position** — the shared readers. Each of these existed
 as duplicated logic inside three separate policies before, and every copy

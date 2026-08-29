@@ -1,20 +1,20 @@
 import 'dart:math';
 
 import 'package:monte/core/domain/ai/hand_range.dart';
+import 'package:monte/core/domain/ai/heuristic_postflop_evaluator.dart';
 import 'package:monte/core/domain/ai/mental_state.dart';
 import 'package:monte/core/domain/ai/opponent_reads.dart';
+import 'package:monte/core/domain/ai/personality_post_processor.dart';
 import 'package:monte/core/domain/ai/player_profile.dart';
 import 'package:monte/core/domain/ai/player_stats.dart';
 import 'package:monte/core/domain/ai/postflop_equity.dart';
+import 'package:monte/core/domain/ai/postflop_search_evaluator.dart';
 import 'package:monte/core/domain/ai/stack_context.dart';
 import 'package:monte/core/domain/ai/trigger_context.dart';
 import 'package:monte/core/domain/ai/trigger_observer.dart';
 import 'package:monte/core/domain/engine/actions.dart';
-import 'package:monte/core/domain/engine/bet_sizing.dart';
-import 'package:monte/core/domain/engine/card.dart';
-import 'package:monte/core/domain/engine/hand_evaluator.dart';
-import 'package:monte/core/domain/engine/decision_policy.dart';
 import 'package:monte/core/domain/engine/board_texture.dart';
+import 'package:monte/core/domain/engine/decision_policy.dart';
 import 'package:monte/core/domain/engine/game.dart';
 import 'package:monte/core/domain/engine/player.dart';
 
@@ -37,14 +37,34 @@ class ProfilePostflopPolicy implements DecisionPolicy {
     OpponentReads? reads,
     TriggerObserver? triggers,
     MentalReads? mental,
+    int Function()? tableCountProvider,
   }) : _random = random ?? Random() {
     _reads = reads;
     _triggers = triggers;
     _mental = mental;
+    _evaluator = HeuristicPostflopEvaluator(_random);
+    _searchEvaluator = PostflopSearchEvaluator(_random, profile);
+    _postProcessor = PersonalityPostProcessor(_random);
+    _tableCountProvider = tableCountProvider;
   }
 
   final PlayerProfile profile;
   final Random _random;
+  late final HeuristicPostflopEvaluator _evaluator;
+  late final PostflopSearchEvaluator _searchEvaluator;
+  late final PersonalityPostProcessor _postProcessor;
+
+  /// Reports the number of tables still live in the tournament this seat
+  /// belongs to (null outside a tournament, or for the cash table). Read at
+  /// decision time, not captured at construction, so the search cutover
+  /// activates the moment the field consolidates to the true final table —
+  /// including via `TournamentController._finishHeadless`'s resolve-below-72
+  /// branch, which reuses these same constructed deciders.
+  late final int Function()? _tableCountProvider;
+
+  /// Locked decision: the search-backed postflop evaluator only ever plays
+  /// the true final table.
+  static const int finalTableCutoff = 1;
 
   /// Accumulated reads on the opponents (null = no data / GTO seat).
   late final OpponentReads? _reads;
@@ -227,409 +247,58 @@ class ProfilePostflopPolicy implements DecisionPolicy {
         game.round == BettingRound.turn || game.round == BettingRound.river;
     final geoBoost = (geo > 0 && laterStreet && eq > 0.80) ? geo : 0.0;
 
-    GameAction betBy(double fraction) =>
-        GameAction.bet(potBetTo(game, p, fraction));
+    // Locked scope: preflop always uses the heuristic percentile-cutoff
+    // system; only postflop swaps evaluators, and only at the true final
+    // table (`tableCount <= 1`) — everywhere else this reads as `false`
+    // (`tableCountProvider` null outside a tournament).
+    final atFinalTable =
+        (_tableCountProvider?.call() ?? finalTableCutoff + 1) <=
+            finalTableCutoff;
 
-    GameAction raiseBy(double fraction) =>
-        GameAction.raise(potRaiseTo(game, p, fraction));
-
-    // No bet to face: value-bet (exploit bets thinner) or bluff (exploit and
-    // draws bluff more; GTO still bluffs a small balanced amount).
-    if (toCall == 0) {
-      // rValueThin lowers the bar vs a station (they pay off thinner value);
-      // rBluffMore adds bluff frequency vs a player who overfolds.
-      final wantsValue = eq >
-          0.60 - 0.10 * exploit - 0.10 * pv - 0.08 * sr + 0.10 * deepFactor - rValueThin;
-      // Deep, a bluff is an invitation to be raised off the hand or to build a
-      // pot with the worst of it, so real players bluff less the deeper they
-      // are. This is the other half of the pot-bloat fix: without it, smaller
-      // sizings just mean more streets of betting.
-      // A blow-up fires at pots they have no business firing at; a player who
-      // has shut down stops bluffing altogether.
-      final mood = _mental?.stateFor(p.id);
-      final tiltBluff = mood == null || !mood.isTilted
-          ? 1.0
-          : (1 +
-                  0.9 * mood.tiltPressure * profile.proficiencyOf('Tilt_Blowup') -
-                  0.7 * mood.tiltPressure *
-                      profile.proficiencyOf('Tilt_Shutdown'))
-              .clamp(0.1, 2.5);
-      final bluffChance = tiltBluff *
-          ((0.10 + 0.35 * exploit + 0.30 * pv + 0.30 * sr) *
-                      ((1 - eq) * 0.6 + (isDraw ? 0.4 : 0.0)) +
-                  0.4 * rBluffMore) *
-              (1 - 0.45 * deepFactor);
-      final wantsBluff = _random.nextDouble() < bluffChance;
-      // Float and take it away: we called their flop bet in position with
-      // little, they have surrendered the turn, so we take it. Fires on air --
-      // with a real hand the ordinary value logic already bets.
-      final float = profile.proficiencyOf('Float_And_Take_Away');
-      if (float > 0 &&
-          tc.onTurn &&
-          tc.calledFlop &&
-          tc.inPosition &&
-          tc.headsUp &&
-          eq < 0.55 &&
-          p.stack > bb &&
-          _random.nextDouble() < 0.65 * float) {
-        _fired('Float_And_Take_Away', p, game.round);
-        final b = betBy((0.55 * sizeScale).clamp(0.33, 0.75));
-        final risked = b.amount - p.currentBet;
-        if (_commitOk(p, risked, eq, deepFactor, aggressive: true)) return b;
-      }
-
-      // Check-raise plan. Out of position with a hand that wants a big pot,
-      // checking is not weakness — it is the first half of a raise.
-      //
-      // This is the *cause* of check-raises being missing rather than rare.
-      // With a strong hand the policy always bet, so by the time anybody faced
-      // a bet after checking they necessarily held something weak, and the
-      // check-raise vanished from the game: measured at 0.6% of check-then-
-      // face-a-bet spots against roughly 8–15% in real play. Nothing needed
-      // adding to the engine; players needed a reason to check strong.
-      final crPlan = (0.26 + 0.35 * checkRaiseProf) * (1 + 0.4 * exploit);
-      if (!inPosition &&
-          !tc.onRiver &&
-          (eq > 0.70 || isDraw) &&
-          p.stack > bb &&
-          _random.nextDouble() < crPlan) {
-        return const GameAction.check();
-      }
-
-      // Slow-play trap: with a genuine monster, take the passive line and let
-      // them catch up or bluff into it. A *line* change, not a sizing one --
-      // which is precisely what `action_modifier` multipliers could never say.
-      // Restricted to hands strong enough that giving a free card is cheap, and
-      // to earlier streets, so it never becomes "check the river and win
-      // nothing".
-      final trap = profile.proficiencyOf('Slow_Play_Trap');
-      if (trap > 0 &&
-          !tc.onRiver &&
-          wantsValue &&
-          eq > 0.86 &&
-          tc.madeAtLeast(HandRank.threeOfAKind) &&
-          _random.nextDouble() < 0.55 * trap) {
-        _fired('Slow_Play_Trap', p, game.round);
-        return const GameAction.check();
-      }
-
-      if ((wantsValue || wantsBluff) && p.stack > bb) {
-        // Cap the size at whatever still arrives at the SPR this hand deserves.
-        // A pure bluff is sized as a marginal hand, not as the value hand it is
-        // representing — betting big with air is how a deep pot gets built with
-        // the worst of it.
-        final sprCap = ctx.fractionToReachSpr(
-          _targetSpr(wantsValue ? eq : min(eq, 0.5), ctx.spr),
-        );
-        // Pressure (jam threat) and geometric overbets both size up; the overbet
-        // only fires with a nut advantage on a later street.
-        final b = betBy(
-          _sizeFraction(
-            texture: texture,
-            // A bluff or the near-nuts is polarised; middling value is merged.
-            polarised: !wantsValue || eq > 0.85,
-            thinValue: wantsValue && eq < 0.72,
-            opponents: liveOpp,
-            sizeScale: sizeScale,
-            pressure: pv,
-            geoBoost: geoBoost,
-            cap: sprCap,
-          ),
-        );
-        final risked = b.amount - p.currentBet;
-        if (_commitOk(p, risked, eq, deepFactor, aggressive: true) &&
-            _flushCommitOk(game, p, risked, eq)) {
-          // Fired here, not where `pv`/`geoBoost` were computed: those are
-          // gated to a genuine spot already (a real jam threat; a later-street
-          // nut advantage), but only firing once the sized bet actually goes
-          // out keeps this consistent with "record only when it changed the
-          // decision" rather than "the condition merely held."
-          if (pv > 0) _fired('Leverage_Pressure', p, game.round);
-          if (geoBoost > 0) _fired('Geometric_Overbet_Execution', p, game.round);
-          if (sr > 0) _fired('Soul_Read', p, game.round);
-          if (wantsBluff &&
-              !wantsValue &&
-              mood != null &&
-              mood.isTilted &&
-              profile.proficiencyOf('Tilt_Blowup') > 0) {
-            _fired('Tilt_Blowup', p, game.round);
-          }
-          return b;
-        }
-      }
-      return const GameAction.check();
-    }
-
-    // Facing a bet. Continue is the GTO pot-odds line for everyone (bluff-
-    // catching stays honest without per-opponent reads). Exploit adds pressure:
-    // thinner value-raises and more semibluff-raises.
-    final potOdds = toCall / (game.pot + toCall);
-    // Deep, only raise for value with a hand that wants a big pot; deep-bluff-
-    // raises also need more, so we don't spew stacks off building bloated pots.
-    // Raising after we checked this street is a **check-raise** — a different
-    // play from raising a bet we were always going to face, and the thing that
-    // stops a continuation bet being free money.
-    final isCheckRaise = p.checkedThisRound;
-    final crEdge = isCheckRaise ? 0.15 + 0.10 * checkRaiseProf : 0.0;
-    final wantsValueRaise =
-        eq > 0.74 - 0.08 * exploit - 0.10 * pv + 0.12 * deepFactor - crEdge;
-    // A semibluff needs cards to come. On the river the `isDraw` equity band
-    // (0.32–0.55) contains no draws at all — just weak made hands — so raising
-    // it was a pure punt, and it drove a 15.6% river raise rate in the tuning
-    // log. The river keeps only a token bluff-raise, and only where a read says
-    // the opponent folds too much ([rBluffMore]): a move worth making, not a
-    // coin-flip with a stack. Turn semibluffs are also trimmed — they are real
-    // (there is a card to come) but they were firing far too often.
-    final onRiver = game.round == BettingRound.river;
-    final wantsBluffRaise = onRiver
-        ? eq < 0.35 &&
-            _random.nextDouble() <
-                (0.005 + 0.5 * rBluffMore.clamp(0.0, 0.30)).clamp(0.0, 0.10)
-        : isDraw &&
-            _random.nextDouble() <
-                (0.04 +
-                        0.22 * exploit +
-                        0.22 * pv +
-                        (isCheckRaise ? 0.16 + 0.28 * checkRaiseProf : 0.0)) *
-                    (1 - 0.55 * deepFactor);
-    // A check-raise keys off the **hand**, not a re-derived range estimate.
-    // Facing a bet, `polarisedOn` correctly narrows the villain to a betting
-    // range, which drops our equity sharply — so a hand that was strong enough
-    // to plan a check-raise no longer clears the ordinary value bar by the time
-    // it gets the chance, and the planned raise evaporates into a call. Two
-    // pair or better (or a live draw) is check-raise material regardless of
-    // what the range maths says this instant.
-    final wantsCheckRaise = isCheckRaise &&
-        (tc.madeAtLeast(HandRank.twoPair) || (isDraw && !tc.onRiver)) &&
-        _random.nextDouble() < 0.30 + 0.35 * checkRaiseProf;
-
-    if (canRaise && (wantsValueRaise || wantsBluffRaise || wantsCheckRaise)) {
-      final raiseCap = ctx.fractionToReachSpr(
-        _targetSpr(wantsValueRaise ? eq : min(eq, 0.5), ctx.spr),
-      );
-      final r = raiseBy(
-        _sizeFraction(
-          texture: texture,
-          polarised: wantsBluffRaise || eq > 0.85,
-          thinValue: wantsValueRaise && eq < 0.80,
-          opponents: liveOpp,
-          sizeScale: sizeScale,
-          pressure: pv,
-          geoBoost: geoBoost,
-          cap: raiseCap,
-        ),
-      );
-      final risked = r.amount - p.currentBet;
-      if (_commitOk(p, risked, eq, deepFactor, aggressive: true) &&
-          _flushCommitOk(game, p, risked, eq)) {
-        if (pv > 0) _fired('Leverage_Pressure', p, game.round);
-        if (geoBoost > 0) _fired('Geometric_Overbet_Execution', p, game.round);
-        if (isCheckRaise && checkRaiseProf > 0) {
-          _fired('Check_Raise_Merchant', p, game.round);
-        }
-        return r;
-      }
-      // Too committing to raise deep without the goods — just continue if priced.
-    }
-    // Facing a big bet deep, a marginal made hand shouldn't call off into likely
-    // escalation on pure pot odds — demand a little extra to continue. (The
-    // passive-opponent read now lives in `assumedBluffs`, not here.)
-    // The river has no cards to come and no implied odds, so a bluff-catch that
-    // is merely break-even at the price is a coin-flip for chips — and in a
-    // tournament a negative-ICM one. Demand a real margin over the price to call
-    // the end. Without this a bluff-catcher sits exactly at indifference by
-    // construction and a rounding error decides the hand, which is what the
-    // 28.9% fold-to-river-bet in the tuning log actually was.
-    final riverMargin = onRiver ? 0.02 : 0.0;
-    var callBar =
-        potOdds + riverMargin + 0.06 * deepFactor * betFraction.clamp(0.0, 1.5);
-
-    // Underbluff exploit: recreational players essentially do not bluff the
-    // river, so a bluff-catcher facing one is drawing to a hand they rarely
-    // have. Demand materially more to call. Read-gated, so it never fires on a
-    // hunch.
-    final baseBar = callBar;
-    final underbluff = profile.proficiencyOf('Underbluff_Exploit');
-    if (underbluff > 0 && onRiver && tc.villainIsRecreational) {
-      callBar += 0.18 * underbluff;
-    }
-
-    // Sticky showdown: they simply will not fold a made hand. Lowers the bar
-    // once top pair or better is in hand -- and *only* then, so it produces
-    // paying off the river rather than calling with air. The commitment gates
-    // below are untouched: sticky means one more crying call, not stacking off
-    // 300 BB deep.
-    final sticky = profile.proficiencyOf('Sticky_Showdown');
-    final stickyDelta =
-        sticky > 0 && (tc.hasTopPair || tc.madeAtLeast(HandRank.twoPair))
-            ? -0.14 * sticky
-            : 0.0;
-    callBar += stickyDelta;
-
-    // Tilt, postflop. A chaser calls down to prove a point; a player who has
-    // shut down folds anything marginal and waits. The commitment gates below
-    // are untouched — tilt shifts *frequencies*, and a rattled player should
-    // lose money believably rather than absurdly.
-    final mind = _mental?.stateFor(p.id);
-    var chaseDelta = 0.0;
-    var shutdownDelta = 0.0;
-    if (mind != null && mind.isTilted) {
-      final t = mind.tiltPressure;
-      chaseDelta = -0.16 * t * profile.proficiencyOf('Tilt_Chase');
-      shutdownDelta = 0.14 * t * profile.proficiencyOf('Tilt_Shutdown');
-      callBar += chaseDelta + shutdownDelta;
-    }
-
-    // Record only when the move actually *changed the decision*, not merely
-    // when its condition held. A counter that ticks every time a bar shifts by
-    // a hair says nothing about whether the move matters — so this only fires
-    // the traits that pushed the bar past this hand's actual equity, in either
-    // direction, not every trait that happened to be authored on the profile.
-    if (callBar < baseBar && eq >= callBar && eq < baseBar) {
-      if (stickyDelta < 0) _fired('Sticky_Showdown', p, game.round);
-      if (chaseDelta < 0) _fired('Tilt_Chase', p, game.round);
-    } else if (callBar > baseBar && eq < callBar && eq >= baseBar) {
-      if (underbluff > 0 && onRiver && tc.villainIsRecreational) {
-        _fired('Underbluff_Exploit', p, game.round);
-      }
-      if (shutdownDelta > 0) _fired('Tilt_Shutdown', p, game.round);
-    }
-
-    if (eq >= callBar &&
-        _commitOk(p, toCall, eq, deepFactor) &&
-        _flushCommitOk(game, p, toCall, eq)) {
-      return const GameAction.call();
-    }
-    // Float: call a flop bet in position with nothing, *intending* to take the
-    // pot when the aggressor gives up on the turn.
-    //
-    // This is the first half of `Float_And_Take_Away`, and without it the move
-    // could never fire. The take-away half was there from the start, but the
-    // ordinary call logic only continues with equity — so a floater never
-    // arrived on the turn holding the air a float is defined by, and the move
-    // sat silent through 1,500 hands. Measured: 71 spots met every structural
-    // condition and not one had a weak enough hand.
-    //
-    // A losing call taken alone; it pays only because of the street after it,
-    // which is why it is gated on position, heads-up, and a price worth paying.
-    final floatProf = profile.proficiencyOf('Float_And_Take_Away');
-    if (floatProf > 0 &&
-        tc.onFlop &&
-        tc.inPosition &&
-        tc.headsUp &&
-        !tc.madeAtLeast(HandRank.pair) &&
-        betFraction <= 0.75 &&
-        canRaise &&
-        _random.nextDouble() < 0.5 * floatProf &&
-        _commitOk(p, toCall, eq, deepFactor)) {
-      return const GameAction.call();
-    }
-
-    // Hero call. Against a balanced betting range a bluff-catcher is close to
-    // indifferent by construction — equity lands near the price — so only a
-    // *read* can break the tie in favour of calling. It is therefore driven
-    // almost entirely by [rSuspect], which is zero until this opponent's
-    // aggression is established: a bot with no information folds instead of
-    // guessing, because a hero call without exploit data is just a punt.
-    // Bounded to the sliver just below the bar and still commitment-gated, so
-    // it can never be the call that costs a stack.
-    final heroCallChance = (0.01 + rSuspect).clamp(0.0, 0.30);
-    if (eq >= callBar - 0.05 &&
-        _random.nextDouble() < heroCallChance &&
-        _commitOk(p, toCall, eq, deepFactor) &&
-        _flushCommitOk(game, p, toCall, eq)) {
-      return const GameAction.call();
-    }
-    return const GameAction.fold();
+    final evaluator = atFinalTable
+        ? _searchEvaluator.decide
+        : _evaluator.decide;
+    final result = evaluator(
+      game: game,
+      p: p,
+      profile: profile,
+      ctx: ctx,
+      tc: tc,
+      mental: _mental,
+      eq: eq,
+      isDraw: isDraw,
+      texture: texture,
+      pv: pv,
+      sr: sr,
+      geoBoost: geoBoost,
+      checkRaiseProf: checkRaiseProf,
+      exploit: exploit,
+      sizeScale: sizeScale,
+      deepFactor: deepFactor,
+      rValueThin: rValueThin,
+      rBluffMore: rBluffMore,
+      rSuspect: rSuspect,
+      liveOpp: liveOpp,
+      toCall: toCall,
+      bb: bb,
+      canRaise: canRaise,
+      betFraction: betFraction,
+      inPosition: inPosition,
+    );
+    // Only the two genuine two-live-candidate spots (call vs. fold near
+    // `callBar`; bet vs. check near the value/bluff threshold) carry a
+    // runnerUp — mix is a no-op everywhere else.
+    final candidate = _postProcessor.mix(
+      result.chosen,
+      result.runnerUp,
+      marginScale: atFinalTable
+          ? PersonalityPostProcessor.closeDecisionMarginSearch
+          : null,
+    );
+    _postProcessor.fireTriggers(candidate, (id) => _fired(id, p, game.round));
+    return candidate.action;
   }
 
-  /// The commitment gate that stops a bot playing a whole stack off on a
-  /// pot-odds call: the larger the fraction of the effective stack an action
-  /// would put in this hand, the stronger the hand must be. Pot odds price
-  /// *this* call, not the stack-off it usually leads to — this is what supplies
-  /// the difference.
-  ///
-  /// It used to be dormant at ≤100 BB ([deepFactor] 0) — i.e. switched off for
-  /// the whole of tournament play, which is exactly where the bustouts were
-  /// coming from. Now a shallow floor bites at every depth (a full stack-off
-  /// needs ~0.60 equity), and [deepFactor] only *steepens* it when deep, so the
-  /// previously-tuned deep behaviour is unchanged.
-  /// [aggressive] marks a bet or raise rather than a call. It matters: a bet can
-  /// win the pot uncontested, so raw hand equity understates it, and applying
-  /// the shallow floor to aggression would wipe out short-stack bluffing and
-  /// leave nothing but nit-shoving. Aggression therefore keeps the original
-  /// deep-only discipline; only *calls* — which have no fold equity to fall back
-  /// on — face the new floor. Calling off a stack is what busts players.
-  bool _commitOk(
-    Player p,
-    int risked,
-    double equity,
-    double deepFactor, {
-    bool aggressive = false,
-  }) {
-    if (risked <= 0) return true;
-    final effTotal = p.totalContributed + p.stack; // this hand's effective stack
-    if (effTotal <= 0) return true;
-    final commitFrac = ((p.totalContributed + risked) / effTotal).clamp(0.0, 1.0);
-    if (commitFrac < 0.30) return true; // a modest commitment is always fine
-    final shallow = aggressive ? 0.0 : 0.30 + 0.30 * commitFrac;
-    final deep = deepFactor <= 0 ? 0.0 : 0.53 + 0.50 * commitFrac * deepFactor;
-    final bar = max(shallow, deep).clamp(0.0, 0.98);
-    return equity >= bar;
-  }
-
-  /// A disciplined player won't stack off with a **non-nut flush** into a big
-  /// pot: on a flushing board a higher flush is exactly what heavy multiway
-  /// action represents. Returns false to veto a large commit unless the hero's
-  /// equity clears a bar that climbs with how dominated the flush could be (how
-  /// many higher cards of the suit are still live) and with each extra opponent.
-  /// A no-op for small commitments (peeling one card is fine) and for the nut
-  /// flush (or non-flush hands). Pros only — amateurs keep the leak.
-  bool _flushCommitOk(PokerGame game, Player p, int risked, double equity) {
-    final sev = _overflushRisk(p.hole, game.board);
-    if (sev <= 0) return true;
-    final total = p.stack + p.currentBet;
-    final commitFrac = total <= 0 ? 1.0 : risked / total;
-    if (commitFrac < 0.35) return true; // small commit: a cheap peel is fine
-    final mw = game.players.where((x) => x.inHand && !identical(x, p)).length;
-    // Heads-up, a made flush is genuinely strong (it beats every non-flush), so
-    // only the very worst holdings get braked. The domination risk really bites
-    // **multiway**, where heavy action means someone very likely holds a higher
-    // flush — which is exactly the spot a pro must not stack off a low flush.
-    if (mw < 2 && sev < 0.75) return true;
-    final bar = (0.60 + 0.22 * sev + 0.10 * (mw - 1)).clamp(0.0, 0.985);
-    return equity >= bar;
-  }
-
-  /// How dominated the hero's made flush could be, in [0,1]: 0 = not a (plain)
-  /// flush or already the nut flush; higher = more live higher cards of the
-  /// flush suit a villain could be holding. Straight flushes and non-flush hands
-  /// return 0 (they aren't out-flushed).
-  static double _overflushRisk(List<Card> hole, List<Card> board) {
-    if (hole.length < 2 || board.length < 3) return 0;
-    final all = [...hole, ...board];
-    if (HandEvaluator.evaluate(all).rank != HandRank.flush) return 0;
-    final counts = <Suit, int>{};
-    for (final c in all) {
-      counts[c.suit] = (counts[c.suit] ?? 0) + 1;
-    }
-    final suit = counts.entries.firstWhere((e) => e.value >= 5).key;
-    final seen = all
-        .where((c) => c.suit == suit)
-        .map((c) => c.rank.value)
-        .toSet();
-    final heroTop = hole
-        .where((c) => c.suit == suit)
-        .map((c) => c.rank.value)
-        .fold(0, max);
-    // Ranks of the suit above the hero's best, not visible to the hero: a
-    // villain could hold any of them for a better flush.
-    var higherLive = 0;
-    for (var r = 14; r > heroTop; r--) {
-      if (!seen.contains(r)) higherLive++;
-    }
-    return (higherLive / 4).clamp(0.0, 1.0);
-  }
 
   /// The single opponent this decision is most about: the bettor when facing a
   /// bet (largest committed opponent), else the opponent who will face our
@@ -645,93 +314,5 @@ class ProfilePostflopPolicy implements DecisionPolicy {
     return _reads.forSeat(opps.first.id);
   }
 
-
-  /// The stack-to-pot ratio a hand of this [equity] should be *aiming to face*
-  /// when the last of the money goes in, given the [current] SPR.
-  ///
-  /// This is the deep-stack discipline in one function, and the target has to be
-  /// **proportional** rather than absolute. An absolute target misbehaves at both
-  /// ends: "arrive at SPR 3" is a normal half-pot bet from SPR 10, but from SPR
-  /// 40 it demands an enormous one — the exact opposite of playing small when
-  /// deep. Expressed as a share of the SPR you already have, one pair keeps
-  /// better than half of it (so it never gets committed), while the near-nuts
-  /// keeps none (a stack-off).
-  static double _targetSpr(double equity, double current) {
-    final retain = equity >= 0.88
-        ? 0.00 // get it in
-        : equity >= 0.78
-            ? 0.10
-            : equity >= 0.68
-                ? 0.20
-                : equity >= 0.58
-                    ? 0.35
-                    : 0.55; // marginal or a bluff: stay uncommitted
-    if (!current.isFinite) return retain <= 0 ? 0 : 1e6;
-    return current * retain;
-  }
-
-  /// Picks a bet size as a fraction of the pot.
-  ///
-  /// Real players do not bet one size. The size is driven by *why* they are
-  /// betting and *what the board looks like*:
-  ///
-  /// - **Static / dry** boards: small. Nothing is getting outdrawn, so the goal
-  ///   is thin value and keeping worse hands in — a third to a half pot.
-  /// - **Dynamic / wet** boards: large. Equity denial is worth real money, so
-  ///   charge the draws — two-thirds to a full pot.
-  /// - **Polarised** holdings (the near-nuts, or a pure bluff) size up; **merged**
-  ///   thin-value hands size down, because they want calls from worse.
-  /// - **Multiway** sizes up: more players means more equity to deny and a
-  ///   greater chance somebody has a real hand.
-  ///
-  /// A little jitter keeps the sizing from being a readable tell. The profile's
-  /// [sizeScale] (its risk premium) still tilts the whole distribution, so an
-  /// aggressive personality genuinely bets bigger than a passive one.
-  double _sizeFraction({
-    required BoardTexture? texture,
-    required bool polarised,
-    required bool thinValue,
-    required int opponents,
-    required double sizeScale,
-    required double pressure,
-    required double geoBoost,
-    required double cap,
-  }) {
-    var f = 0.52;
-
-    if (texture != null) {
-      if (texture.isStatic) f -= 0.16;
-      if (texture.isDynamic) f += 0.16;
-      if (texture.isDry) f -= 0.08;
-      if (texture.isWet) f += 0.10;
-      // A made flush out there polarises the betting range hard.
-      if (texture.isMonochrome) f += 0.06;
-      // Paired boards are cheap to represent, so bets run smaller.
-      if (texture.isPaired) f -= 0.05;
-    }
-
-    if (polarised) f += 0.20;
-    if (thinValue) f -= 0.12;
-
-    // Each extra opponent beyond the first adds protection value.
-    f += 0.07 * (opponents - 1).clamp(0, 3);
-
-    f *= sizeScale;
-    // Pressure sizes up, but modestly. A big bet now folds out far more of the
-    // opponent's range (see `polarisedOn`), so ramping toward a jam on every
-    // pressure spot *costs* value — the money comes from sizes that get called.
-    // The geometric overbet still reaches the top of the range, but it needs a
-    // genuine nut advantage to fire.
-    f += 0.35 * pressure + 0.9 * geoBoost;
-
-    // ±0.06 of jitter so the size itself carries no information.
-    f += (_random.nextDouble() - 0.5) * 0.12;
-
-    // The SPR ceiling wins over the texture-driven size, but never squeezes a
-    // bet below a quarter pot — below that it stops being a bet at all, and the
-    // hand should simply check.
-    f = min(f, max(cap, 0.25));
-    return f.clamp(0.25, 2.0);
-  }
 
 }

@@ -1,5 +1,6 @@
 import 'package:meta/meta.dart';
 
+import 'package:monte/core/domain/ai/personality.dart';
 import 'package:monte/core/domain/engine/game.dart';
 
 /// A full simulated-player profile: a poker-native *style* baseline, *skill /
@@ -61,6 +62,51 @@ class PlayerProfile {
       if (c.id == id) return c.proficiency;
     }
     return 0.0;
+  }
+
+  /// Maps this rich, named profile onto the generic 4-axis [PersonalityProfile]
+  /// `IsmctsEngine` needs for its risk-utility transform on the search's
+  /// payoff. Without this, every search-backed decision — regardless of whose
+  /// seat it is — used `PersonalityProfile.balanced()` by default, so a tight,
+  /// risk-averse pro's search never actually valued a stack-off any
+  /// differently than a maniac's would. Reuses the same fields the heuristic
+  /// postflop brain already reads for analogous purposes, rather than
+  /// inventing a second characterization:
+  /// - `tightness` from `1 - vpipTarget` (a player who enters few pots is
+  ///   tight, by definition).
+  /// - `aggression` from the pfr:vpip ratio — the standard "aggression
+  ///   factor" proxy, and the same ratio `OpenRanges` already treats as
+  ///   meaningful (PFR counts raises against every hand *dealt*, so this
+  ///   ratio — not either target alone — is what separates a raise-first
+  ///   player from a limp-and-call one at the same VPIP).
+  /// - `riskTolerance` from `riskPremiumCoefficient`, linearly re-centred from
+  ///   its `[0.6, 1.6]` clamp (the same range `ProfilePostflopPolicy`'s
+  ///   `sizeScale` already clamps to) onto `[0, 1]` around 0.5 = neutral.
+  /// - `bluffFrequency` has no direct analogue in [StrategicBaseline]/
+  ///   [BehavioralModifiers] — approximated from how exploitative a player is
+  ///   (`exploitativeWeight`, gated by `1 - gtoAdherenceWeight`, since a
+  ///   strictly GTO-adherent player's "exploit" dial has nothing to act on)
+  ///   blended with `aggression`, since a player who bets/raises more also
+  ///   tends to represent more hands they don't have.
+  PersonalityProfile toPersonalityProfile() {
+    final b = strategicBaseline;
+    final m = behavioralModifiers;
+    final tightness = (1 - b.vpipTarget).clamp(0.0, 1.0);
+    final aggression = b.vpipTarget <= 0
+        ? 0.5
+        : (b.pfrTarget / b.vpipTarget).clamp(0.0, 1.0);
+    final riskTolerance =
+        ((m.riskPremiumCoefficient.clamp(0.6, 1.6) - 0.6) / 1.0)
+            .clamp(0.0, 1.0);
+    final bluffFrequency = (0.5 * aggression +
+            0.5 * (1 - b.gtoAdherenceWeight) * m.exploitativeWeight)
+        .clamp(0.0, 1.0);
+    return PersonalityProfile(
+      aggression: aggression,
+      bluffFrequency: bluffFrequency,
+      tightness: tightness,
+      riskTolerance: riskTolerance,
+    );
   }
 
   /// A copy with a different display [name] — used to seat a personality under a

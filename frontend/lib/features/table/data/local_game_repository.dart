@@ -252,6 +252,27 @@ class LocalGameRepository extends GameRepository {
         // via [deciderForProfile] so a personality plays identically everywhere.
         // Reads are bound to *this* bot's perspective (its read of the human is
         // only the hands it saw — see [OpponentStatsService.readsFor]).
+        //
+        // Deliberately NOT passing `tableCountProvider` here. A cash table is
+        // always a single table, so it would always qualify for the same
+        // search-backed postflop cutover the tournament final table gets —
+        // tried, and reverted three times now. Two fixes landed along the
+        // way and both measurably helped: giving the search the seat's real
+        // `PersonalityProfile` (`PlayerProfile.toPersonalityProfile`), then
+        // an explicit commitment-gate veto over the search's own pick
+        // (`HeuristicPostflopEvaluator.commitOk`/`flushCommitOk`, reused
+        // rather than duplicated) once it was clear the search alone
+        // couldn't be trusted with that discipline at 500 iterations.
+        // `deep_stack_discipline_test`'s bust rate is now fully within
+        // bound (was 2.6x over). But `amateur_strength_test` still fails —
+        // specific amateur/pro matchups still overshoot by ~100 bb/100
+        // against a <4 bound (down from 150-160 before either fix, real
+        // progress, just not enough) — and `postflop_discipline_test` still
+        // can't gather enough small-bet-facing samples to judge. Revisit
+        // once those are understood; likely candidates: rollout opponents
+        // are still the generic `BotStrategy`, not the real seated
+        // personalities, and 500 iterations may simply be too few for some
+        // matchups.
         return deciderForProfile(pro,
             reads: _readsAs(playerId), mental: _mental);
       }

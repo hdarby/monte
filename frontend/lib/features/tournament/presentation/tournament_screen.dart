@@ -74,6 +74,7 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
               statsService: ref.read(opponentStatsServiceProvider),
               onEvalHandRecorded: ref.read(evalHistoryStoreProvider).record,
               resultStore: ref.read(tournamentResultStoreProvider),
+              yieldToFrame: () => SchedulerBinding.instance.endOfFrame,
             ),
   );
 

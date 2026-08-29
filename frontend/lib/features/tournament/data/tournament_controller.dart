@@ -63,6 +63,7 @@ class TournamentController {
     this.buyIn = 0,
     this._identityBySeat = const {},
     this._profileBySeat = const {},
+    this._yieldToFrame,
     TriggerLog? triggerLog,
     MentalTable? mental,
   }) : _deciders = Map.of(deciders),
@@ -296,10 +297,25 @@ class TournamentController {
   bool _awaitingHuman = false;
   Duration _botDelay = const Duration(milliseconds: 300);
 
-  /// How many background tables to simulate between event-loop yields — small
-  /// enough that the UI stays responsive and repaints the progress bar even
-  /// with hundreds of tables, large enough to avoid excessive yield overhead.
+  /// How many background tables to simulate between event-loop yields when no
+  /// [_yieldToFrame] is supplied (headless/batch simulation) — small enough
+  /// that the UI stays responsive and repaints the progress bar even with
+  /// hundreds of tables, large enough to avoid excessive yield overhead.
+  ///
+  /// When [_yieldToFrame] *is* supplied (live play), this is bypassed
+  /// entirely and every table yields — see [_simulateBackgroundTables].
   static const int _simYieldEvery = 8;
+
+  /// A real "wait for a frame to actually render" yield, supplied by the
+  /// presentation layer (`SchedulerBinding.instance.endOfFrame`) for live
+  /// play. Null in headless/batch contexts (`runToCompletion`, tests,
+  /// `tool/bench_*.dart`), which fall back to `Future.delayed(Duration.zero)`
+  /// — a *microtask* yield, not a frame yield, and the wrong tool for keeping
+  /// a real UI responsive: it only queues a continuation, it doesn't wait for
+  /// anything to paint. Kept as a plain closure (not a direct
+  /// `flutter/scheduler.dart` import) so this data-layer controller stays
+  /// framework-free and usable from a pure-Dart script.
+  final Future<void> Function()? _yieldToFrame;
 
   /// The human's live table state (seats/board/action).
   Stream<TableSnapshot> get tableStream => _tableCtrl.stream;
@@ -330,6 +346,7 @@ class TournamentController {
     void Function(EvalHand hand)? onEvalHandRecorded,
     TournamentResultStore? resultStore,
     bool icmAware = true,
+    Future<void> Function()? yieldToFrame,
   }) {
     final structure = save.structure;
     if (structure == null) {
@@ -364,6 +381,7 @@ class TournamentController {
       onEvalHandRecorded: onEvalHandRecorded,
       resultStore: resultStore,
       restoreFrom: save,
+      yieldToFrame: yieldToFrame,
     );
   }
 
@@ -382,6 +400,7 @@ class TournamentController {
     void Function(EvalHand hand)? onEvalHandRecorded,
     TournamentResultStore? resultStore,
     TournamentSave? restoreFrom,
+    Future<void> Function()? yieldToFrame,
   }) {
     // One log per tournament: the deciders write signature moves into it, the
     // recorder drains it per hand so the recap can name them.
@@ -498,6 +517,12 @@ class TournamentController {
               reads: reads,
               triggers: triggerLog,
               mental: mental,
+              // Read live, not captured here: the cutover to the search
+              // evaluator activates the moment the field consolidates to the
+              // true final table (`tableCount <= 1`), including through
+              // `_finishHeadless`'s resolve-below-72 branch, which reuses
+              // these same constructed deciders every hand.
+              tableCountProvider: () => state.tables.length,
             )
           : (deciderBuilder?.call(id, i) ??
                 buildDecider(
@@ -546,6 +571,7 @@ class TournamentController {
       mental: mental,
       identityBySeat: identityBySeat,
       profileBySeat: profileBySeat,
+      yieldToFrame: yieldToFrame,
     );
   }
 
@@ -1262,12 +1288,26 @@ class TournamentController {
   /// UI stays responsive and can paint the progress bar. Returns true if the
   /// tournament ended during the round (caller should stop). Emits [SimProgress]
   /// as it goes, and a final "done" so the UI hides the bar.
+  ///
+  /// Yield cadence depends on whether a real frame yield is available
+  /// ([_yieldToFrame], live play only):
+  /// - **With** one: every table yields. A table's hand can now cost real
+  ///   money (an MCTS-driven table at the small-field cutover is a couple
+  ///   hundred ms, not the near-instant heuristic case this cadence was
+  ///   tuned for), and the old `_simYieldEvery` cadence only yielded the
+  ///   *first* and *last* table in a batch — everything between ran as one
+  ///   uninterrupted block, up to 6 tables' worth with nothing to stop it.
+  /// - **Without** one (headless/batch: `runToCompletion`, tests, benchmark
+  ///   scripts) — the coarser `_simYieldEvery` cadence, since a real frame
+  ///   yield isn't available to wait on anyway and yielding every table
+  ///   across a large field is pure overhead nobody is watching.
   Future<bool> _simulateBackgroundTables(int humanTableId) async {
     final tables = [
       for (final t in List.of(state.tables))
         if (t.id != humanTableId && t.size >= 2) t,
     ];
     final total = tables.length;
+    final yieldEveryTable = _yieldToFrame != null;
     for (var i = 0; i < tables.length; i++) {
       _recordBusts(_playHand(tables[i]), removeFromTables: false);
       if (_maybeFinish()) {
@@ -1275,9 +1315,11 @@ class TournamentController {
         _publishTournament();
         return true;
       }
-      if (i % _simYieldEvery == 0 || i == tables.length - 1) {
+      if (yieldEveryTable ||
+          i % _simYieldEvery == 0 ||
+          i == tables.length - 1) {
         _emitSim(i + 1, total);
-        await Future<void>.delayed(Duration.zero);
+        await (_yieldToFrame?.call() ?? Future<void>.delayed(Duration.zero));
         if (_tableCtrl.isClosed) return true;
       }
     }
