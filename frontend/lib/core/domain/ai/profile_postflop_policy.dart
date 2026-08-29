@@ -76,13 +76,27 @@ class ProfilePostflopPolicy implements DecisionPolicy {
   /// How rattled each seat is (see [MentalReads]). Null = nobody tilts.
   late final MentalReads? _mental;
 
-  void _fired(String id, Player p, BettingRound street) =>
-      _triggers?.onFired(id, p.id, street);
+  /// Last decision's label for UI coaching (e.g., "valueBet", "bluff", "call").
+  /// Read by LocalGameRepository after decide() to populate action reasons.
+  String? lastDecisionLabel;
+
+  /// Last decision's signature move names that fired (for UI coaching label).
+  /// Read by LocalGameRepository after decide().
+  List<String> lastSignaturesMoved = [];
+
+  /// Accumulates which moves fired during the current decision.
+  final List<String> _firedThisDecision = [];
+
+  void _fired(String id, Player p, BettingRound street) {
+    _firedThisDecision.add(id);
+    _triggers?.onFired(id, p.id, street);
+  }
 
   static const _equityIterations = 160;
 
   @override
   GameAction decide(PokerGame game, Player p) {
+    _firedThisDecision.clear();
     // Preflop is the calibrated frequency layer's job; this brain is postflop.
     if (game.board.isEmpty) {
       // Defensive: a profile bot should never reach here preflop, but continue
@@ -295,7 +309,9 @@ class ProfilePostflopPolicy implements DecisionPolicy {
           ? PersonalityPostProcessor.closeDecisionMarginSearch
           : null,
     );
+    lastDecisionLabel = candidate.label;
     _postProcessor.fireTriggers(candidate, (id) => _fired(id, p, game.round));
+    lastSignaturesMoved = List.of(_firedThisDecision);
     return candidate.action;
   }
 

@@ -11,6 +11,7 @@ import 'package:monte/core/domain/ai/player_stats.dart';
 import 'package:monte/core/domain/ai/personality.dart';
 import 'package:monte/core/domain/ai/mental_state.dart';
 import 'package:monte/core/domain/ai/profile_decider.dart';
+import 'package:monte/core/domain/ai/profile_postflop_policy.dart';
 import 'package:monte/core/domain/engine/actions.dart';
 import 'package:monte/core/domain/engine/decision_policy.dart';
 import 'package:monte/core/domain/engine/game.dart';
@@ -509,7 +510,7 @@ class LocalGameRepository extends GameRepository {
     final callBefore = game.callAmount(player);
 
     game.applyAction(action);
-    _recordActionReason(player.id, action, callBefore);
+    _recordActionReason(player.id, action, _deciders[player.id]);
 
     final int amount;
     switch (action.type) {
@@ -538,8 +539,9 @@ class LocalGameRepository extends GameRepository {
     if (game.isHandOver) _finalizeHand();
   }
 
-  void _recordActionReason(String playerId, GameAction action, int callBefore) {
-    final reason = switch (action.type) {
+  void _recordActionReason(String playerId, GameAction action, DecisionPolicy? decider) {
+    // Start with the basic action type
+    final actionLabel = switch (action.type) {
       ActionType.fold => 'fold',
       ActionType.check => 'check',
       ActionType.call => 'call',
@@ -547,7 +549,31 @@ class LocalGameRepository extends GameRepository {
       ActionType.raise => 'raise',
       ActionType.allIn => 'all-in',
     };
+
+    // Enhance with personality decision label if available (e.g., "valueBet", "bluff")
+    String reason = actionLabel;
+    if (decider is ProfilePostflopPolicy) {
+      final label = decider.lastDecisionLabel;
+      if (label != null && label.isNotEmpty) {
+        reason = label;
+      }
+      // Append signature moves if any fired (e.g., "bluff · Slow_Play_Trap")
+      final moves = decider.lastSignaturesMoved;
+      if (moves.isNotEmpty) {
+        final movesStr = moves.map(_formatMoveName).join(', ');
+        reason = '$reason · $movesStr';
+      }
+    }
+
     _actionReasons[playerId] = reason;
+  }
+
+  /// Format a signature move name for display (CamelCase → "Camel Case")
+  String _formatMoveName(String name) {
+    return name.replaceAllMapped(
+      RegExp('([A-Z])'),
+      (m) => ' ${m.group(1)}',
+    ).trim();
   }
 
   void _finalizeHand() {
