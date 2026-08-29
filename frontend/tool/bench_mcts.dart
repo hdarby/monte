@@ -54,7 +54,7 @@ void main() {
   const trialsPerCell = 5;
 
   print(
-    'IsmctsEngine.chooseAction cost — ${trialsPerCell} trials per cell, '
+    'IsmctsEngine.chooseAction cost — $trialsPerCell trials per cell, '
     'ms per decision\n',
   );
   print(

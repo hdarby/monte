@@ -9,7 +9,6 @@ import 'dart:math';
 
 import 'package:monte/core/domain/ai/ismcts.dart';
 import 'package:monte/features/tournament/data/tournament_controller.dart';
-import 'package:monte/features/tournament/domain/tournament_state.dart';
 import 'package:monte/features/tournament/domain/tournament_structure.dart';
 
 void main() {

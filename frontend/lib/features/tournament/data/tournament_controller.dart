@@ -177,7 +177,6 @@ class TournamentController {
     // Stack geometry first: whether a call can end your tournament is the fact
     // that reframes every other read on the card.
     final them = state.players[seatId];
-    final me = humanId == null ? null : state.players[humanId!];
     final bb = state.currentLevel.bigBlind;
     if (them != null && bb > 0) {
       final depth = them.chips / bb;
@@ -724,8 +723,9 @@ class TournamentController {
     final busts = <String, int>{};
     for (final p in enginePlayers) {
       state.players[p.id]!.chips = p.stack;
-      if (p.stack == 0 && state.players[p.id]!.isActive)
+      if (p.stack == 0 && state.players[p.id]!.isActive) {
         busts[p.id] = pre[p.id]!;
+      }
     }
     // Tilt accumulates at every table, not just the human's — a player moved to
     // your table part-way through a level should arrive in whatever state their
