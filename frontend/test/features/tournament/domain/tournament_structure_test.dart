@@ -25,12 +25,27 @@ void main() {
       expect(turbo.startingStack, lessThan(deep.startingStack));
     });
 
-    test('levelAt caps the blinds past the last defined level', () {
+    test('levelAt keeps escalating past the last defined level, never '
+        'plateaus', () {
+      // A capped schedule can stall a tournament indefinitely: a short stack
+      // that survives on blind-only pots at a fixed, affordable level can do
+      // so forever once blinds stop rising. No stack should outlast an
+      // unboundedly-escalating ante.
       final s = TournamentStructure.standard();
       final last = s.levels.last;
       final beyond = s.levelAt(s.levels.length + 5);
-      expect(beyond.bigBlind, last.bigBlind); // capped
-      expect(beyond.level, greaterThan(last.level)); // number keeps climbing
+      expect(beyond.bigBlind, greaterThan(last.bigBlind));
+      expect(beyond.ante, greaterThan(last.ante));
+      expect(beyond.level, greaterThan(last.level));
+
+      // Strictly increasing level over level, not just eventually bigger.
+      var previous = last.bigBlind;
+      for (var i = 1; i <= 6; i++) {
+        final level = s.levelAt(s.levels.length - 1 + i);
+        expect(level.bigBlind, greaterThan(previous));
+        expect(level.bigBlind, greaterThanOrEqualTo(level.smallBlind));
+        previous = level.bigBlind;
+      }
     });
 
     test('durationOf follows the clock mode', () {

@@ -1,3 +1,5 @@
+import 'dart:math' show max, pow;
+
 import 'package:meta/meta.dart';
 
 /// How a tournament's blind levels advance.
@@ -92,13 +94,48 @@ class TournamentStructure {
 
   bool get allowsRebuys => maxRebuys > 0 && reentryLevelCutoff > 0;
 
-  /// The level at [index] (0-based). Past the last defined level the blinds are
-  /// **capped** at the final level (its number keeps climbing so the UI can show
-  /// it, but the stakes stop rising).
+  /// Growth applied to blinds/ante for every level past the structure's last
+  /// defined one (see [levelAt]) — chosen independently of whatever ratio the
+  /// last two defined rungs happen to use, so a short or unusually-shaped
+  /// custom ramp can't accidentally produce a near-1.0 (or degenerate) growth
+  /// rate right where it matters most.
+  static const double _extendedGrowth = 1.5;
+
+  /// The level at [index] (0-based). Past the last defined level, blinds and
+  /// ante keep escalating geometrically by [_extendedGrowth] per level rather
+  /// than plateauing.
+  ///
+  /// A structure that caps at its final rung can stall a tournament
+  /// indefinitely: a short stack that survives by winning just enough
+  /// blind-only pots to stay alive at a fixed, affordable level can do so
+  /// forever once blinds stop rising, and the covering stack's own decider
+  /// declining to contest that isn't a bug in the schedule to route around —
+  /// it's the schedule's job to make that "affordable level" not exist for
+  /// long. No stack, however large, should be able to survive an
+  /// unboundedly-escalating ante forever.
+  /// Hard ceiling on the escalation exponent. `1.5^250` is already ~10^44 —
+  /// unaffordable by any stack a chip count could ever represent — well
+  /// before `pow` would overflow to `double.infinity` (around exponent
+  /// ~1700 for this base), which `.round()` cannot convert to an int. A very
+  /// long-running stalemate (bounded by `TournamentController`'s own
+  /// `maxHands` safety net, not by anything here) must still get a finite
+  /// number back, not a crash.
+  static const int _maxExtendedLevels = 250;
+
   BlindLevel levelAt(int index) {
     if (index < levels.length) return levels[index];
     final last = levels.last;
-    return last.copyWith(level: last.level + (index - (levels.length - 1)));
+    final n = (index - (levels.length - 1)).clamp(0, _maxExtendedLevels);
+    final growth = pow(_extendedGrowth, n).toDouble();
+    int scale(int v) => (v * growth).round();
+    final smallBlind = scale(last.smallBlind);
+    final bigBlind = max(scale(last.bigBlind), smallBlind);
+    return last.copyWith(
+      level: last.level + n,
+      smallBlind: smallBlind,
+      bigBlind: bigBlind,
+      ante: last.ante > 0 ? scale(last.ante) : 0,
+    );
   }
 
   /// The playing duration of the level at [index] under the active clock mode,
