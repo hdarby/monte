@@ -156,6 +156,33 @@ The named personalities (pros and recreationals) don't use the search — they r
 play quality lives. Four shared concepts, each of which used to be duplicated
 per-policy and drifted:
 
+- **Postflop is split into base evaluation and personality post-processing.**
+  `ProfilePostflopPolicy.decide()` used to be one ~700-line function
+  interleaving the equity/threshold math with personality, tilt, opponent-read
+  and signature-move logic inline at every return point. It now only computes
+  the threshold-shifting inputs (read-derived exploit terms, personality, tilt)
+  and hands them to `HeuristicPostflopEvaluator` (the branch logic — value/
+  bluff/check-raise-plan/slow-play-trap lines, sizing, the commitment gates)
+  and `PersonalityPostProcessor` (signature-move trigger bookkeeping, plus a
+  new bounded close-decision mix). The contract between them is
+  `ActionCandidate` (`action_candidate.dart`): the evaluator returns a chosen
+  candidate and, at the two genuine two-live-candidate forks (call vs. fold
+  near `callBar`; bet vs. check near the value/bluff threshold), a `runnerUp`.
+  `PersonalityPostProcessor.mix()` treats a hand within `closeDecisionMargin`
+  (0.01) of its own bar as the coin-flip it actually is — e.g. a call worth
+  +12.4 chips vs. a fold worth +12.0 no longer always breaks the same way —
+  instead of a hard cutoff. Every other signature-move branch is already
+  probabilistic or commitment-gated with no well-defined alternative, so it's
+  left as a documented non-comparative pass-through (`runnerUp: null`) rather
+  than forced into a comparison that would misrepresent it. Preflop
+  (`ProfilePolicy`) is untouched — it stays a percentile cutoff against
+  `HandStrength.playability`/`OpenRanges`, not a candidate-scored decision.
+  `closeDecisionMargin` had to be tuned down from an initially-reasonable 0.05:
+  because `margin` is a single noisy Monte-Carlo equity sample (~160
+  iterations), a 0.05 window let sampling noise alone make hands look "close"
+  that weren't, measurably collapsing `Sticky_Showdown`'s fold rate and
+  silencing `Float_And_Take_Away` — caught by `signature_moves_test`, not
+  missed.
 - **Two preflop metrics, and mixing them up is a real bug.**
   `HandStrength.preflopOf` is heads-up all-in equity vs a random hand — correct
   for push/fold and ICM shoves only. `HandStrength.playabilityOf` is for *hand
