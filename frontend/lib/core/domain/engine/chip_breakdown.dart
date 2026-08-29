@@ -58,10 +58,10 @@ class ChipBreakdown {
     // Largest first, but holding value back for the smaller chips rather than
     // taking every chip a denomination can cover.
     //
-    // The biggest denomination keeps only about half, because that top chip is
+    // The biggest denomination keeps only about a third, because that top chip is
     // the one a player has just been paid in and hasn't broken yet; below it
-    // each denomination keeps most of what reaches it, which is what makes the
-    // counts grow as the chips get smaller. The last column takes the rest, so
+    // each denomination keeps less of what reaches it, allowing more chips to
+    // flow to the smaller denominations. The last column takes the rest, so
     // the spread always adds up exactly.
     var remaining = amount;
     final columns = <ChipColumn>[];
@@ -72,7 +72,7 @@ class ChipBreakdown {
       // Last column when we've run out of room, or nothing smaller can be paid.
       final isLast = columns.length == maxColumns - 1 ||
           !desc.skip(i + 1).any((x) => x <= remaining - d);
-      final keep = columns.isEmpty ? 0.5 : 0.9;
+      final keep = columns.isEmpty ? 0.33 : 0.75;
       final count =
           isLast ? remaining ~/ d : (remaining * keep ~/ d).clamp(1, remaining ~/ d);
       remaining -= count * d;
