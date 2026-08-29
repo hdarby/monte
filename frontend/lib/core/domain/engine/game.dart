@@ -239,6 +239,35 @@ class PokerGame {
 
     _postBlinds(active);
     log.add('${BettingRound.preflop.label}: blinds posted.');
+
+    // A short stack's blind (and, for the big blind, its ante) can consume
+    // its *entire* stack before anyone has voluntarily acted — e.g. a big
+    // blind so shallow that blind+ante alone puts it all-in. Ordinarily the
+    // *other* blind still gets a genuine first decision (call or fold against
+    // that all-in) via the normal `_afterAction` path once they act — this
+    // check must not preempt that. It only needs to catch the narrower case
+    // where *both* blinds are simultaneously all-in from forced bets alone
+    // (heads-up, both stacks too short to cover blind+ante), leaving nobody
+    // able to act at all: `_postBlinds`'s `_nextActorFrom` then falls back to
+    // an arbitrary seat that can't act, `currentPlayer` returns null forever,
+    // and the hand hangs — chips already committed to the pot, but never
+    // awarded, because `_afterAction` (the only path that calls
+    // `_advanceStreet`) is never reached when nobody ever gets to call
+    // `applyAction`.
+    //
+    // Deliberately NOT the broader "fewer than two players can act" check
+    // `_advanceStreet` uses for later streets — that one is only ever
+    // reached *after* the sole non-all-in player already had their turn on
+    // whichever street the all-in happened, so skipping their action on
+    // later streets is correct (nothing left for them to decide). Applied
+    // here, before the very first action of the hand, it would skip the
+    // live blind's actual decision — the bug this replaced was originally
+    // caught this way, then found *by* this over-broad version silently
+    // freezing chip counts across an entire heads-up stretch instead of
+    // ever asking the covering blind to call or fold.
+    if (!players[_actorIndex].canAct) {
+      _advanceStreet();
+    }
   }
 
   void _postBlinds(List<Player> active) {
