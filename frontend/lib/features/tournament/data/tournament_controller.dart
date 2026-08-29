@@ -540,6 +540,8 @@ class TournamentController {
       enginePlayers: engine,
       statsService: statsService,
       onEvalHandRecorded: onEvalHandRecorded,
+      resultStore: resultStore,
+      buyIn: buyIn,
       triggerLog: triggerLog,
       mental: mental,
       identityBySeat: identityBySeat,
@@ -1321,7 +1323,17 @@ class TournamentController {
         if (_tourCtrl.isClosed) return;
       }
     }
-    if (state.status != TournamentStatus.finished) _settleByChips();
+    if (state.status != TournamentStatus.finished) {
+      // `_settleByChips` calls `state.declareChampion()` directly rather than
+      // going through `_maybeFinish()` (it isn't resolving a single hand's
+      // bustouts, so there's no natural call site for that check) — which
+      // means the one thing `_maybeFinish` also does, `_recordCareer()`, was
+      // never getting called for a field settled this way. That is exactly
+      // the large-field case (playersRemaining > 72 when the human busts),
+      // so a big event could finish with no career record at all.
+      _settleByChips();
+      _recordCareer();
+    }
     _publishTournament();
   }
 

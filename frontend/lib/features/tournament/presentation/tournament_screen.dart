@@ -1,7 +1,4 @@
-import 'dart:math';
-
 import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:monte/core/domain/ai/player_profile.dart';
 import 'package:monte/core/presentation/money_format.dart';
@@ -20,10 +17,6 @@ import 'package:monte/features/tournament/presentation/widgets/standings_panel.d
 import 'package:monte/features/tournament/presentation/widgets/tournament_hud.dart';
 import 'package:monte/features/eval_history/domain/eval_hand.dart';
 import 'package:monte/features/eval_history/domain/session_markdown.dart';
-import 'package:monte/core/domain/ai/profile_decider.dart';
-import 'package:monte/core/domain/ai/player_profiles.dart';
-import 'package:monte/core/domain/engine/bot.dart';
-import 'package:monte/features/eval_history/domain/duplicate_run.dart';
 import 'package:monte/features/eval_history/domain/session_report.dart';
 import 'package:monte/features/tournament/domain/tournament_result.dart';
 import 'package:monte/features/eval_history/presentation/eval_history_provider.dart';
@@ -189,23 +182,10 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
           career: career,
           place: you?.place,
           entrants: tour?.entrants,
-          prize: you?.prize,
         );
         if (mounted) {
-          // Kicked off *before* the screen opens, so a few hundred replays per
-          // hand are already running while the first page is being read — the
-          // rest of the report is never held up waiting on this.
-          // Not disposed here: the replay loop keeps running and writing to it
-          // in the background even if the player pops this screen before it
-          // finishes (there is nothing to cancel it), and disposing while it
-          // is still being written to would throw. It is a plain object with
-          // no listeners once the screen is gone, so it is just garbage once
-          // `_duplicateSection` finishes and this closure drops it.
-          final progress = ValueNotifier<(int, int)>((0, mine.length));
-          final pending = _duplicateSection(mine, seat, progress);
           await nav.push(MaterialPageRoute<void>(
-            builder: (_) => SessionReviewScreen(
-                markdown: md, pending: pending, progress: progress),
+            builder: (_) => SessionReviewScreen(markdown: md),
           ));
         }
       }
@@ -213,88 +193,6 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
       // A review must never trap the player in a finished tournament.
     }
     nav.pop();
-  }
-
-  /// Replays the session with a pro in the player's seat, as markdown.
-  ///
-  /// Every other number in the review is `HandCoach`'s model of poker. This one
-  /// is a measurement: the same cards dealt to the same opponents with somebody
-  /// else in the chair. When the two disagree, the model is the one to doubt.
-  ///
-  /// [progress] is updated after every hand, but a *hand* is not the unit that
-  /// matters for staying responsive: each one already ran [_runsPerHand] full
-  /// replays as one synchronous burst, and yielding only between hands (via
-  /// `Future.delayed(Duration.zero)`, which just queues the continuation —
-  /// it does not wait for a frame to actually complete) meant a single slow
-  /// hand's whole burst could still run without the engine ever getting a
-  /// chance to paint or service a scroll gesture in between. The runs within
-  /// a hand are now chunked (`_runsPerChunk`) and every chunk yields on
-  /// `SchedulerBinding.endOfFrame`, a real "a frame has finished" wait rather
-  /// than "queue a microtask" — this is what actually keeps the screen live
-  /// and scrollable while this runs, not merely likely to be.
-  static const _runsPerHand = 120;
-  static const _runsPerChunk = 15;
-
-  Future<String> _duplicateSection(
-    List<EvalHand> hands,
-    String seat,
-    ValueNotifier<(int, int)> progress,
-  ) async {
-    // Yield first so the review paints before the simulation starts.
-    await Future<void>.delayed(const Duration(milliseconds: 50));
-    final profile = danielNegreanu;
-    final substitute = deciderForProfile(profile);
-    final results = <DuplicateHand>[];
-    for (var i = 0; i < hands.length; i++) {
-      final h = hands[i];
-      final me = h.players.where((p) => p.id == seat).firstOrNull;
-      if (me != null) {
-        final bb = h.bigBlind <= 0 ? 1 : h.bigBlind;
-        var weightedSum = 0.0;
-        var weight = 0;
-        for (var start = 0; start < _runsPerHand; start += _runsPerChunk) {
-          final n = min(_runsPerChunk, _runsPerHand - start);
-          final avg = DuplicateRun.replay(
-            h,
-            seat,
-            deciderFor: (id) =>
-                ref.read(_vm.notifier).controller.deciderFor(id) ??
-                BotStrategy(),
-            substitute: substitute,
-            runs: n,
-            seed: h.handNumber * 7919 + start,
-          );
-          // Weighted by the chunk's own run count, not how many of those runs
-          // actually produced a result — close enough for a progress-yield
-          // boundary, and unreconstructable hands already return null outright
-          // above the chunk loop for every seat, so a partial chunk failure is
-          // the rare case this approximates rather than the common one.
-          if (avg != null) {
-            weightedSum += avg * n;
-            weight += n;
-          }
-          await SchedulerBinding.instance.endOfFrame;
-        }
-        if (weight > 0) {
-          results.add(DuplicateHand(
-            hand: h,
-            yoursBb: me.net / bb,
-            theirsBb: weightedSum / weight,
-          ));
-        }
-      }
-      progress.value = (i + 1, hands.length);
-    }
-    if (results.isEmpty) return '';
-    // The fragment alone, not `SessionMarkdown.of(...)` — that writes a whole
-    // second document (title, hands count, Result, Red/Blue line, Rules, none
-    // of it gated on there being any hands), which is what glued an empty
-    // "Baseline / 0 hands" report onto the end of the real one.
-    return SessionMarkdown.duplicateSection(DuplicateReport(
-      substituteName: profile.name,
-      hands: results,
-      runsPerHand: _runsPerHand,
-    ));
   }
 
   void _announce(TournamentUiState state) {

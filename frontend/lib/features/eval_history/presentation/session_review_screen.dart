@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -7,46 +6,10 @@ import 'package:flutter/services.dart';
 /// Renders the small subset of markdown the report actually uses — headings,
 /// tables, bold, italics, bullets — rather than pulling in a dependency for it.
 /// The raw text stays one tap away via Copy, so it can go anywhere.
-class SessionReviewScreen extends StatefulWidget {
-  const SessionReviewScreen({
-    super.key,
-    required this.markdown,
-    this.pending,
-    this.progress,
-  });
+class SessionReviewScreen extends StatelessWidget {
+  const SessionReviewScreen({super.key, required this.markdown});
 
   final String markdown;
-
-  /// A slower section still being computed — the duplicate run, which replays
-  /// every hand a few hundred times and cannot hold up the first page.
-  ///
-  /// Started before this screen opens, so it is already running while the first
-  /// page is being read. It resolves to markdown appended at the end.
-  final Future<String>? pending;
-
-  /// How far [pending] has gotten: (hands checked, hands total). Optional so
-  /// callers that don't report progress still work — the row falls back to an
-  /// indeterminate spinner.
-  final ValueListenable<(int, int)>? progress;
-
-  @override
-  State<SessionReviewScreen> createState() => _SessionReviewScreenState();
-}
-
-class _SessionReviewScreenState extends State<SessionReviewScreen> {
-  String? _extra;
-  Object? _failed;
-
-  @override
-  void initState() {
-    super.initState();
-    widget.pending?.then(
-      (md) { if (mounted) setState(() => _extra = md); },
-      onError: (Object e) { if (mounted) setState(() => _failed = e); },
-    );
-  }
-
-  String get markdown => widget.markdown + (_extra ?? '');
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -72,62 +35,11 @@ class _SessionReviewScreenState extends State<SessionReviewScreen> {
             constraints: const BoxConstraints(maxWidth: 760),
             child: ListView(
               padding: const EdgeInsets.all(20),
-              children: [
-                ...renderMarkdown(context, markdown),
-                if (widget.pending != null && _extra == null && _failed == null)
-                  Padding(
-                    key: const Key('duplicateProgressRow'),
-                    padding: const EdgeInsets.symmetric(vertical: 18),
-                    child: widget.progress == null
-                        ? const _DuplicateProgressRow(done: 0, total: 0)
-                        : ValueListenableBuilder<(int, int)>(
-                            valueListenable: widget.progress!,
-                            builder: (_, value, _) =>
-                                _DuplicateProgressRow(
-                                    done: value.$1, total: value.$2),
-                          ),
-                  ),
-                if (_failed != null)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 18),
-                    child: Text('The duplicate run failed; the rest of the '
-                        'review is unaffected.'),
-                  ),
-              ],
+              children: renderMarkdown(context, markdown),
             ),
           ),
         ),
       );
-}
-
-/// The duplicate-run progress row: a determinate bar once there is a real
-/// [total] to measure against, an indeterminate one before the first hand
-/// reports in (or when the caller doesn't track progress at all).
-class _DuplicateProgressRow extends StatelessWidget {
-  const _DuplicateProgressRow({required this.done, required this.total});
-  final int done;
-  final int total;
-
-  @override
-  Widget build(BuildContext context) {
-    final value = total > 0 ? done / total : null;
-    return Row(
-      children: [
-        SizedBox(
-          width: 14,
-          height: 14,
-          child: CircularProgressIndicator(strokeWidth: 2, value: value),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(total > 0
-              ? 'Replaying your hands with someone else in your seat… '
-                  '($done of $total)'
-              : 'Replaying your hands with someone else in your seat…'),
-        ),
-      ],
-    );
-  }
 }
 
 /// Turns the report's markdown into widgets. Public so it can be tested and

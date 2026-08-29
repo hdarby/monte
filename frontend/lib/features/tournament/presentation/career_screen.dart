@@ -45,35 +45,93 @@ class CareerScreen extends ConsumerWidget {
   }
 }
 
-class _CareerTable extends StatelessWidget {
+class _CareerTable extends StatefulWidget {
   const _CareerTable({required this.career});
   final List<CareerRow> career;
 
   @override
+  State<_CareerTable> createState() => _CareerTableState();
+}
+
+class _CareerTableState extends State<_CareerTable> {
+  /// Null until the player taps a header — the default ordering (you first,
+  /// then the field by ROI) mirrors `SessionMarkdown`'s career table and
+  /// stays until the player asks for something else.
+  int? _sortColumn;
+  bool _sortAscending = false;
+
+  /// One comparable key-getter per column, in the same order as [_columns].
+  /// `Comparable` (not a raw type) so string and numeric columns share the
+  /// same sort call.
+  static final List<Comparable<dynamic> Function(CareerRow)> _sortKeys = [
+    (c) => c.profileId == 'human' ? '' : c.name, // "You" always sorts first
+    (c) => c.played,
+    (c) => c.cashes,
+    (c) => c.cashRate,
+    (c) => c.buyIns,
+    (c) => c.won,
+    (c) => c.net,
+    (c) => c.roi,
+    (c) => c.bestPlace,
+    (c) => c.facedYou,
+  ];
+
+  static const _columns = [
+    'Player',
+    'Events',
+    'Cashes',
+    'Cash %',
+    'In',
+    'Out',
+    'Net',
+    'ROI',
+    'Best',
+    'Faced you',
+  ];
+
+  void _sort(int column) => setState(() {
+        if (_sortColumn == column) {
+          _sortAscending = !_sortAscending;
+        } else {
+          _sortColumn = column;
+          // Money/rate columns read naturally biggest-first; "Best" (a finish
+          // place) and the player name read naturally smallest/A-first.
+          _sortAscending = column == 0 || column == 8;
+        }
+      });
+
+  @override
   Widget build(BuildContext context) {
-    // The player first, then the field by ROI — you are reading this to find
-    // out how you are doing, not to scroll for your own row. Mirrors the
-    // ordering `SessionMarkdown`'s career table already uses.
-    final you = career.where((c) => c.profileId == 'human');
-    final rest = career.where((c) => c.profileId != 'human');
-    final rows = [...you, ...rest];
+    final sortColumn = _sortColumn;
+    List<CareerRow> rows;
+    if (sortColumn == null) {
+      // The player first, then the field by ROI — you are reading this to
+      // find out how you are doing, not to scroll for your own row.
+      final you = widget.career.where((c) => c.profileId == 'human');
+      final rest = widget.career.where((c) => c.profileId != 'human');
+      rows = [...you, ...rest];
+    } else {
+      final key = _sortKeys[sortColumn];
+      rows = [...widget.career]
+        ..sort((a, b) => _sortAscending
+            ? key(a).compareTo(key(b))
+            : key(b).compareTo(key(a)));
+    }
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: DataTable(
-          columns: const [
-            DataColumn(label: Text('Player')),
-            DataColumn(label: Text('Events'), numeric: true),
-            DataColumn(label: Text('Cashes'), numeric: true),
-            DataColumn(label: Text('Cash %'), numeric: true),
-            DataColumn(label: Text('In'), numeric: true),
-            DataColumn(label: Text('Out'), numeric: true),
-            DataColumn(label: Text('Net'), numeric: true),
-            DataColumn(label: Text('ROI'), numeric: true),
-            DataColumn(label: Text('Best'), numeric: true),
-            DataColumn(label: Text('Faced you'), numeric: true),
+          sortColumnIndex: _sortColumn,
+          sortAscending: _sortAscending,
+          columns: [
+            for (var i = 0; i < _columns.length; i++)
+              DataColumn(
+                label: Text(_columns[i]),
+                numeric: i > 0,
+                onSort: (column, _) => _sort(column),
+              ),
           ],
           rows: [for (final c in rows) _rowFor(c)],
         ),

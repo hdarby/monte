@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:monte/core/di/game_providers.dart';
+import 'package:monte/core/presentation/widgets/career_icon.dart';
 import 'package:monte/core/domain/ai/player_profile.dart';
 import 'package:monte/core/util/format.dart';
 import 'package:monte/features/tournament/domain/field_builder.dart';
@@ -128,7 +129,7 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen> {
         actions: [
           IconButton(
             tooltip: 'Career',
-            icon: const _CareerIcon(),
+            icon: const CareerIcon(),
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const CareerScreen()),
             ),
@@ -256,40 +257,3 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen> {
   }
 }
 
-/// The career button's icon: a dollar sign riding an upward trend line — the
-/// mashup reads clearly as "money, going up" at toolbar size, where either
-/// icon alone is more ambiguous (a bare $ could be buy-in; a bare arrow could
-/// be chip count).
-class _CareerIcon extends StatelessWidget {
-  const _CareerIcon();
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 24,
-      height: 24,
-      child: Stack(
-        alignment: Alignment.center,
-        children: const [
-          Icon(Icons.trending_up, size: 24, color: Colors.white70),
-          Positioned(
-            right: -2,
-            bottom: -2,
-            child: CircleAvatar(
-              radius: 7,
-              backgroundColor: Colors.black87,
-              child: Text(
-                r'$',
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.greenAccent,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}

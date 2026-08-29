@@ -17,6 +17,7 @@ import 'package:monte/features/coach/domain/hand_coach.dart';
 import 'package:monte/features/coach/presentation/coach_screen.dart';
 import 'package:monte/core/theme/app_theme.dart';
 import 'package:monte/features/history/presentation/history_screen.dart';
+import 'package:monte/features/tournament/presentation/career_screen.dart';
 import 'package:monte/features/tournament/presentation/lobby_screen.dart';
 import 'package:monte/features/settings/domain/game_settings.dart';
 import 'package:monte/features/settings/presentation/settings_controller.dart';
@@ -204,6 +205,12 @@ class _GamePageState extends ConsumerState<GamePage> {
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => LobbyScreen(humanName: name)),
     );
+  }
+
+  void _openCareer() {
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const CareerScreen()));
   }
 
   /// Opens the in-hand coach for the human, computing the read once from the
@@ -459,6 +466,7 @@ class _GamePageState extends ConsumerState<GamePage> {
               onOpenSettings: _openSettings,
               onOpenHistory: _openHistory,
               onOpenTournament: _openTournament,
+              onOpenCareer: _openCareer,
               onCoach: () => _openCoach(snapshot, settings, vm),
               autoDeal: _autoDeal,
               onToggleAutoDeal: (v) => setState(() => _autoDeal = v),

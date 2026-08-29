@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'package:monte/core/domain/engine/actions.dart';
 import 'package:monte/core/presentation/money_format.dart';
+import 'package:monte/core/presentation/widgets/career_icon.dart';
 import 'package:monte/core/theme/app_theme.dart';
 import 'package:monte/core/domain/ai/opponent_range_read.dart';
 import 'package:monte/core/domain/ai/player_read.dart';
@@ -35,6 +36,7 @@ class TableScreen extends StatefulWidget {
     this.onToggleAutoDeal,
     this.onCoach,
     this.onOpenTournament,
+    this.onOpenCareer,
     this.sidePanel,
     this.showOpponentRanges = false,
     this.readForSeat,
@@ -84,6 +86,11 @@ class TableScreen extends StatefulWidget {
   /// table is itself inside a tournament).
   final VoidCallback? onOpenTournament;
 
+  /// Opens career winnings across every finished tournament. Null hides the
+  /// button (e.g. when the table is itself inside a tournament — the
+  /// tournament lobby's own appbar already has this).
+  final VoidCallback? onOpenCareer;
+
   @override
   State<TableScreen> createState() => _TableScreenState();
 }
@@ -106,6 +113,7 @@ class _TableScreenState extends State<TableScreen> {
   String get humanName => widget.humanName;
   VoidCallback? get onCoach => widget.onCoach;
   VoidCallback? get onOpenTournament => widget.onOpenTournament;
+  VoidCallback? get onOpenCareer => widget.onOpenCareer;
   ValueChanged<GameAction> get onAction => widget.onAction;
   VoidCallback get onNewGame => widget.onNewGame;
   VoidCallback get onNextHand => widget.onNextHand;
@@ -197,6 +205,12 @@ class _TableScreenState extends State<TableScreen> {
             tooltip: 'Play a tournament',
             icon: const Icon(Icons.emoji_events, color: Colors.white70),
             onPressed: onOpenTournament,
+          ),
+        if (onOpenCareer != null)
+          IconButton(
+            tooltip: 'Career winnings',
+            icon: const CareerIcon(),
+            onPressed: onOpenCareer,
           ),
         IconButton(
           tooltip: 'Hand history',

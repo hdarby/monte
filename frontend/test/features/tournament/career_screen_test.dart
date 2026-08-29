@@ -79,4 +79,32 @@ void main() {
     final al = tester.getCenter(find.text('Al Pro'));
     expect(you.dy, lessThan(al.dy));
   });
+
+  testWidgets('tapping a column header sorts by it, ignoring the default '
+      '"you first" order', (tester) async {
+    // Wide enough that every column is on-screen and tappable — the table
+    // scrolls horizontally at a normal test surface size, which put "Net"
+    // off-screen and made the tap silently miss.
+    await tester.binding.setSurfaceSize(const Size(1400, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await _pump(tester, [
+      _event([
+        ('human', 'You', 5, 0, true), // a losing event for the player
+        ('P1', 'Al Pro', 1, 900, false), // the best ROI in the field
+      ]),
+    ]);
+    // Sorted descending by default direction for a money column ("Net").
+    await tester.tap(find.text('Net'));
+    await tester.pumpAndSettle();
+    final al = tester.getCenter(find.text('Al Pro'));
+    final you = tester.getCenter(find.text('You'));
+    expect(al.dy, lessThan(you.dy));
+
+    // Tapping the same header again reverses the order.
+    await tester.tap(find.text('Net'));
+    await tester.pumpAndSettle();
+    final al2 = tester.getCenter(find.text('Al Pro'));
+    final you2 = tester.getCenter(find.text('You'));
+    expect(you2.dy, lessThan(al2.dy));
+  });
 }

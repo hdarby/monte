@@ -15,7 +15,7 @@ class LeaderboardStorylines {
   /// storyline to be worth telling — the same "running deep" bar
   /// `TournamentChronicle._riserLines` uses, so "was a big name" means the
   /// same thing everywhere in the recap.
-  static const prominentRank = 100;
+  static const prominentRank = 10;
 
   /// Updates every active player's tournament-wide history — best rank ever
   /// and whether they've ever started a level on crumbs — so a bust or a
@@ -42,7 +42,7 @@ class LeaderboardStorylines {
     }
   }
 
-  /// A named personality (or the human) who was once top-100 and has now
+  /// A named personality (or the human) who was once top-10 and has now
   /// busted — "how the mighty have fallen," told once per player.
   static List<String> fallenStar({
     required Map<String, PlayerMeta> meta,
@@ -60,15 +60,17 @@ class LeaderboardStorylines {
       final prize = prizes[id] ?? 0;
       final placeStr = place != null ? ' in ${ordinal(place)}' : '';
       final cash = prize > 0 ? ' for \$${formatChips(prize)}' : '';
-      out.add('${ChronicleGrammar.who(m, capital: true)} '
-          '${ChronicleGrammar.was(m)} as high as ${ordinal(m.bestRankEver)} '
-          'overall earlier in the tournament — '
-          '${m.isHuman ? 'you busted' : 'busted'} this level$placeStr$cash.');
+      out.add(
+        '${ChronicleGrammar.who(m, capital: true)} '
+        '${ChronicleGrammar.was(m)} as high as ${ordinal(m.bestRankEver)} '
+        'overall earlier in the tournament — '
+        '${m.isHuman ? 'you busted' : 'busted'} this level$placeStr$cash.',
+      );
     }
     return out;
   }
 
-  /// A named personality (or the human) who was once top-100 and is still in,
+  /// A named personality (or the human) who was once top-10 and is still in,
   /// but has fallen to crumbs — the mirror of [fallenStar] for someone who
   /// hasn't busted yet, just faded. Told once per player.
   static List<String> fadedLeader({
@@ -84,10 +86,12 @@ class LeaderboardStorylines {
       final chips = currentChips[id];
       if (chips == null || chips > crumbs) return;
       m.fadedLeaderAnnounced = true;
-      out.add('${ChronicleGrammar.who(m, capital: true)} once cracked the '
-          'top $prominentRank; now down to '
-          '${ChronicleGrammar.amt(chips, bigBlind)} and fighting for a '
-          'double.');
+      out.add(
+        '${ChronicleGrammar.who(m, capital: true)} once cracked the '
+        'top $prominentRank; now down to '
+        '${ChronicleGrammar.amt(chips, bigBlind)} and fighting for a '
+        'double.',
+      );
     });
     return out.take(2).toList();
   }
@@ -114,10 +118,12 @@ class LeaderboardStorylines {
       final chips = currentChips[id];
       if (chips == null || chips < avgStack) return;
       m.backFromDeadAnnounced = true;
-      out.add('${ChronicleGrammar.who(m, capital: true)} '
-          '${ChronicleGrammar.was(m)} down to fumes back on level '
-          '${m.crippledAtLevel} — ${ChronicleGrammar.has(m)} clawed all the '
-          'way back into contention.');
+      out.add(
+        '${ChronicleGrammar.who(m, capital: true)} '
+        '${ChronicleGrammar.was(m)} down to fumes back on level '
+        '${m.crippledAtLevel} — ${ChronicleGrammar.has(m)} clawed all the '
+        'way back into contention.',
+      );
     });
     return out.take(2).toList();
   }
