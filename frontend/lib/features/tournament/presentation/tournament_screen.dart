@@ -279,8 +279,9 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
             isAllBots: false,
             humanName: widget.humanName,
             isFinalTable: tour.atFinalTable,
-            // The human's current table size drives the felt layout.
-            playerCount: table.seats.length,
+            // Tournament tables use a fixed 9-seat layout so consolidation doesn't
+            // redraw. Empty seats appear as players are eliminated.
+            playerCount: 9,
             sidePanel: StandingsPanel(rows: controller.standings()),
             readForSeat: controller.readForSeat,
             onAction: controller.submitLiveAction,
