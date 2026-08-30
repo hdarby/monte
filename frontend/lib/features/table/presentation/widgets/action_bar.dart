@@ -91,6 +91,10 @@ class _ActionBarState extends State<ActionBar> {
                           onTap: () => _setFraction(ctx, 0.25),
                         ),
                         _PresetChip(
+                          label: '⅓ Pot',
+                          onTap: () => _setFraction(ctx, 1.0 / 3.0),
+                        ),
+                        _PresetChip(
                           label: '½ Pot',
                           onTap: () => _setFraction(ctx, 0.5),
                         ),
@@ -101,6 +105,14 @@ class _ActionBarState extends State<ActionBar> {
                         _PresetChip(
                           label: 'Pot',
                           onTap: () => _setFraction(ctx, 1.0),
+                        ),
+                        _PresetChip(
+                          label: '1.5x Pot',
+                          onTap: () => _setFraction(ctx, 1.5),
+                        ),
+                        _PresetChip(
+                          label: '2x Pot',
+                          onTap: () => _setFraction(ctx, 2.0),
                         ),
                         _PresetChip(
                           label: 'All-In',
