@@ -26,7 +26,7 @@ class LobbyScreen extends ConsumerStatefulWidget {
 }
 
 class _LobbyScreenState extends ConsumerState<LobbyScreen> {
-  static const _fieldSizes = [6, 9, 80, 180, 1000, 8000];
+  static const _fieldSizes = [6, 9, 18, 27, 64, 100, 150, 180, 1000, 8000];
   static const _buyIns = [11, 55, 100, 500, 1000, 10000];
 
   /// Seats per table. 0 means "let the field decide" — the previous behaviour,
