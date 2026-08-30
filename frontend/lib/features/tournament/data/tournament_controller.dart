@@ -7,6 +7,7 @@ import 'package:monte/core/domain/ai/player_profile.dart';
 import 'package:monte/core/domain/ai/player_read.dart';
 import 'package:monte/core/domain/ai/player_stats.dart';
 import 'package:monte/core/domain/ai/profile_decider.dart';
+import 'package:monte/core/domain/ai/profile_postflop_policy.dart';
 import 'package:monte/core/domain/ai/trigger_observer.dart';
 import 'package:monte/core/domain/hand_history.dart';
 import 'package:monte/features/coach/domain/hand_coach.dart';
@@ -239,6 +240,10 @@ class TournamentController {
     if (h.length > _rushWindow) h.removeAt(0);
     _recentNet[seatId] = h.fold(0, (a, b) => a + b);
   }
+
+  /// Last action decision reason per player (for UI coaching label), keyed by
+  /// seat id. Cleared each new hand and populated as decisions are made.
+  final Map<String, String?> _actionReasons = {};
 
   final Map<String, DecisionPolicy> _deciders;
 
@@ -681,6 +686,7 @@ class TournamentController {
   /// the bubble).
   Map<String, int> _playHand(TournamentTable table) {
     _handCounter++;
+    _actionReasons.clear();
     final level = state.currentLevel;
     final seatIds = List<String>.of(table.playerIds);
     final enginePlayers = [for (final id in seatIds) _synced(id)];
@@ -705,8 +711,10 @@ class TournamentController {
       final cur = game.currentPlayer;
       if (cur == null) break;
       final street = game.round;
-      final action = _deciders[cur.id]!.decide(game, cur);
+      final decider = _deciders[cur.id]!;
+      final action = decider.decide(game, cur);
       game.applyAction(action);
+      _recordActionReason(cur.id, action, decider);
       actions?.add(
         ActionRecord(
           playerId: cur.id,
@@ -865,15 +873,27 @@ class TournamentController {
   /// The most recent color-up (chip race), for the snapshot/UI to display once.
   ColorUpEvent? lastColorUp;
 
-  /// If the new level retires a chip denomination, races off every active
-  /// player's odd chips into whole new-unit chips (total conserved), applies the
-  /// deltas to their stacks, and records the event for display.
+  /// If the new level retires a chip denomination, races off each table's odd
+  /// chips independently into whole new-unit chips (per-table total conserved),
+  /// applies the deltas to their stacks, and records the event for display.
   void _maybeColorUp(BlindLevel before, BlindLevel after) {
     final oldUnit = _chipUnitFor(before);
     final newUnit = _chipUnitFor(after);
     if (newUnit <= oldUnit) return;
-    final stacks = {for (final p in state.activePlayers) p.id: p.chips};
-    final deltas = chips.colorUp(stacks, newUnit);
+
+    // Run color-up per table so spare chips stay at the table where they arose
+    final deltas = <String, int>{};
+    for (final table in state.tables) {
+      final tableStacks = {
+        for (final playerId in table.playerIds)
+          if (state.players[playerId] != null)
+            playerId: state.players[playerId]!.chips,
+      };
+      if (tableStacks.isEmpty) continue;
+      final tableDeltas = chips.colorUp(tableStacks, newUnit);
+      deltas.addAll(tableDeltas);
+    }
+
     final nonZero = <String, int>{};
     deltas.forEach((id, d) {
       if (d != 0) {
@@ -881,11 +901,9 @@ class TournamentController {
         nonZero[id] = d;
       }
     });
-    // The race runs across the whole field — every stack has to be rounded to
-    // the new unit — but only the player's own table is worth *showing*. A
-    // thousand-runner race lists nine hundred strangers gaining and losing odd
-    // chips, which buries the one line the player came for: what happened to
-    // them and to the people they are sitting with.
+    // Show only the player's own table: a thousand-runner race listing nine
+    // hundred strangers gaining and losing odd chips buries the one line the
+    // player came for — what happened to them and their table.
     final here = humanId == null
         ? null
         : state.tables
@@ -1405,6 +1423,8 @@ class TournamentController {
         seatProfiles: _profileBySeat,
         // Draw stacks in the denominations actually in play at this level.
         denominations: chips.denominations,
+        // Action reason labels for coaching visibility.
+        actionReasons: _actionReasons,
       ),
     );
   }
@@ -1419,6 +1439,43 @@ class TournamentController {
           2)
         t.id,
   };
+
+  void _recordActionReason(String seatId, GameAction action, DecisionPolicy decider) {
+    // Start with the basic action type
+    final actionLabel = switch (action.type) {
+      ActionType.fold => 'fold',
+      ActionType.check => 'check',
+      ActionType.call => 'call',
+      ActionType.bet => 'bet',
+      ActionType.raise => 'raise',
+      ActionType.allIn => 'all-in',
+    };
+
+    // Enhance with personality decision label if available (e.g., "valueBet", "bluff")
+    String reason = actionLabel;
+    if (decider is ProfilePostflopPolicy) {
+      final label = decider.lastDecisionLabel;
+      if (label != null && label.isNotEmpty) {
+        reason = label;
+      }
+      // Append signature moves if any fired (e.g., "bluff · Slow_Play_Trap")
+      final moves = decider.lastSignaturesMoved;
+      if (moves.isNotEmpty) {
+        final movesStr = moves.map(_formatMoveName).join(', ');
+        reason = '$reason · $movesStr';
+      }
+    }
+
+    _actionReasons[seatId] = reason;
+  }
+
+  /// Format a signature move name for display (CamelCase → "Camel Case")
+  String _formatMoveName(String name) {
+    return name.replaceAllMapped(
+      RegExp('([A-Z])'),
+      (m) => ' ${m.group(1)}',
+    ).trim();
+  }
 
   /// The named personalities dealt into [game] — the ones a viewer would
   /// recognise, as opposed to the anonymous profiles that fill out a field.

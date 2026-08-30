@@ -303,30 +303,21 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
               ),
             ),
           ),
-          // Bubble / final-table framing.
-          //
-          // Hand-for-hand gets amber and a stopwatch, because that is literally
-          // what is happening — every table dealt in lockstep so nobody can
-          // stall into a pay jump. The final table gets gold, because it is the
-          // thing everybody played for. Dollar signs were the other option and
-          // read as a slot machine; the tournament is tense, not tacky.
-          if (tour.handForHand || tour.atFinalTable)
+          // Final table framing — the thing everybody played for, marked in gold.
+          // Dollar signs were another option and read as a slot machine;
+          // the tournament is tense, not tacky.
+          if (tour.atFinalTable)
             Positioned.fill(
               child: IgnorePointer(
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     border: Border.all(
-                      color: tour.atFinalTable
-                          ? const Color(0xCCFFC107)
-                          : const Color(0xCCFF8A50),
+                      color: const Color(0xCCFFC107),
                       width: 3,
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: (tour.atFinalTable
-                                ? const Color(0xFFFFC107)
-                                : const Color(0xFFFF8A50))
-                            .withValues(alpha: 0.22),
+                        color: const Color(0xFFFFC107).withValues(alpha: 0.22),
                         blurRadius: 40,
                         spreadRadius: -8,
                       ),
@@ -335,7 +326,7 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
                 ),
               ),
             ),
-          if (tour.handForHand || tour.atFinalTable)
+          if (tour.atFinalTable)
             Positioned(
               bottom: 0,
               left: 0,
@@ -385,44 +376,6 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
                                 ),
                               ),
                             ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          // The table number, centred just under the HUD and above the felt.
-          //
-          // It also lives in the HUD's stack chip, but squeezed in beside the
-          // chip count and place it reads as another statistic. A tournament
-          // calls you by your table all day, and when a table breaks the banner
-          // names the new one — so it wants somewhere unmistakable to land.
-          if (tour.yourTable > 0)
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: SafeArea(
-                child: Padding(
-                  padding: const EdgeInsets.only(top: 30),
-                  child: Center(
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.55),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 3),
-                        child: Text(
-                          'Table ${tour.yourTable}',
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.85),
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 0.8,
                           ),
                         ),
                       ),
