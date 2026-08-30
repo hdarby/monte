@@ -34,6 +34,7 @@ class SeatView {
     this.kind,
     this.generated = false,
     this.actionReason,
+    this.isNewToTable = false,
   });
 
   final String id;
@@ -103,6 +104,11 @@ class SeatView {
   /// "tight fold", etc. Communicates what personality trait or heuristic drove
   /// the decision. Null when no action has been recorded or the label is empty.
   final String? actionReason;
+
+  /// True if this player just sat down at this table (e.g., due to table
+  /// consolidation) and has not yet played a hand at this table. Used to
+  /// highlight the seat for their first hand.
+  final bool isNewToTable;
 }
 
 /// What the human can legally do right now. Null unless it's their turn.

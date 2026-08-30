@@ -245,6 +245,13 @@ class TournamentController {
   /// seat id. Cleared each new hand and populated as decisions are made.
   final Map<String, String?> _actionReasons = {};
 
+  /// Players who are new to their current table (for first-hand highlight).
+  /// Cleared after they play their first hand at the table.
+  final Set<String> _newToTablePlayers = {};
+
+  /// Which table each player is at, for detecting when they move to a new table.
+  final Map<String, int> _playerTableMap = {};
+
   final Map<String, DecisionPolicy> _deciders;
 
   /// The policy driving [seatId], for a replay that needs the same opponents.
@@ -687,6 +694,16 @@ class TournamentController {
   Map<String, int> _playHand(TournamentTable table) {
     _handCounter++;
     _actionReasons.clear();
+
+    // Detect players new to this table (e.g., from table consolidation)
+    for (final seatId in table.playerIds) {
+      final oldTable = _playerTableMap[seatId];
+      if (oldTable != table.id) {
+        _newToTablePlayers.add(seatId);
+        _playerTableMap[seatId] = table.id;
+      }
+    }
+
     final level = state.currentLevel;
     final seatIds = List<String>.of(table.playerIds);
     final enginePlayers = [for (final id in seatIds) _synced(id)];
@@ -715,6 +732,8 @@ class TournamentController {
       final action = decider.decide(game, cur);
       game.applyAction(action);
       _recordActionReason(cur.id, action, decider);
+      // Once a player acts at their new table, they're no longer "new"
+      _newToTablePlayers.remove(cur.id);
       actions?.add(
         ActionRecord(
           playerId: cur.id,
@@ -1425,6 +1444,8 @@ class TournamentController {
         denominations: chips.denominations,
         // Action reason labels for coaching visibility.
         actionReasons: _actionReasons,
+        // Highlight players new to this table for their first hand.
+        newToTablePlayers: _newToTablePlayers,
       ),
     );
   }

@@ -225,16 +225,20 @@ class _PlayerSeatState extends State<PlayerSeat> {
       duration: const Duration(milliseconds: 200),
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: highlight
-            ? AppTheme.gold.withValues(alpha: 0.18)
-            : (tint ?? Colors.black26),
+        color: seat.isNewToTable
+            ? Colors.grey.withValues(alpha: 0.15)
+            : (highlight
+                ? AppTheme.gold.withValues(alpha: 0.18)
+                : (tint ?? Colors.black26)),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: highlight
-              ? AppTheme.gold
-              : (kind == null
-                    ? Colors.white10
-                    : kind.accent.withValues(alpha: seat.generated ? 0.3 : 0.5)),
+          color: seat.isNewToTable
+              ? Colors.grey.withValues(alpha: 0.4)
+              : (highlight
+                  ? AppTheme.gold
+                  : (kind == null
+                        ? Colors.white10
+                        : kind.accent.withValues(alpha: seat.generated ? 0.3 : 0.5))),
           width: highlight ? 2 : 1,
         ),
       ),

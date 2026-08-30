@@ -24,6 +24,7 @@ TableSnapshot projectTableSnapshot(
   String? frontPlayerId,
   List<int>? denominations,
   Map<String, String?> actionReasons = const {},
+  Set<String> newToTablePlayers = const {},
 }) {
   final showdownHappened = game.results.any((r) => r.handValue != null);
   final wonByPlayer = {for (final r in game.results) r.player: r.netWon};
@@ -65,6 +66,7 @@ TableSnapshot projectTableSnapshot(
         kind: PlayerKind.of(seatProfiles[p.id], isHuman: p.isHuman),
         generated: seatProfiles[p.id]?.generated ?? false,
         actionReason: actionReasons[p.id],
+        isNewToTable: newToTablePlayers.contains(p.id),
       ),
     );
   }
