@@ -89,7 +89,7 @@ it can't be committed as a binary here.
 | Heuristic + personality bots (bet-level discipline, no spew) | ✅ done |
 | ISMCTS search (progressive bias; strong, usable at low iters) | ✅ done |
 | Player profiles: calibrated style + MCTS skill (`gto_adherence`) | ✅ done (Phase 0–2) |
-| Behavioral modifiers (exploit / opponent reads / risk) | ✅ done (Phase 3) |
+| Behavioral modifiers (exploit / opponent reads / risk) | ✅ done |
 | Signature moves per personality, named in the commentary | ✅ done |
 | Tilt: stateful, per-player, three distinct styles | ✅ done |
 | Table UI (felt, seats, board, action bar, hand log) | ✅ done |
@@ -97,7 +97,6 @@ it can't be committed as a binary here.
 | Hand-history recording + analytics (VPIP/PFR/AF) | ✅ done |
 | Client-only single-player game | ✅ playable |
 | MVVM + Clean Architecture (feature-first, Riverpod) | ✅ done |
-| Multi-table tournaments (structures, ICM, seating, payouts) | ✅ done, client-side |
 | Real-time tournament level clock (lobby-configurable length) | ✅ done |
 | Tournament recaps + per-hand analysis ("Bart") | ✅ done |
 | Career stats across tournaments, per personality | ✅ done |
@@ -105,7 +104,7 @@ it can't be committed as a binary here.
 | Persistent opponent reads across sessions | ✅ done |
 | Save / load a tournament in progress | ✅ done (at hand boundaries) |
 | Ktor backend | 🟡 scaffold (routes/sockets/DB stubbed with TODOs) |
-| Real-time multiplayer + server-side persistence | ⬜ TODO |
+| Real-time multiplayer + persistence + scheduled MTTs | 🟡 in progress — MTTs playable now, single-player/client-side (structures, ICM, seating, payouts); server-side multiplayer + persistence not started |
 
 ## Layout
 
