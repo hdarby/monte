@@ -57,7 +57,7 @@ void main() {
       }
     });
 
-    await c.startLive(botDelay: Duration.zero);
+    await c.startLive(botDelay: Duration.zero, nextHandDelay: Duration.zero);
     await done.future.timeout(const Duration(seconds: 30));
 
     expect(c.state.status, TournamentStatus.finished);

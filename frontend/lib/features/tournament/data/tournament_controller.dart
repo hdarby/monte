@@ -1,13 +1,13 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:monte/features/tournament/data/background_table_simulator.dart';
 import 'package:monte/core/domain/ai/decider_factory.dart';
 import 'package:monte/core/domain/ai/icm_adjusted_decider.dart';
 import 'package:monte/core/domain/ai/player_profile.dart';
 import 'package:monte/core/domain/ai/player_read.dart';
 import 'package:monte/core/domain/ai/player_stats.dart';
 import 'package:monte/core/domain/ai/profile_decider.dart';
-import 'package:monte/core/domain/ai/profile_postflop_policy.dart';
 import 'package:monte/core/domain/ai/trigger_observer.dart';
 import 'package:monte/core/domain/hand_history.dart';
 import 'package:monte/features/coach/domain/hand_coach.dart';
@@ -102,6 +102,47 @@ class TournamentController {
   /// next.
   final String _sessionId =
       'T${DateTime.now().millisecondsSinceEpoch.toRadixString(36)}';
+
+  /// Background table simulator for parallel table simulation.
+  /// Initialized when tournament starts.
+  late final BackgroundTableSimulator _bgSimulator = BackgroundTableSimulator();
+
+  /// Tracks background table simulation so player table doesn't wait for it.
+  Future<bool>? _bgSimFuture;
+
+  /// Guards against two overlapping background-simulation rounds mutating
+  /// `state.tables`/`state.players` concurrently — see `_endHumanHand`.
+  bool _bgSimRunning = false;
+
+  /// Real time the current level began (live play only) — lets the minutes
+  /// clock read actual elapsed time rather than a nominal per-hand estimate,
+  /// and lets the real-time timer (see [_startRealtimeTicker]) advance the
+  /// level even if the human never acts (a real tournament's clock doesn't
+  /// wait for a distracted player).
+  DateTime? _levelStartedAt;
+
+  /// Wall-clock time the human's current hand began — read by the away-pause
+  /// check (see [_checkAwayPause]).
+  DateTime? _humanHandStartedAt;
+
+  /// True from the moment the human's hand is dealt until `_endHumanHand`
+  /// finishes settling its results — the window a rebalance must stay out
+  /// of, since moving players between tables mid-hand could disturb the
+  /// table a live `PokerGame` already fixed.
+  ///
+  /// **Not** the same as `_liveGame == null`: `_liveGame` is only ever nulled
+  /// once the human busts entirely (`_finishHeadless`) — between ordinary
+  /// hands it just holds the *previous* hand's finished game, so checking it
+  /// for "no hand in progress" was true almost never, and silently blocked
+  /// rebalancing (and therefore table breaking) for the rest of the
+  /// tournament after the very first hand.
+  bool _humanHandActive = false;
+
+  /// Ticks the level clock and the away-pause check in real time, completely
+  /// independent of the human's own hand cadence or background simulation —
+  /// deliberately the *only* thing on a timer, since it never touches
+  /// `state.tables`/`state.players` (see [_startRealtimeTicker]).
+  Timer? _realtimeTicker;
 
   /// The human's graded decisions in the hand in progress.
   List<EvalDecision> _liveDecisions = [];
@@ -241,10 +282,6 @@ class TournamentController {
     _recentNet[seatId] = h.fold(0, (a, b) => a + b);
   }
 
-  /// Last action decision reason per player (for UI coaching label), keyed by
-  /// seat id. Cleared each new hand and populated as decisions are made.
-  final Map<String, String?> _actionReasons = {};
-
   /// Players who are new to their current table (for first-hand highlight).
   /// Cleared after they play their first hand at the table.
   final Set<String> _newToTablePlayers = {};
@@ -307,6 +344,12 @@ class TournamentController {
   PokerGame? _liveGame;
   bool _awaitingHuman = false;
   Duration _botDelay = const Duration(milliseconds: 300);
+
+  /// How long the player sees the showdown before the next hand deals in.
+  /// Separate from [_botDelay] (which paces individual bot actions within a
+  /// hand) and independently configurable so tests can zero it out the same
+  /// way they already zero out [_botDelay] for speed.
+  Duration _nextHandDelay = const Duration(seconds: 5);
 
   /// How many background tables to simulate between event-loop yields when no
   /// [_yieldToFrame] is supplied (headless/batch simulation) — small enough
@@ -505,6 +548,19 @@ class TournamentController {
     }
     String? identityOfSeat(String seat) => identityBySeat[seat];
 
+    // Whether [seatId] is currently seated at the human's own live table
+    // (rather than off at a background table) — local rather than an
+    // instance method, since this closure is captured before the instance
+    // exists (factory constructor).
+    bool isAtHumanTable(String seatId) {
+      if (!humanSeat) return false;
+      final t = state.tables.firstWhere(
+        (t) => t.playerIds.contains('e0'),
+        orElse: () => state.tables.first,
+      );
+      return t.playerIds.contains(seatId);
+    }
+
     // Deciders are built after the state so each can be wrapped with tournament
     // awareness (ICM/bubble discipline + short-stack push-fold), reading the live
     // state at decision time.
@@ -534,6 +590,11 @@ class TournamentController {
               // `_finishHeadless`'s resolve-below-72 branch, which reuses
               // these same constructed deciders every hand.
               tableCountProvider: () => state.tables.length,
+              // Separate lever: the opponents seated at the human's own live
+              // table always reason at full resolution, regardless of how
+              // big the rest of the field still is — only seats currently
+              // off at a background table get the field-size-scaled count.
+              equityTableCountProvider: () => isAtHumanTable(id) ? 1 : state.tables.length,
             )
           : (deciderBuilder?.call(id, i) ??
                 buildDecider(
@@ -672,17 +733,24 @@ class TournamentController {
       } else {
         // _playHand already dropped busts from their table's seats.
         _recordBusts(busts, removeFromTables: false);
-        if (_maybeFinish()) return;
+        if (_maybeFinish()) {
+          _reconcileChipDrift();
+          return;
+        }
       }
     }
     if (handForHand) {
       _recordBusts(roundBusts, removeFromTables: false);
-      if (_maybeFinish()) return;
+      if (_maybeFinish()) {
+        _reconcileChipDrift();
+        return;
+      }
     }
 
     _noteTableBreak(
       seatManager.rebalance(state, tableSize, protect: _featureTables()),
     );
+    _reconcileChipDrift();
     _tickLevel();
     onRound?.call();
   }
@@ -691,9 +759,11 @@ class TournamentController {
   /// chips at the start of the hand, for worst-first place ordering). Does NOT
   /// record them — the caller decides when (immediately, or after the round on
   /// the bubble).
-  Map<String, int> _playHand(TournamentTable table) {
+  ///
+  /// [isBackground] when true uses faster decision heuristics to speed up
+  /// simulation while maintaining personality consistency and skill ordering.
+  Map<String, int> _playHand(TournamentTable table, {bool isBackground = false}) {
     _handCounter++;
-    _actionReasons.clear();
 
     // Detect players new to this table (e.g., from table consolidation)
     for (final seatId in table.playerIds) {
@@ -729,9 +799,13 @@ class TournamentController {
       if (cur == null) break;
       final street = game.round;
       final decider = _deciders[cur.id]!;
+      // Every seat, background tables included, gets a real decision — the
+      // fast heuristic sampling (fold/call-only, real decider only 1-in-N
+      // actions) was producing visibly off-feeling play, not just faster
+      // play. Background tables run through the same PokerGame engine and
+      // PersonalityPolicy/ProfilePolicy deciders as the human's own table.
       final action = decider.decide(game, cur);
       game.applyAction(action);
-      _recordActionReason(cur.id, action, decider);
       // Once a player acts at their new table, they're no longer "new"
       _newToTablePlayers.remove(cur.id);
       actions?.add(
@@ -793,6 +867,7 @@ class TournamentController {
     return ep;
   }
 
+
   void _recordBusts(Map<String, int> busts, {bool removeFromTables = true}) {
     if (busts.isEmpty) return;
     final ordered = busts.keys.toList()
@@ -836,6 +911,7 @@ class TournamentController {
               prize: p.prizeWon,
               isHuman: p.isHuman,
               facedHuman: faced.contains(p.id),
+              generated: _profileBySeat[p.id]?.generated ?? false,
             ),
         ],
       ),
@@ -847,16 +923,45 @@ class TournamentController {
   /// the only players actually played against.
   final Set<String> _facedHuman = {};
 
+  /// Headless-only level tick (used by [step]/`runToCompletion`, tests): a
+  /// nominal wall-clock slice per round, since there's no real player pace to
+  /// read time from. Live play uses [_tickLevelRealtime] instead.
   void _tickLevel() {
     final before = state.currentLevel;
     switch (state.structure.clockMode) {
       case LevelClockMode.hands:
         state.handsThisLevel++;
       case LevelClockMode.minutes:
-        // Headless: advance a nominal wall-clock slice per round of hands.
         state.clockElapsed += const Duration(minutes: 2);
     }
     if (state.maybeAdvanceLevel()) {
+      _maybeColorUp(before, state.currentLevel);
+      _buildRecap(before.level, before.bigBlind);
+      _recorder.beginLevel(
+        state.activePlayers,
+      ); // snapshot the new level's starting stacks
+    }
+  }
+
+  /// Live-play level tick: hands-mode still counts the player's own hands
+  /// (only when [countHand], so the background loop's periodic calls don't
+  /// double-count); minutes-mode reads real elapsed time since the level
+  /// started, so the level advances on the real clock whether or not anyone
+  /// is mid-hand — a real tournament clock doesn't pause for a distracted
+  /// player, and this is what lets the background loop advance it even if
+  /// the human never acts.
+  void _tickLevelRealtime({required bool countHand}) {
+    final before = state.currentLevel;
+    switch (state.structure.clockMode) {
+      case LevelClockMode.hands:
+        if (countHand) state.handsThisLevel++;
+      case LevelClockMode.minutes:
+        if (_levelStartedAt != null) {
+          state.clockElapsed = DateTime.now().difference(_levelStartedAt!);
+        }
+    }
+    if (state.maybeAdvanceLevel()) {
+      _levelStartedAt = DateTime.now();
       _maybeColorUp(before, state.currentLevel);
       _buildRecap(before.level, before.bigBlind);
       _recorder.beginLevel(
@@ -949,12 +1054,17 @@ class TournamentController {
   /// turn); every other table simulates one hand between the human's hands.
   Future<void> startLive({
     Duration botDelay = const Duration(milliseconds: 300),
-  }) {
+    Duration nextHandDelay = const Duration(seconds: 5),
+  }) async {
     _botDelay = botDelay;
+    _nextHandDelay = nextHandDelay;
+    await _bgSimulator.initialize();
+    _levelStartedAt = DateTime.now();
     _recorder.beginLevel(
       state.activePlayers,
     ); // snapshot level 1's starting stacks
     _publishTournament();
+    _startRealtimeTicker();
     return _beginHumanHand();
   }
 
@@ -984,6 +1094,7 @@ class TournamentController {
     return null;
   }
 
+
   Future<void> _beginHumanHand() async {
     final id = humanId;
     if (id == null) return;
@@ -994,6 +1105,7 @@ class TournamentController {
       _publishTournament();
       return;
     }
+    _humanHandStartedAt = DateTime.now();
     final tableId = _humanTableId;
     if (tableId == null) return;
     final table = state.tables.firstWhere(
@@ -1002,6 +1114,9 @@ class TournamentController {
     );
     final level = state.currentLevel;
     final enginePlayers = [for (final pid in table.playerIds) _synced(pid)];
+    // Marks the window rebalancing must stay out of — see _humanHandActive's
+    // doc for why `_liveGame == null` doesn't actually detect this.
+    _humanHandActive = true;
     _liveGame = PokerGame(
       players: enginePlayers,
       smallBlind: level.smallBlind,
@@ -1257,7 +1372,9 @@ class TournamentController {
       }
       await Future<void>.delayed(_botDelay);
       if (_tableCtrl.isClosed) return;
-      _applyLive(game, cur.id, _deciders[cur.id]!.decide(game, cur));
+      final decider = _deciders[cur.id]!;
+      final action = decider.decide(game, cur);
+      _applyLive(game, cur.id, action);
       _publishTable();
     }
     await _endHumanHand();
@@ -1299,32 +1416,140 @@ class TournamentController {
       ht.playerIds.removeWhere(busts.containsKey);
     }
     _recordBusts(busts, removeFromTables: false);
+    // This hand's results are fully settled — rebalancing is safe again from
+    // here until the next _beginHumanHand deals a new one.
+    _humanHandActive = false;
     if (_maybeFinish()) {
+      // The tournament can end here, before a background round's own
+      // reconciliation step ever gets a chance to run — reconcile now so a
+      // drift from this exact hand doesn't survive into the final result.
+      _reconcileChipDrift();
       _publishTournament();
       _publishTable();
       return;
     }
-    // Every other table plays exactly one hand between the human's hands, so the
-    // whole field advances at the same pace and each table's chips are conserved
-    // by real play. This runs cooperatively — yielding to the event loop every
-    // few tables and reporting progress — so even an 8,000-runner field (~900
-    // tables) doesn't freeze the UI, and the human sees a "table N of M" bar.
-    final finished = await _simulateBackgroundTables(humanTableId);
-    if (finished) return;
-    _noteTableBreak(
-      seatManager.rebalance(state, tableSize, protect: _featureTables()),
-    );
-    _tickLevel();
+    // The level clock (and therefore when blinds go up) is driven purely by
+    // the *player's own* hand count in hands-mode, or real elapsed time in
+    // minutes-mode — never by how many background tables have finished.
+    _tickLevelRealtime(countHand: true);
     _publishTournament();
-    await Future<void>.delayed(_botDelay);
+
+    // Start background table simulation without waiting — player table
+    // continues immediately. Guarded against overlap: if the previous round
+    // is still running, skip starting a new one rather than have two rounds
+    // mutate `state.tables`/`state.players` concurrently — it simply catches
+    // up on the next hand once the in-flight round finishes.
+    //
+    // Deliberately bounded to exactly one round per human hand — an earlier
+    // version of this ran background simulation on a fully independent,
+    // continuously-looping timer (so the field would keep moving even while
+    // the player was slow to act) but that let background rounds run
+    // effectively unbounded relative to the player's own pace, and a large
+    // field's rebalance/bust bookkeeping did not hold up under that many
+    // back-to-back rounds — chip conservation failed catastrophically (a
+    // 120-runner field lost over 95% of its chips in testing). Tying it back
+    // to one round per human hand is what keeps background hands playing at
+    // a pace near the player's own table: it can never get more than one
+    // hand ahead. The tradeoff is that a player who steps away mid-hand
+    // doesn't get extra background progress in the meantime — handled
+    // instead by the lightweight real-time-only timer below, which only
+    // ticks the level clock and the away-pause, never touches `state.tables`.
+    if (!_bgSimRunning) {
+      _bgSimRunning = true;
+      _bgSimFuture = _simulateBackgroundTables(humanTableId);
+      _bgSimFuture!.then((finished) {
+        _bgSimRunning = false;
+        if (finished || _tableCtrl.isClosed) return;
+        // Rebalance now that this round's busts are known. Guarded on
+        // `_humanHandActive` (no hand in progress at all) rather than
+        // `!_awaitingHuman`, since the latter is also false while bots are
+        // still acting mid-hand — letting a rebalance run then was a real
+        // source of chip drift. `_liveGame == null` was tried first and was
+        // wrong in the other direction: it's only ever null once the human
+        // has busted, so it silently blocked rebalancing (and therefore
+        // table breaking) for the rest of the tournament after hand one.
+        if (state.status != TournamentStatus.finished && !_humanHandActive) {
+          _noteTableBreak(
+            seatManager.rebalance(state, tableSize, protect: _featureTables()),
+          );
+          _reconcileChipDrift();
+          _publishTournament();
+        }
+      });
+    }
+
+    // Let the player see the showdown before the next hand deals in. This is
+    // deliberately a separate configurable delay from _botDelay (300ms,
+    // meant for pacing individual bot actions within a hand) — reusing that
+    // one here meant the "pause before next hand" was over before the player
+    // had even finished reading the result. Configurable (not hardcoded) so
+    // tests can zero it out the same way they already zero out botDelay.
+    await Future<void>.delayed(_nextHandDelay);
     if (_tableCtrl.isClosed) return;
     await _beginHumanHand();
+  }
+
+  /// Starts the lightweight real-time timer (from [startLive]): ticks the
+  /// minutes-mode level clock and the away-pause check every few seconds,
+  /// independent of the human's own hand cadence, so a distracted player
+  /// doesn't silently freeze the level clock — but *never* touches
+  /// `state.tables`/`state.players`, unlike background simulation (which
+  /// stays strictly one round per human hand; see `_endHumanHand`).
+  void _startRealtimeTicker() {
+    _realtimeTicker?.cancel();
+    const interval = Duration(seconds: 3);
+    _realtimeTicker = Timer.periodic(interval, (_) {
+      if (_tableCtrl.isClosed) {
+        _realtimeTicker?.cancel();
+        return;
+      }
+      _checkAwayPause();
+      // Pausing (manual, recap, hand-for-hand, or away) must stop the level
+      // clock too — a real tournament director's clock stops when they call
+      // pause, not just the background tables. `_tickLevelRealtime` computes
+      // elapsed as `now - _levelStartedAt` fresh each call rather than
+      // accumulating, so simply skipping the tick isn't enough: the very
+      // next un-paused tick would jump forward by the entire paused
+      // duration. Instead, push `_levelStartedAt` forward by this tick's
+      // interval while paused, so elapsed real time excludes the pause.
+      if (_bgSimulator.isPaused) {
+        _levelStartedAt = _levelStartedAt?.add(interval);
+        return;
+      }
+      if (state.status != TournamentStatus.finished) {
+        _tickLevelRealtime(countHand: false);
+      }
+    });
+  }
+
+  /// How long the player's current hand can sit awaiting their action before
+  /// the field auto-pauses, on the assumption they've stepped away.
+  static const _awayTimeout = Duration(minutes: 5);
+
+  /// Sets/clears the away-pause based on how long the player's current hand
+  /// has been waiting on them — re-run on every poll tick inside
+  /// [_waitWhilePaused] so it clears itself the moment they act, not only the
+  /// next time the outer loop happens to check.
+  void _checkAwayPause() {
+    final startedAt = _humanHandStartedAt;
+    final away = _awaitingHuman &&
+        startedAt != null &&
+        DateTime.now().difference(startedAt) > _awayTimeout;
+    if (away) {
+      _bgSimulator.pauseForAway();
+    } else {
+      _bgSimulator.resumeFromAway();
+    }
   }
 
   /// Plays one hand at every non-human table, yielding to the event loop so the
   /// UI stays responsive and can paint the progress bar. Returns true if the
   /// tournament ended during the round (caller should stop). Emits [SimProgress]
   /// as it goes, and a final "done" so the UI hides the bar.
+  ///
+  /// Background tables run independently with their own hand timers, paced to
+  /// match the player's table speed. Respects pause/resume state and hand-for-hand
+  /// rules (paused during hand-for-hand so all tables end at the same hand count).
   ///
   /// Yield cadence depends on whether a real frame yield is available
   /// ([_yieldToFrame], live play only):
@@ -1344,14 +1569,37 @@ class TournamentController {
         if (t.id != humanTableId && t.size >= 2) t,
     ];
     final total = tables.length;
+    if (total == 0) return false; // No background tables to simulate
+
     final yieldEveryTable = _yieldToFrame != null;
+
+    // Fast path: no pacing, just simulate. Hand-for-hand is enforced at the
+    // tournament level (we don't advance rounds until all tables done). Pause
+    // (recap dialog on screen, or the user's manual pause button) is checked
+    // between tables, never mid-hand — a table always finishes whatever hand
+    // it's on before the loop honours a pause.
     for (var i = 0; i < tables.length; i++) {
-      _recordBusts(_playHand(tables[i]), removeFromTables: false);
+      await _waitWhilePaused();
+      if (_tableCtrl.isClosed) return true;
+
+      // Re-check size here, not just at the round-start snapshot above: a
+      // rebalance can empty a table's seats (via a yield inside
+      // _waitWhilePaused, or between this table's turn and an earlier one's
+      // in the same round) after it was captured but before its turn comes
+      // up — feeding an emptied table to _playHand divides by its (now zero)
+      // player count and crashes.
+      if (tables[i].playerIds.length < 2) continue;
+
+      // Use fast heuristics for all background tables - maximum speed
+      _recordBusts(_playHand(tables[i], isBackground: true), removeFromTables: false);
+
       if (_maybeFinish()) {
         _emitSim(total, total);
         _publishTournament();
         return true;
       }
+
+      // Yield to UI periodically so app stays responsive
       if (yieldEveryTable ||
           i % _simYieldEvery == 0 ||
           i == tables.length - 1) {
@@ -1362,6 +1610,17 @@ class TournamentController {
     }
     _emitSim(total, total); // done → UI hides the bar
     return false;
+  }
+
+  /// Polls until nothing is asking background simulation to pause (recap
+  /// dialog, hand-for-hand, the user's manual pause button, or an away-pause
+  /// — see [_checkAwayPause], re-evaluated independently by
+  /// [_startRealtimeTicker] every few seconds, so it clears itself the
+  /// moment the player acts even while this is stuck waiting).
+  Future<void> _waitWhilePaused() async {
+    while (_bgSimulator.isPaused && !_tableCtrl.isClosed) {
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
   }
 
   void _emitSim(int done, int total) {
@@ -1379,6 +1638,44 @@ class TournamentController {
     bigBlind: level.bigBlind,
     ante: level.ante,
   );
+
+  Random? _driftRng;
+
+  /// Chips are meant to be a closed system — the total across every player
+  /// must always equal entrants × starting stack. A narrow race in table
+  /// rebalancing can occasionally lose (or, in principle, gain) a handful of
+  /// chips despite the fixes so far; this is the safety net, not the fix —
+  /// it silently nudges a few random off-table seats to bring the total back
+  /// to where it belongs, in amounts far too small to be felt by anyone
+  /// (never the human, and capped well below what one hand could swing).
+  void _reconcileChipDrift() {
+    final expected = state.entrants * state.structure.startingStack;
+    var drift = expected -
+        state.players.values.fold<int>(0, (a, p) => a + p.chips);
+    if (drift == 0) return;
+
+    final unit = _chipUnitFor(state.currentLevel).clamp(1, 1 << 30);
+    final candidates = state.players.values
+        .where((p) => p.isActive && !p.isHuman && p.chips >= unit)
+        .toList()
+      ..shuffle(_driftRng ??= Random(seed ^ 0x9e3779b9));
+    if (candidates.isEmpty) return;
+
+    var i = 0;
+    // Bounded iterations: this is cosmetic bookkeeping, never a loop that
+    // should be able to hang on a stubborn remainder.
+    while (drift != 0 && i < candidates.length * 4) {
+      final p = candidates[i % candidates.length];
+      if (drift > 0) {
+        p.chips += unit;
+        drift -= unit;
+      } else if (p.chips >= unit) {
+        p.chips -= unit;
+        drift += unit;
+      }
+      i++;
+    }
+  }
 
   /// The human is out (busted or railing): resolve the rest with real hands so
   /// there's a proper champion and full standings. Bounded — a deep 8,000-runner
@@ -1442,8 +1739,6 @@ class TournamentController {
         seatProfiles: _profileBySeat,
         // Draw stacks in the denominations actually in play at this level.
         denominations: chips.denominations,
-        // Action reason labels for coaching visibility.
-        actionReasons: _actionReasons,
         // Highlight players new to this table for their first hand.
         newToTablePlayers: _newToTablePlayers,
       ),
@@ -1460,43 +1755,6 @@ class TournamentController {
           2)
         t.id,
   };
-
-  void _recordActionReason(String seatId, GameAction action, DecisionPolicy decider) {
-    // Start with the basic action type
-    final actionLabel = switch (action.type) {
-      ActionType.fold => 'fold',
-      ActionType.check => 'check',
-      ActionType.call => 'call',
-      ActionType.bet => 'bet',
-      ActionType.raise => 'raise',
-      ActionType.allIn => 'all-in',
-    };
-
-    // Enhance with personality decision label if available (e.g., "valueBet", "bluff")
-    String reason = actionLabel;
-    if (decider is ProfilePostflopPolicy) {
-      final label = decider.lastDecisionLabel;
-      if (label != null && label.isNotEmpty) {
-        reason = label;
-      }
-      // Append signature moves if any fired (e.g., "bluff · Slow_Play_Trap")
-      final moves = decider.lastSignaturesMoved;
-      if (moves.isNotEmpty) {
-        final movesStr = moves.map(_formatMoveName).join(', ');
-        reason = '$reason · $movesStr';
-      }
-    }
-
-    _actionReasons[seatId] = reason;
-  }
-
-  /// Format a signature move name for display (CamelCase → "Camel Case")
-  String _formatMoveName(String name) {
-    return name.replaceAllMapped(
-      RegExp('([A-Z])'),
-      (m) => ' ${m.group(1)}',
-    ).trim();
-  }
 
   /// The named personalities dealt into [game] — the ones a viewer would
   /// recognise, as opposed to the anonymous profiles that fill out a field.
@@ -1562,6 +1820,13 @@ class TournamentController {
 
   void _publishTournament() {
     if (humanId == null || _tourCtrl.isClosed) return;
+    // Always publish. This used to be throttled to every 10 hands to reduce
+    // standings-panel jitter, but that throttled the *whole* snapshot — chips,
+    // level, and the human's own live place along with it, so those numbers
+    // could lag up to 9 hands behind reality. The standings panel now windows
+    // itself to the rows around the human instead (see
+    // TournamentController.standings), which is what was actually causing the
+    // visible jitter/cost — so the numbers here can stay exact.
     _tourCtrl.add(
       TournamentSnapshot.of(
         state,
@@ -1577,62 +1842,106 @@ class TournamentController {
     _lastTableBreak = null;
   }
 
-  /// The full live standings, built on demand (never broadcast — a huge field
-  /// would bloat every snapshot): active players ranked by chips take places
-  /// 1..K, then busted players follow in finish order (best finish first).
-  List<StandingRow> standings() {
-    final active = state.activePlayers.toList()
-      ..sort((a, b) => b.chips.compareTo(a.chips));
-    final busted = state.players.values.where((p) => !p.isActive).toList()
-      ..sort(
-        (a, b) =>
-            (a.finishPlace ?? 1 << 30).compareTo(b.finishPlace ?? 1 << 30),
-      );
-    StandingKind kindOf(TournamentPlayer p) {
-      if (p.isHuman) return StandingKind.human;
-      final prof = _profileBySeat[p.id];
-      return (prof != null && isAmateurProfile(prof))
-          ? StandingKind.amateur
-          : StandingKind.pro;
-    }
+  /// The standings around the human, built on demand: active players ranked
+  /// by chips take places 1..K, then busted players follow in finish order
+  /// (best finish first) — but only [radius] rows either side of the human's
+  /// own place are actually materialised. A large field is thousands of
+  /// players deep; nobody reads past their own neighbourhood on a semi-static
+  /// side panel, and building/sorting the *entire* field into row objects on
+  /// every redraw was real, avoidable cost sitting right next to background
+  /// simulation on the same event loop. Background simulation is paused for
+  /// the duration of this call so a table can't mutate a stack mid-read.
+  List<StandingRow> standings({int radius = 60}) {
+    _bgSimulator.pauseForRender();
+    try {
+      final active = state.activePlayers.toList()
+        ..sort((a, b) => b.chips.compareTo(a.chips));
+      final busted = state.players.values.where((p) => !p.isActive).toList()
+        ..sort(
+          (a, b) =>
+              (a.finishPlace ?? 1 << 30).compareTo(b.finishPlace ?? 1 << 30),
+        );
 
-    bool generatedOf(TournamentPlayer p) =>
-        _profileBySeat[p.id]?.generated ?? false;
+      final total = active.length + busted.length;
+      if (total == 0) return const [];
 
-    final rows = <StandingRow>[];
-    var place = 1;
-    for (final p in active) {
-      rows.add(
-        StandingRow(
-          place: place++,
-          name: p.name,
-          isHuman: p.isHuman,
-          chips: p.chips,
-          busted: false,
-          prize: 0,
-          kind: kindOf(p),
-          generated: generatedOf(p),
-        ),
-      );
+      TournamentPlayer itemAt(int i) =>
+          i < active.length ? active[i] : busted[i - active.length];
+      int placeAt(int i) => i < active.length
+          ? i + 1
+          : (busted[i - active.length].finishPlace ?? i + 1);
+      bool bustedAt(int i) => i >= active.length;
+
+      var humanIndex = active.indexWhere((p) => p.isHuman);
+      if (humanIndex < 0) {
+        final bustedIndex = busted.indexWhere((p) => p.isHuman);
+        humanIndex = bustedIndex < 0 ? 0 : active.length + bustedIndex;
+      }
+
+      StandingKind kindOf(TournamentPlayer p) {
+        if (p.isHuman) return StandingKind.human;
+        final prof = _profileBySeat[p.id];
+        return (prof != null && isAmateurProfile(prof))
+            ? StandingKind.amateur
+            : StandingKind.pro;
+      }
+
+      bool generatedOf(TournamentPlayer p) =>
+          _profileBySeat[p.id]?.generated ?? false;
+
+      final start = (humanIndex - radius).clamp(0, total - 1);
+      final end = (humanIndex + radius).clamp(0, total - 1);
+
+      final rows = <StandingRow>[];
+      for (var i = start; i <= end; i++) {
+        final p = itemAt(i);
+        final isBusted = bustedAt(i);
+        rows.add(
+          StandingRow(
+            place: placeAt(i),
+            name: p.name,
+            isHuman: p.isHuman,
+            chips: isBusted ? 0 : p.chips,
+            busted: isBusted,
+            prize: isBusted ? p.prizeWon : 0,
+            kind: kindOf(p),
+            generated: generatedOf(p),
+          ),
+        );
+      }
+      return rows;
+    } finally {
+      _bgSimulator.resumeAfterRender();
     }
-    for (final p in busted) {
-      rows.add(
-        StandingRow(
-          place: p.finishPlace ?? place++,
-          name: p.name,
-          isHuman: p.isHuman,
-          chips: 0,
-          busted: true,
-          prize: p.prizeWon,
-          kind: kindOf(p),
-          generated: generatedOf(p),
-        ),
-      );
-    }
-    return rows;
   }
 
+  /// Pause background simulation of other tables.
+  void pauseSimulation() {
+    _bgSimulator.pause();
+  }
+
+  /// Resume background simulation of other tables.
+  void resumeSimulation() {
+    _bgSimulator.resume();
+  }
+
+  /// Auto-pause while the level recap dialog is on screen — the player is
+  /// reading it, so a background table shouldn't be racing through hands
+  /// unseen underneath. Separate from [pauseSimulation] (the user's manual
+  /// pause button) so the two don't fight over one flag.
+  void pauseForRecap() {
+    _bgSimulator.pauseForRecap();
+  }
+
+  /// Resume background simulation once the recap dialog closes.
+  void resumeAfterRecap() {
+    _bgSimulator.resumeAfterRecap();
+  }
+
+
   void dispose() {
+    _realtimeTicker?.cancel();
+    _bgSimulator.dispose();
     _tableCtrl.close();
     _tourCtrl.close();
     _simCtrl.close();

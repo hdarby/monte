@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:monte/core/domain/ai/home_game_profiles.dart';
 import 'package:monte/core/domain/ai/player_profile.dart';
 import 'package:monte/core/domain/ai/player_profiles.dart';
+import 'package:monte/core/util/format.dart';
 import 'package:monte/features/tournament/domain/name_pool.dart';
 
 /// Assembles the bot field for a tournament: the personalities the owner
@@ -27,8 +28,10 @@ class FieldBuilder {
   final String humanName;
   final Random _rng;
 
-  /// The selectable pools, alphabetical and with the human's own namesake
-  /// removed — you shouldn't face a bot playing "you".
+  /// The selectable pools, alphabetical **by last name** — sorted here at
+  /// list-build time, not by hand-ordering the catalog files, since that's a
+  /// losing battle the moment another personality gets added — and with the
+  /// human's own namesake removed (you shouldn't face a bot playing "you").
   final List<PlayerProfile> recreational;
   final List<PlayerProfile> pros;
 
@@ -37,7 +40,7 @@ class FieldBuilder {
     return [
       for (final p in src)
         if (p.name.trim().toLowerCase() != me) p,
-    ]..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    ]..sort((a, b) => compareByLastName(a.name, b.name));
   }
 
   /// Every selectable profile, both pools combined.
@@ -104,10 +107,14 @@ class FieldBuilder {
   static double _recWeight(PlayerProfile p) {
     final s = p.skill.clamp(0.05, 1.0);
     final vpip = p.strategicBaseline.vpipTarget;
-    // 1.0 at a normal 30% VPIP, falling away steeply past 40%.
+    // 1.0 at a normal 30% VPIP, falling away steeply past 40% — steeper and a
+    // lower floor than the original 2.2/0.04, since even damped the loosest
+    // caricatures (e.g. Dave Coyle's 75% "any two") still turned up often
+    // enough in an 8000-runner field's feature hands to read as broken
+    // preflop selection rather than an intended rare maniac sighting.
     final loose = vpip <= 0.32
         ? 1.0
-        : (1.0 - 2.2 * (vpip - 0.32)).clamp(0.04, 1.0);
+        : (1.0 - 3.4 * (vpip - 0.32)).clamp(0.015, 1.0);
     return (0.02 + s * s * s) * loose;
   }
 

@@ -32,9 +32,17 @@ DecisionPolicy deciderForProfile(
   TriggerObserver? triggers,
   MentalReads? mental,
   int Function()? tableCountProvider,
+  int Function()? equityTableCountProvider,
 }) {
   if (isAmateurProfile(profile)) {
-    return AmateurPolicy(profile, random: random, mental: mental);
+    return AmateurPolicy(
+      profile,
+      random: random,
+      mental: mental,
+      // Amateurs have no search-evaluator cutover, so this is their only use
+      // of table count — always the equity-scale one.
+      tableCountProvider: equityTableCountProvider ?? tableCountProvider,
+    );
   }
   return ProfilePolicy(
     profile,
@@ -45,7 +53,8 @@ DecisionPolicy deciderForProfile(
         reads: reads,
         triggers: triggers,
         mental: mental,
-        tableCountProvider: tableCountProvider),
+        tableCountProvider: tableCountProvider,
+        equityTableCountProvider: equityTableCountProvider),
     reads: reads,
     triggers: triggers,
     mental: mental,

@@ -65,3 +65,19 @@ String firstLastName(String name) {
   if (parts.length >= 2) return '${parts.first} ${parts.last}';
   return name.trim();
 }
+
+/// The last (family-name) token of a full name, lowercased — the sort key for
+/// any personality list that isn't already ordered for another reason (a
+/// selection roster, a bot-lineup dropdown), so entries land the way a phone
+/// book would rather than by first name.
+String lastNameOf(String name) {
+  final parts = name.trim().split(RegExp(r'\s+'));
+  return (parts.isEmpty ? name : parts.last).trim().toLowerCase();
+}
+
+/// Compares two personalities by [lastNameOf], falling back to the full name
+/// (case-insensitive) to break ties between same-surname entries.
+int compareByLastName(String a, String b) {
+  final byLast = lastNameOf(a).compareTo(lastNameOf(b));
+  return byLast != 0 ? byLast : a.toLowerCase().compareTo(b.toLowerCase());
+}

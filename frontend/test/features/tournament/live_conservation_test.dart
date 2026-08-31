@@ -31,7 +31,7 @@ Future<void> _run({
   }
 
   check('start');
-  await c.startLive(botDelay: Duration.zero);
+  await c.startLive(botDelay: Duration.zero, nextHandDelay: Duration.zero);
 
   // Cap the human's hands so a deep structure (which never busts a folding human
   // for hundreds of hands) still terminates the test — the point is that off-
@@ -99,7 +99,7 @@ void main() {
       names: [for (var i = 0; i < entrants; i++) i == 0 ? 'You' : 'Bot $i'],
     );
     addTearDown(c.dispose);
-    await c.startLive(botDelay: Duration.zero);
+    await c.startLive(botDelay: Duration.zero, nextHandDelay: Duration.zero);
 
     // The human jams every hand, so they bust deep in the field fast. When they
     // do, the tournament must finalize promptly (settle by chips) — not grind

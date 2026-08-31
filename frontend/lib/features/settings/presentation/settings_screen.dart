@@ -28,6 +28,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   late bool _allBots;
   late List<BotSpec> _specs;
   late PlayPace _playPace;
+  late bool _animateCardDeal;
   late GameSettings _initial;
   final _sbController = TextEditingController();
   final _bbController = TextEditingController();
@@ -45,6 +46,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     _allBots = settings.allBots;
     _specs = settings.seatBotsFor(settings.botSeatCount);
     _playPace = settings.playPace;
+    _animateCardDeal = settings.animateCardDeal;
     _sbController.text = '${settings.smallBlind}';
     _bbController.text = '${settings.bigBlind}';
     _stackController.text = '${settings.startingStack}';
@@ -251,6 +253,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   ],
                   onChanged: (v) =>
                       setState(() => _playPace = v ?? _playPace),
+                ),
+                const SizedBox(height: 16),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  activeThumbColor: AppTheme.gold,
+                  value: _animateCardDeal,
+                  onChanged: (v) => setState(() => _animateCardDeal = v),
+                  title: const Text('Animate card deal'),
+                  subtitle: const Text(
+                    'Show cards being dealt with a ~2 second animation.',
+                    style: TextStyle(color: Colors.white54),
+                  ),
                 ),
                 const SizedBox(height: 20),
                 const Divider(color: Colors.white12),
@@ -520,6 +534,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       startingStack: stake.startingStack,
                       seatBots: _specs,
                       playPace: _playPace,
+                      animateCardDeal: _animateCardDeal,
                     ),
                   );
               Navigator.pop(context);

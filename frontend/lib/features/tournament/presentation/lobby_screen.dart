@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:monte/core/di/game_providers.dart';
 import 'package:monte/core/presentation/widgets/career_icon.dart';
 import 'package:monte/core/domain/ai/player_profile.dart';
@@ -34,16 +35,72 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen> {
   /// real tournaments are actually dealt at.
   static const _tableSizes = [0, 2, 6, 9, 10];
 
+  /// Real minutes per level — replaces picking a preset's baked-in hand count.
+  /// The blind ramp still comes from the structure preset; only pacing does.
+  static const _levelMinutesOptions = [5, 10, 15, 20, 30, 45, 60];
+
   late final FieldBuilder _builder = FieldBuilder(humanName: widget.humanName);
+
+  static const _kPreset = 'lobby_preset';
+  static const _kFieldSize = 'lobby_field_size';
+  static const _kBuyIn = 'lobby_buy_in';
+  static const _kTableSizeChoice = 'lobby_table_size_choice';
+  static const _kLevelMinutes = 'lobby_level_minutes';
 
   TournamentPreset _preset = TournamentPreset.turbo;
   int _fieldSize = 9;
   int _buyIn = 100;
   int _tableSizeChoice = 0; // 0 = auto
+  int _levelMinutes = 15;
 
   /// Profile ids the owner explicitly added. Defaults to everyone — the usual
   /// intent is to play the full cast.
   late final Set<String> _selected = {for (final p in _builder.all) p.id};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLastChoices();
+  }
+
+  /// Restores structure/field size/buy-in/table size from the last time the
+  /// lobby was used, so registering for another tournament doesn't mean
+  /// re-picking the same options every time.
+  Future<void> _loadLastChoices() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _preset = _enumByName(
+        TournamentPreset.values,
+        prefs.getString(_kPreset),
+        _preset,
+      );
+      _fieldSize = prefs.getInt(_kFieldSize) ?? _fieldSize;
+      if (!_fieldSizes.contains(_fieldSize)) _fieldSize = 9;
+      _buyIn = prefs.getInt(_kBuyIn) ?? _buyIn;
+      if (!_buyIns.contains(_buyIn)) _buyIn = 100;
+      _tableSizeChoice = prefs.getInt(_kTableSizeChoice) ?? _tableSizeChoice;
+      if (!_tableSizes.contains(_tableSizeChoice)) _tableSizeChoice = 0;
+      _levelMinutes = prefs.getInt(_kLevelMinutes) ?? _levelMinutes;
+      if (!_levelMinutesOptions.contains(_levelMinutes)) _levelMinutes = 15;
+    });
+  }
+
+  Future<void> _persistChoices() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kPreset, _preset.name);
+    await prefs.setInt(_kFieldSize, _fieldSize);
+    await prefs.setInt(_kBuyIn, _buyIn);
+    await prefs.setInt(_kTableSizeChoice, _tableSizeChoice);
+    await prefs.setInt(_kLevelMinutes, _levelMinutes);
+  }
+
+  static T _enumByName<T extends Enum>(List<T> values, String? name, T fallback) {
+    for (final v in values) {
+      if (v.name == name) return v;
+    }
+    return fallback;
+  }
 
   int get _entrants => _builder.entrantsFor(
     fieldSize: _fieldSize,
@@ -105,7 +162,7 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen> {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => TournamentScreen(
-          structure: _preset.structure,
+          structure: _preset.structure.withLevelMinutes(_levelMinutes),
           field: _builder.build(
             selectedIds: _selected,
             entrants: _entrants,
@@ -146,7 +203,10 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen> {
               options: TournamentPreset.values,
               selected: _preset,
               labelOf: (p) => p.label,
-              onSelect: (v) => setState(() => _preset = v),
+              onSelect: (v) {
+                setState(() => _preset = v);
+                _persistChoices();
+              },
             ),
             const SizedBox(height: 12),
             LobbyChoiceRow<int>(
@@ -154,7 +214,10 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen> {
               options: _fieldSizes,
               selected: _fieldSize,
               labelOf: formatChips,
-              onSelect: (v) => setState(() => _fieldSize = v),
+              onSelect: (v) {
+                setState(() => _fieldSize = v);
+                _persistChoices();
+              },
             ),
             const SizedBox(height: 12),
             LobbyChoiceRow<int>(
@@ -162,7 +225,10 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen> {
               options: _buyIns,
               selected: _buyIn,
               labelOf: (b) => '\$${formatChips(b)}',
-              onSelect: (v) => setState(() => _buyIn = v),
+              onSelect: (v) {
+                setState(() => _buyIn = v);
+                _persistChoices();
+              },
             ),
             const SizedBox(height: 12),
             LobbyChoiceRow<int>(
@@ -178,7 +244,21 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen> {
                 2 => '2-handed',
                 _ => '$n-max',
               },
-              onSelect: (v) => setState(() => _tableSizeChoice = v),
+              onSelect: (v) {
+                setState(() => _tableSizeChoice = v);
+                _persistChoices();
+              },
+            ),
+            const SizedBox(height: 12),
+            LobbyChoiceRow<int>(
+              title: 'Level length',
+              options: _levelMinutesOptions,
+              selected: _levelMinutes,
+              labelOf: (m) => '$m min',
+              onSelect: (v) {
+                setState(() => _levelMinutes = v);
+                _persistChoices();
+              },
             ),
             const SizedBox(height: 12),
             _playersHeader(context),

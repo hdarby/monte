@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:monte/core/util/format.dart';
 import 'package:monte/features/tournament/domain/tournament_snapshot.dart';
-import 'package:monte/features/tournament/domain/tournament_structure.dart';
 import 'package:monte/features/tournament/presentation/widgets/hud_detail_dialogs.dart';
 
 /// A compact banner showing the tournament state. Every stat is tappable and
@@ -18,15 +17,13 @@ class TournamentHud extends StatelessWidget {
   final TournamentSnapshot tour;
   final String humanName;
 
-  /// Builds the full live standings on demand — the field can be thousands of
-  /// players, so the HUD only materialises them when a popup is opened.
+  /// Builds a window of standings around the human on demand — the field can
+  /// be thousands of players, so the HUD only materialises them (and only the
+  /// neighbourhood around the human) when a popup is opened.
   final List<StandingRow> Function() standings;
 
   @override
   Widget build(BuildContext context) {
-    final clock = tour.clockMode == LevelClockMode.hands
-        ? 'hand ${tour.handsThisLevel + 1}/${tour.handsPerLevel}'
-        : 'L${tour.level}';
     final ante = tour.ante > 0 ? '+${tour.ante}' : '';
     // Before the money, "Nth = bubble" only restated the place already shown
     // beside it. What a player actually needs to know is how far off a cash is
@@ -42,43 +39,52 @@ class TournamentHud extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
         child: DefaultTextStyle(
           style: const TextStyle(color: Colors.white, fontSize: 12),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              _HudChip(
-                label: 'L${tour.level}',
-                value: '${tour.smallBlind}/${tour.bigBlind}$ante',
-                detail: () => BlindStructureDialog(tour: tour),
-              ),
-              _HudChip(
-                label: 'Left',
-                value: '${tour.playersLeft}/${tour.entrants}',
-                detail: () => FieldDialog(tour: tour),
-              ),
-              _HudChip(
-                label: 'Avg',
-                value: '${tour.averageStack}',
-                detail: () => StacksDialog(tour: tour),
-              ),
-              _HudChip(
-                label: humanName,
-                value: '${tour.yourChips} · ${ordinal(tour.yourPlace)}'
-                    '${tour.yourTable > 0 ? " · T${tour.yourTable}" : ""}',
-                detail: () =>
-                    YourStandingDialog(tour: tour, standings: standings()),
-              ),
-              _HudChip(
-                label: 'Pool',
-                value: '\$${tour.prizePool}',
-                detail: () => PayoutsDialog(tour: tour),
-              ),
-              _HudChip(
-                label: tour.inMoney ? 'ITM' : 'Next',
-                value: nextPay,
-                detail: () => PayoutsDialog(tour: tour),
-              ),
-              Text(clock, style: const TextStyle(color: Colors.white54)),
-            ],
+          // Six tappable chips plus the hand-clock text overflowed a plain
+          // Row on a normal-width screen — the last child (the hand counter)
+          // was simply clipped off past the edge with nothing to indicate it.
+          // Scrolling guarantees everything stays reachable. The level clock
+          // itself moved out of here entirely (see LevelClockBadge, now next
+          // to the pause button) — it was too easy to miss buried in this
+          // scrollable row alongside six other chips.
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _HudChip(
+                  label: 'L${tour.level}',
+                  value: '${tour.smallBlind}/${tour.bigBlind}$ante',
+                  detail: () => BlindStructureDialog(tour: tour),
+                ),
+                _HudChip(
+                  label: 'Left',
+                  value: '${tour.playersLeft}/${tour.entrants}',
+                  detail: () => FieldDialog(tour: tour),
+                ),
+                _HudChip(
+                  label: 'Avg',
+                  value: '${tour.averageStack}',
+                  detail: () => StacksDialog(tour: tour),
+                ),
+                _HudChip(
+                  label: humanName,
+                  value: '${tour.yourChips} · ${ordinal(tour.yourPlace)}'
+                      '${tour.yourTable > 0 ? " · T${tour.yourTable}" : ""}',
+                  detail: () =>
+                      YourStandingDialog(tour: tour, standings: standings()),
+                ),
+                _HudChip(
+                  label: 'Pool',
+                  value: '\$${tour.prizePool}',
+                  detail: () => PayoutsDialog(tour: tour),
+                ),
+                _HudChip(
+                  label: tour.inMoney ? 'ITM' : 'Next',
+                  value: nextPay,
+                  detail: () => PayoutsDialog(tour: tour),
+                ),
+              ],
+            ),
           ),
         ),
       ),

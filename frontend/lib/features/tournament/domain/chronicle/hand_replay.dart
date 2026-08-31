@@ -242,6 +242,7 @@ class HandReplay {
     required this.suckout,
     required this.reachedRiver,
     this.equityWhenAllIn,
+    this.headline,
     this.commentary = const [],
     this.verdicts = const [],
   });
@@ -250,6 +251,9 @@ class HandReplay {
 
   /// The level's big blind, so every amount can be shown in BB.
   final int bigBlind;
+
+  /// Strategic headline describing the key theme (e.g., "Pro collision", "Suckout").
+  final String? headline;
 
   final List<String> board;
 
@@ -288,6 +292,7 @@ class HandReplay {
 
   HandReplay copyWith({
     List<ReplayStreet>? streets,
+    String? headline,
     List<String>? commentary,
     List<PlayerVerdict>? verdicts,
   }) => HandReplay(
@@ -306,6 +311,7 @@ class HandReplay {
     suckout: suckout,
     reachedRiver: reachedRiver,
     equityWhenAllIn: equityWhenAllIn,
+    headline: headline ?? this.headline,
     commentary: commentary ?? this.commentary,
     verdicts: verdicts ?? this.verdicts,
   );

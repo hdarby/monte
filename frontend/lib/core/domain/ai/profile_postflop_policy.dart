@@ -1,5 +1,6 @@
 import 'dart:math';
 
+import 'package:monte/core/domain/ai/background_quality.dart';
 import 'package:monte/core/domain/ai/hand_range.dart';
 import 'package:monte/core/domain/ai/heuristic_postflop_evaluator.dart';
 import 'package:monte/core/domain/ai/mental_state.dart';
@@ -38,6 +39,7 @@ class ProfilePostflopPolicy implements DecisionPolicy {
     TriggerObserver? triggers,
     MentalReads? mental,
     int Function()? tableCountProvider,
+    int Function()? equityTableCountProvider,
   }) : _random = random ?? Random() {
     _reads = reads;
     _triggers = triggers;
@@ -46,6 +48,7 @@ class ProfilePostflopPolicy implements DecisionPolicy {
     _searchEvaluator = PostflopSearchEvaluator(_random, profile);
     _postProcessor = PersonalityPostProcessor(_random);
     _tableCountProvider = tableCountProvider;
+    _equityTableCountProvider = equityTableCountProvider;
   }
 
   final PlayerProfile profile;
@@ -62,6 +65,18 @@ class ProfilePostflopPolicy implements DecisionPolicy {
   /// branch, which reuses these same constructed deciders.
   late final int Function()? _tableCountProvider;
 
+  /// Separate from [_tableCountProvider] on purpose: that one gates the
+  /// search-evaluator cutover ("is this the true final table?", a fixed
+  /// meaning that must not shift). This one drives the equity-iteration
+  /// scale (see [equityIterationScale]) and reports `1` whenever *this seat*
+  /// is currently seated at the human's own live table, regardless of how
+  /// many tables remain in the tournament overall — so the opponents you're
+  /// actually playing against always reason at full resolution, and only
+  /// seats off at background tables get the cheaper scaled-down estimate.
+  /// Falls back to [_tableCountProvider] when not supplied (cash table,
+  /// tests) so those callers are unaffected.
+  late final int Function()? _equityTableCountProvider;
+
   /// Locked decision: the search-backed postflop evaluator only ever plays
   /// the true final table.
   static const int finalTableCutoff = 1;
@@ -76,19 +91,7 @@ class ProfilePostflopPolicy implements DecisionPolicy {
   /// How rattled each seat is (see [MentalReads]). Null = nobody tilts.
   late final MentalReads? _mental;
 
-  /// Last decision's label for UI coaching (e.g., "valueBet", "bluff", "call").
-  /// Read by LocalGameRepository after decide() to populate action reasons.
-  String? lastDecisionLabel;
-
-  /// Last decision's signature move names that fired (for UI coaching label).
-  /// Read by LocalGameRepository after decide().
-  List<String> lastSignaturesMoved = [];
-
-  /// Accumulates which moves fired during the current decision.
-  final List<String> _firedThisDecision = [];
-
   void _fired(String id, Player p, BettingRound street) {
-    _firedThisDecision.add(id);
     _triggers?.onFired(id, p.id, street);
   }
 
@@ -96,7 +99,6 @@ class ProfilePostflopPolicy implements DecisionPolicy {
 
   @override
   GameAction decide(PokerGame game, Player p) {
-    _firedThisDecision.clear();
     // Preflop is the calibrated frequency layer's job; this brain is postflop.
     if (game.board.isEmpty) {
       // Defensive: a profile bot should never reach here preflop, but continue
@@ -177,7 +179,10 @@ class ProfilePostflopPolicy implements DecisionPolicy {
     // holdings), and spends up to twice the Monte-Carlo runouts resolving the
     // equity against it — so it ranges opponents better than a baseline pro.
     final soul = profile.proficiencyOf('Soul_Read');
-    final equityIters = (_equityIterations * (1 + soul)).round();
+    final scale = equityIterationScale(
+        (_equityTableCountProvider ?? _tableCountProvider)?.call());
+    final equityIters =
+        (_equityIterations * (1 + soul) * scale).round().clamp(20, 1 << 30);
     final dead = {...p.hole, ...game.board};
     final perceivedTop =
         0.40 * (1 - 0.35 * soul * (betFraction > 0 ? 1.0 : 0.0));
@@ -309,9 +314,7 @@ class ProfilePostflopPolicy implements DecisionPolicy {
           ? PersonalityPostProcessor.closeDecisionMarginSearch
           : null,
     );
-    lastDecisionLabel = candidate.label;
     _postProcessor.fireTriggers(candidate, (id) => _fired(id, p, game.round));
-    lastSignaturesMoved = List.of(_firedThisDecision);
     return candidate.action;
   }
 

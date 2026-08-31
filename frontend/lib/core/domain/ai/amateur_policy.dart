@@ -1,5 +1,6 @@
 import 'dart:math';
 
+import 'package:monte/core/domain/ai/background_quality.dart';
 import 'package:monte/core/domain/ai/hand_range.dart';
 import 'package:monte/core/domain/ai/player_profile.dart';
 import 'package:monte/core/domain/ai/mental_state.dart';
@@ -41,6 +42,7 @@ class AmateurPolicy implements DecisionPolicy {
     Random? random,
     PreflopRanges? ranges,
     this.mental,
+    this._tableCountProvider,
   }) : _random = random ?? Random(),
       _k = (1.0 - profile.skill).clamp(0.0, 1.0),
       _loose = ((profile.strategicBaseline.vpipTarget - 0.24) / 0.30).clamp(
@@ -55,6 +57,12 @@ class AmateurPolicy implements DecisionPolicy {
 
   final PlayerProfile profile;
   final Random _random;
+
+  /// Reports the number of tables still live in the tournament this seat
+  /// belongs to (null outside a tournament) — read live at decision time so
+  /// the equity-iteration count (see [_equityIterations]) ramps back up as
+  /// the field consolidates. Mirrors `ProfilePostflopPolicy`'s provider.
+  final int Function()? _tableCountProvider;
 
   /// Incompetence: `1 − skill`. All leaks scale with this and vanish at 0.
   final double _k;
@@ -113,6 +121,28 @@ class AmateurPolicy implements DecisionPolicy {
     final u1 = 1.0 - _random.nextDouble(); // in (0, 1]
     final u2 = _random.nextDouble();
     return sqrt(-2.0 * log(u1)) * cos(2 * pi * u2);
+  }
+
+  /// First-in bet sizing (leading into an empty pot: c-bets, river value/
+  /// bluff leads) — randomised around the old fixed 0.55 pot fraction rather
+  /// than always landing on exactly the same number, so hands don't all feel
+  /// the same. The ceiling is raised about 50% (0.9 → 1.35 pot) for the
+  /// occasional big one; not universal — only some amateurs reach for it
+  /// (proxied by [sizeScale], their own risk-appetite dial), and only when
+  /// they're actually sitting on a strong made hand on the flop, which is
+  /// the specific "always slams pot with top pair/an overpair" tell some
+  /// recreational players have and others don't.
+  double _firstInSizeFraction({
+    required double sizeScale,
+    required bool onFlop,
+    required bool strongMade,
+  }) {
+    const base = 0.55;
+    final spread = _gaussian() * 0.14; // averages around base, wanders both ways
+    final potSlam = (onFlop && strongMade && sizeScale > 1.1 && _random.nextDouble() < 0.45)
+        ? 0.35
+        : 0.0;
+    return ((base + spread + potSlam) * sizeScale).clamp(0.30, 1.35);
   }
 
   @override
@@ -298,7 +328,10 @@ class AmateurPolicy implements DecisionPolicy {
       p.hole,
       game.board,
       range,
-      iterations: _equityIterations,
+      iterations: (_equityIterations *
+              equityIterationScale(_tableCountProvider?.call()))
+          .round()
+          .clamp(20, 1 << 30),
       random: _random,
     );
     // Draw recognition uses the honest equity; decisions use the misread one.
@@ -345,7 +378,11 @@ class AmateurPolicy implements DecisionPolicy {
           ((1 - noisy) * 0.6 + (isDraw ? 0.4 : 0.0));
       final wantsBluff = _random.nextDouble() < bluffChance;
       if ((wantsValue || wantsBluff) && p.stack > bb) {
-        return betBy((0.55 * sizeScale).clamp(0.33, 0.9));
+        return betBy(_firstInSizeFraction(
+          sizeScale: sizeScale,
+          onFlop: game.round == BettingRound.flop,
+          strongMade: noisy > 0.72,
+        ));
       }
       return const GameAction.check();
     }

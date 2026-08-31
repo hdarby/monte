@@ -63,6 +63,7 @@ class TournamentFinish {
     required this.prize,
     this.isHuman = false,
     this.facedHuman = false,
+    this.generated = false,
   });
 
   /// The personality's stable id, so results accumulate across events even
@@ -78,6 +79,12 @@ class TournamentFinish {
   /// since these are the only players actually played against.
   final bool facedHuman;
 
+  /// Anonymous auto-filled field-filler rather than a named personality.
+  /// [CareerRow.from] ignores these entirely — a big field reuses a small
+  /// template pool for filler (same profileId at hundreds of seats at once),
+  /// so they have no meaningful individual career, only inflated numbers.
+  final bool generated;
+
   factory TournamentFinish.fromJson(Map<String, dynamic> j) => TournamentFinish(
         profileId: j['profileId'] as String? ?? '',
         name: j['name'] as String? ?? '',
@@ -85,6 +92,7 @@ class TournamentFinish {
         prize: j['prize'] as int? ?? 0,
         isHuman: j['isHuman'] as bool? ?? false,
         facedHuman: j['facedHuman'] as bool? ?? false,
+        generated: j['generated'] as bool? ?? false,
       );
 
   Map<String, dynamic> toJson() => {
@@ -94,6 +102,7 @@ class TournamentFinish {
         'prize': prize,
         if (isHuman) 'isHuman': true,
         if (facedHuman) 'facedHuman': true,
+        if (generated) 'generated': true,
       };
 }
 
@@ -127,12 +136,20 @@ class CareerRow {
   int get net => won - buyIns;
 
   /// Aggregates [results] into one row per personality, best ROI first.
+  ///
+  /// Generated (anonymous field-filler) entrants are ignored entirely — a big
+  /// field reuses a small template pool for filler, so the same profileId can
+  /// sit at hundreds of tables in one event. They have no meaningful
+  /// individual career, only inflated numbers if counted, and this is the
+  /// career screen for the personalities the owner actually picked.
   static List<CareerRow> from(List<TournamentResult> results) {
     final acc = <String, List<dynamic>>{};
     for (final r in results) {
+      final seenThisEvent = <String>{};
       for (final f in r.finishes) {
+        if (f.generated) continue;
         final key = f.isHuman ? 'human' : f.profileId;
-        if (key.isEmpty) continue;
+        if (key.isEmpty || !seenThisEvent.add(key)) continue;
         final a = acc.putIfAbsent(
             key, () => [f.name, 0, 0, 0, 0, 1 << 30, 0]);
         a[0] = f.name;

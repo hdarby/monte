@@ -17,6 +17,7 @@ class GameSettings {
     this.startingStack = 300,
     this.seatBots = const [],
     this.playPace = PlayPace.normal,
+    this.animateCardDeal = true,
   });
 
   /// Supported table-size bounds (2 = heads-up … 10 = full ring).
@@ -77,6 +78,9 @@ class GameSettings {
   /// searching deeper (MCTS), not idling.
   final PlayPace playPace;
 
+  /// Whether to animate cards being dealt (optional visual feedback).
+  final bool animateCardDeal;
+
   /// How many seats are bots (the human takes one unless [allBots]).
   int get botSeatCount => allBots ? playerCount : playerCount - 1;
 
@@ -101,6 +105,7 @@ class GameSettings {
     int? startingStack,
     List<BotSpec>? seatBots,
     PlayPace? playPace,
+    bool? animateCardDeal,
   }) => GameSettings(
     playerCount: playerCount ?? this.playerCount,
     showBigBlinds: showBigBlinds ?? this.showBigBlinds,
@@ -113,5 +118,6 @@ class GameSettings {
     startingStack: startingStack ?? this.startingStack,
     seatBots: seatBots ?? this.seatBots,
     playPace: playPace ?? this.playPace,
+    animateCardDeal: animateCardDeal ?? this.animateCardDeal,
   );
 }

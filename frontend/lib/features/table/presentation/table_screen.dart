@@ -42,11 +42,13 @@ class TableScreen extends StatefulWidget {
     this.readForSeat,
     this.humanName = 'You',
     this.isFinalTable = false,
+    this.animateCardDeal = true,
   });
 
   final TableSnapshot snapshot;
   final bool isAllBots;
   final int playerCount;
+  final bool animateCardDeal;
 
   /// The human's display name, used where a read refers back to the hero (e.g.
   /// "⟨opponent⟩'s read of ⟨humanName⟩") instead of a bare "you".
@@ -111,6 +113,7 @@ class _TableScreenState extends State<TableScreen> {
   bool get showOpponentRanges => widget.showOpponentRanges;
   SeatRead? Function(String seatId)? get readForSeat => widget.readForSeat;
   String get humanName => widget.humanName;
+  bool get animateCardDeal => widget.animateCardDeal;
   VoidCallback? get onCoach => widget.onCoach;
   VoidCallback? get onOpenTournament => widget.onOpenTournament;
   VoidCallback? get onOpenCareer => widget.onOpenCareer;
@@ -373,6 +376,7 @@ class _TableScreenState extends State<TableScreen> {
                           !seats[i].folded)
                       ? () => _showOpponentRange(context, seats[i])
                       : null,
+                  animateCardDeal: animateCardDeal,
                   read: readForSeat == null
                       ? null
                       : () => readForSeat!(seats[i].id),

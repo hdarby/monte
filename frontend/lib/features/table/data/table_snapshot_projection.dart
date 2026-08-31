@@ -23,7 +23,6 @@ TableSnapshot projectTableSnapshot(
   bool flagBusted = false,
   String? frontPlayerId,
   List<int>? denominations,
-  Map<String, String?> actionReasons = const {},
   Set<String> newToTablePlayers = const {},
 }) {
   final showdownHappened = game.results.any((r) => r.handValue != null);
@@ -65,7 +64,6 @@ TableSnapshot projectTableSnapshot(
         behavior: behaviorLabels[p.id],
         kind: PlayerKind.of(seatProfiles[p.id], isHuman: p.isHuman),
         generated: seatProfiles[p.id]?.generated ?? false,
-        actionReason: actionReasons[p.id],
         isNewToTable: newToTablePlayers.contains(p.id),
       ),
     );

@@ -33,7 +33,6 @@ class SeatView {
     this.behavior,
     this.kind,
     this.generated = false,
-    this.actionReason,
     this.isNewToTable = false,
   });
 
@@ -99,11 +98,6 @@ class SeatView {
   /// explicitly-chosen personality. Filler gets a softer tint so the players
   /// you actually picked stand out.
   final bool generated;
-
-  /// Human-readable label for the last action this seat took: "call", "bluff",
-  /// "tight fold", etc. Communicates what personality trait or heuristic drove
-  /// the decision. Null when no action has been recorded or the label is empty.
-  final String? actionReason;
 
   /// True if this player just sat down at this table (e.g., due to table
   /// consolidation) and has not yet played a hand at this table. Used to

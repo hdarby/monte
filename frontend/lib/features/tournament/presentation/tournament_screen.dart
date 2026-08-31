@@ -9,7 +9,7 @@ import 'package:monte/features/tournament/presentation/tournament_view_model.dar
 import 'package:monte/features/tournament/presentation/widgets/color_up_dialog.dart';
 import 'package:monte/features/tournament/presentation/widgets/recap_dialog.dart';
 import 'package:monte/features/tournament/presentation/widgets/results_overlay.dart';
-import 'package:monte/features/tournament/presentation/widgets/sim_progress_bar.dart';
+import 'package:monte/features/tournament/presentation/widgets/sim_pause_button.dart';
 import 'package:monte/core/di/game_providers.dart';
 import 'package:monte/features/tournament/data/tournament_controller.dart';
 import 'package:monte/features/tournament/domain/tournament_save.dart';
@@ -58,6 +58,11 @@ class TournamentScreen extends ConsumerStatefulWidget {
 }
 
 class _TournamentScreenState extends ConsumerState<TournamentScreen> {
+  /// Whether the player has dismissed the "Shuffle Up and Deal!" banner
+  /// shown at the start of a fresh tournament. Irrelevant (and never shown)
+  /// for a restored save — see the banner's placement in [build].
+  bool _started = false;
+
   /// Scoped to this screen: created once, torn down (with the underlying
   /// controller) when the screen is disposed.
   late final _vm = tournamentViewModelProvider(
@@ -249,10 +254,12 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
     final recap = state.tour?.recap;
     if (recap != null && !identical(recap, _lastRecap)) {
       _lastRecap = recap;
+      final controller = ref.read(_vm.notifier).controller;
+      controller.pauseForRecap();
       showDialog<void>(
         context: context,
         builder: (_) => RecapDialog(recap: recap),
-      );
+      ).then((_) => controller.resumeAfterRecap());
     }
   }
 
@@ -282,7 +289,10 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
             // Tournament tables use a fixed 9-seat layout so consolidation doesn't
             // redraw. Empty seats appear as players are eliminated.
             playerCount: 9,
-            sidePanel: StandingsPanel(rows: controller.standings()),
+            sidePanel: StandingsPanel(
+              rows: state.standings,
+              total: tour.entrants,
+            ),
             readForSeat: controller.readForSeat,
             onAction: controller.submitLiveAction,
             // Hands auto-advance in a tournament, and the table's own chrome is
@@ -411,15 +421,35 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
               ),
             ),
           ),
-          if (state.sim != null && !tour.finished)
+          if (!tour.finished)
             Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: SafeArea(child: SimProgressBar(sim: state.sim!)),
+              right: 12,
+              bottom: 12,
+              child: SafeArea(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    LevelClockBadge(tour: tour),
+                    const SizedBox(width: 8),
+                    SimPauseButton(
+                      isPaused: state.simPaused,
+                      onPauseToggle: controller.toggleSimulationPause,
+                    ),
+                  ],
+                ),
+              ),
             ),
           if (tour.finished)
             ResultsOverlay(tour: tour, onBackToLobby: _reviewThenLeave),
+          // A fresh tournament (never shown for a restored save — the field
+          // has already been dealt in for however many levels) waits here
+          // until the player confirms they're ready. The first hand is
+          // already dealt underneath and awaiting the human's action same as
+          // any other hand; this just keeps it out of view until dismissed.
+          if (widget.restore == null && !_started)
+            Positioned.fill(
+              child: _ShuffleUpBanner(onOk: () => setState(() => _started = true)),
+            ),
         ],
       ),
     );
@@ -452,4 +482,108 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
           ),
         ),
       );
+}
+
+/// A full-screen scrim shown once at the start of a fresh tournament, over
+/// an already-dealt-and-waiting first hand, until the player taps through.
+/// The banner zooms in with an elastic overshoot, reveals letter by letter,
+/// and cycles color continuously while it's on screen.
+class _ShuffleUpBanner extends StatefulWidget {
+  const _ShuffleUpBanner({required this.onOk});
+  final VoidCallback onOk;
+
+  @override
+  State<_ShuffleUpBanner> createState() => _ShuffleUpBannerState();
+}
+
+class _ShuffleUpBannerState extends State<_ShuffleUpBanner>
+    with TickerProviderStateMixin {
+  static const _text = 'Shuffle Up and Deal!';
+
+  // One-shot: drives the zoom-in pop and the letter-by-letter reveal.
+  late final AnimationController _entrance = AnimationController(
+    duration: const Duration(milliseconds: 1400),
+    vsync: this,
+  )..forward();
+
+  // Repeats for as long as the banner is on screen: continuous color cycling.
+  late final AnimationController _colorCycle = AnimationController(
+    duration: const Duration(seconds: 3),
+    vsync: this,
+  )..repeat();
+
+  late final Animation<double> _zoom = CurvedAnimation(
+    parent: _entrance,
+    curve: const Interval(0.0, 0.55, curve: Curves.elasticOut),
+  );
+
+  @override
+  void dispose() {
+    _entrance.dispose();
+    _colorCycle.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Material(
+    color: Colors.black.withValues(alpha: 0.88),
+    child: Center(
+      child: AnimatedBuilder(
+        animation: _zoom,
+        builder: (context, child) =>
+            Transform.scale(scale: 0.4 + 0.6 * _zoom.value, child: child),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AnimatedBuilder(
+              animation: Listenable.merge([_entrance, _colorCycle]),
+              builder: (context, _) => Wrap(
+                alignment: WrapAlignment.center,
+                children: [
+                  for (var i = 0; i < _text.length; i++) _letter(i),
+                ],
+              ),
+            ),
+            const SizedBox(height: 28),
+            FilledButton(
+              onPressed: widget.onOk,
+              child: const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 24, vertical: 4),
+                child: Text('OK'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+
+  /// One character of the banner: revealed (fade + slight rise) on its own
+  /// slice of [_entrance]'s timeline, staggered across all the letters, and
+  /// colored from a continuously-rotating hue (offset per letter so the
+  /// cycling reads as a wave across the text, not one flat flashing color).
+  Widget _letter(int i) {
+    final n = _text.length;
+    final start = 0.15 + 0.75 * (i / n);
+    final end = (start + 0.25).clamp(0.0, 1.0);
+    final reveal =
+        Interval(start, end, curve: Curves.easeOut).transform(_entrance.value);
+    final hue = (_colorCycle.value * 360 + i * 14) % 360;
+    final color = HSVColor.fromAHSV(1.0, hue, 0.55, 1.0).toColor();
+    final ch = _text[i];
+    return Opacity(
+      opacity: reveal,
+      child: Transform.translate(
+        offset: Offset(0, (1 - reveal) * 10),
+        child: Text(
+          ch == ' ' ? ' ' : ch,
+          style: TextStyle(
+            color: color,
+            fontSize: 28,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ),
+    );
+  }
 }

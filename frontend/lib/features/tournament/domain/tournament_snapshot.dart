@@ -101,6 +101,7 @@ class TournamentSnapshot {
     required this.clockMode,
     required this.handsThisLevel,
     required this.handsPerLevel,
+    this.clockElapsed = Duration.zero,
     required this.schedule,
     required this.playersLeft,
     required this.entrants,
@@ -137,7 +138,15 @@ class TournamentSnapshot {
   final int ante;
   final LevelClockMode clockMode;
   final int handsThisLevel;
+
+  /// Level length: hands in hands-mode, **minutes** in minutes-mode (matches
+  /// whatever unit `TournamentStructure.durationOf` returns for the active
+  /// clock mode).
   final int handsPerLevel;
+
+  /// Real elapsed time in the current level (minutes-mode only; zero
+  /// otherwise) — for the live countdown, see [timeRemainingInLevel].
+  final Duration clockElapsed;
 
   /// The full blind ladder, for the level-detail popup.
   final List<BlindLevel> schedule;
@@ -199,6 +208,17 @@ class TournamentSnapshot {
   final List<FinishRow>? finalResults;
 
   bool get finished => status == TournamentStatus.finished;
+
+  /// Real time left in the current level (minutes-mode only; null in
+  /// hands-mode, where there's no clock to show). Clamped to zero rather than
+  /// going negative in the gap between the clock crossing zero and the
+  /// controller actually advancing the level.
+  Duration? get timeRemainingInLevel {
+    if (clockMode != LevelClockMode.minutes) return null;
+    final total = Duration(minutes: handsPerLevel);
+    final remaining = total - clockElapsed;
+    return remaining.isNegative ? Duration.zero : remaining;
+  }
 
   /// The human's stack measured in big blinds — the number that actually drives
   /// tournament decisions. 0 when the level has no big blind yet.
@@ -285,6 +305,7 @@ class TournamentSnapshot {
       clockMode: state.structure.clockMode,
       handsThisLevel: state.handsThisLevel,
       handsPerLevel: state.structure.durationOf(state.levelIndex),
+      clockElapsed: state.clockElapsed,
       schedule: state.structure.levels,
       playersLeft: state.playersRemaining,
       entrants: state.entrants,

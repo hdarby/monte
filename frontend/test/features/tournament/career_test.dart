@@ -18,6 +18,10 @@ TournamentResult _ev(int buyIn, List<(String, int, int, bool)> f) =>
       ],
     );
 
+TournamentFinish _genFinish(String id, int place, int prize) =>
+    TournamentFinish(
+        profileId: id, name: id, place: place, prize: prize, generated: true);
+
 void main() {
   test('ROI is measured against money in, not events played', () {
     // Two $100 events, one 500 cash: 200 in, 500 out, +150%.
@@ -51,5 +55,30 @@ void main() {
     final rows = CareerRow.from([_ev(1000, [('P9', 40, 0, false)])]);
     expect(rows.first.roi, -100);
     expect(rows.first.net, -1000);
+  });
+
+  test('generated field-filler is ignored entirely, not just deduped', () {
+    // A big field's auto-filled seats reuse a small template pool by design
+    // (FieldBuilder keeps the same id so a template plays identically
+    // wherever it's seated), so the same profileId can appear at hundreds of
+    // seats in one event. Rather than count that as one appearance, these
+    // don't have a meaningful individual career at all — skip them outright.
+    final rows = CareerRow.from([
+      TournamentResult(
+        timestampMs: 1,
+        structureName: 'Turbo',
+        buyIn: 100,
+        entrants: 4,
+        finishes: [
+          const TournamentFinish(
+              profileId: 'P1', name: 'P1', place: 4, prize: 0),
+          _genFinish('Nit', 1, 500),
+          _genFinish('Nit', 2, 0),
+          _genFinish('Nit', 3, 0),
+        ],
+      ),
+    ]);
+    expect(rows, hasLength(1));
+    expect(rows.single.profileId, 'P1');
   });
 }

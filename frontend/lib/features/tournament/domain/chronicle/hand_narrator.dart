@@ -28,8 +28,8 @@ import 'package:monte/features/tournament/domain/chronicle/hand_replay.dart';
 class HandNarrator {
   const HandNarrator._();
 
-  /// Returns [replay] with per-street commentary, a closing take, and one
-  /// verdict per player who saw the flop.
+  /// Returns [replay] with per-street commentary, a closing take, one
+  /// verdict per player who saw the flop, and a strategic headline.
   static HandReplay narrate(HandReplay replay) {
     final ctx = _HandContext(replay);
     final streets = [
@@ -38,9 +38,37 @@ class HandNarrator {
     ];
     return replay.copyWith(
       streets: streets,
+      headline: _generateHeadline(replay),
       commentary: _summary(ctx),
       verdicts: _verdicts(ctx),
     );
+  }
+
+  /// Generates a strategic headline describing the key theme of the hand.
+  static String _generateHeadline(HandReplay replay) {
+    // Multiway pot with multiple strong holdings
+    if (replay.seats.length > 2) {
+      return 'Multiway — multiple strong hands in play';
+    }
+
+    // Heads-up suckout: winner catches on river despite being behind
+    if (replay.suckout && replay.reachedRiver) {
+      return 'River suckout — ${replay.winnerName} hits from behind';
+    }
+
+    // All-in confrontation: heads-up at-risk situation
+    if (replay.allIn) {
+      return 'All-in collision — ${replay.winnerName} vs ${replay.loserName}';
+    }
+
+    // Trap/deception: winner had worse hand ranking but won anyway
+    if (replay.loserRank.index > replay.winnerRank.index &&
+        !replay.allIn) {
+      return 'Trap played out — ${replay.winnerName} was behind but had the plan';
+    }
+
+    // Default: straightforward hand with best hand holding up
+    return '${replay.winnerName} takes it with ${replay.winnerHand.toLowerCase()}';
   }
 
   /// Names the signature moves that fired on this street.

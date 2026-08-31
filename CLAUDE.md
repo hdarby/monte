@@ -220,6 +220,15 @@ per-policy and drifted:
   `potBetTo` / `snapRaiseTo`). It was six identical copy-pasted closures across
   five policies, which is why bet sizing was so hard to find and change: the
   boring question buried the interesting one six times over.
+- **Amateur first-in bet sizing is randomised, not fixed**
+  (`AmateurPolicy._firstInSizeFraction`). It used to be exactly
+  `0.55 × sizeScale` pot every single time a rec led into an empty pot —
+  same number on every hand, which is why hands started feeling identical.
+  Now it's a Gaussian spread around that same 0.55 baseline, ceiling raised
+  ~50% (0.9 → 1.35 pot) for the occasional big one, plus a flop-only
+  "pot-slam with a strong made hand" tendency gated on the profile's own
+  risk appetite (`sizeScale > 1.1`) and only ~45% of the time even then — a
+  trait some amateurs have and others genuinely don't, not universal.
 - **3-bet sizing is position-aware** (`ProfilePolicy.threeBetVsOpener`, via
   `OpenRanges.actsAfterPostflop`): ~3x the open in position, ~4x out of it,
   since acting last for the rest of the hand is what lets a smaller 3-bet get
@@ -455,3 +464,30 @@ tool/test.sh all|list      # all / show which files each group resolves to
 - **Antes are tournament-only.** `TableConfig` has no ante field; only the
   tournament path (`TournamentStructure` → `PokerGame(ante:)`) posts one. Driving
   the engine directly is the way to test ante behaviour.
+- **Career stats ignore generated (anonymous field-filler) entrants
+  entirely** (`TournamentFinish.generated`, checked in `CareerRow.from`). A
+  big field reuses a small template pool for filler, so the same profileId
+  can sit at hundreds of tables in one event — counting those inflated a
+  template's "played" count into the hundreds after a single tournament.
+  Only the personalities the owner actually picked get a career line.
+- **Background tournament simulation is capped at one round per human
+  hand, on purpose** — not a fully independent loop. An independent,
+  continuously-running loop (so the field kept moving in real time even
+  while the player was slow to act) caused catastrophic chip-conservation
+  failures under stress (a 120-runner field lost over 95% of its chips; a
+  smaller one crashed outright). One round per human hand is what keeps
+  background hands near the player's own pace and keeps the bust/rebalance
+  bookkeeping correct — don't decouple this again without a very good reason
+  and a stress test to back it up.
+- **`_humanHandActive`, not `_liveGame == null`, is "is a hand in
+  progress."** `_liveGame` is only nulled once the human busts entirely;
+  between ordinary hands it holds the *previous* hand's finished game.
+  Guarding rebalancing on `_liveGame == null` silently blocked table
+  breaking for the rest of the tournament after hand one — already shipped
+  once.
+- **Pausing must freeze the level clock, not just background tables.**
+  `TournamentController._startRealtimeTicker` computes elapsed level time as
+  `now - _levelStartedAt` fresh each call, so merely skipping a tick while
+  paused isn't enough — the next un-paused tick would jump forward by the
+  whole paused duration. It pushes `_levelStartedAt` forward by the tick
+  interval instead, while `_bgSimulator.isPaused`.

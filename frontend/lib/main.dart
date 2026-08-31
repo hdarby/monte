@@ -346,10 +346,16 @@ class _GamePageState extends ConsumerState<GamePage> {
 
   /// Deals the next hand, guarded so a single space/enter or click can't trigger
   /// two deals. Reset once a hand is in progress (see [build]).
-  void _dealNext(TableViewModel vm) {
+  Future<void> _dealNext(TableViewModel vm, GameSettings settings) async {
     if (_nextHandPending) return;
     _nextHandPending = true;
-    vm.startNextHand();
+    // Wait 5 seconds so player can see the showdown
+    await Future<void>.delayed(const Duration(seconds: 5));
+    if (!mounted) return;
+    await vm.startNextHand();
+    if (mounted) {
+      _nextHandPending = false;
+    }
   }
 
   /// Space or Enter is the "default action" key. Between hands it deals the next
@@ -370,7 +376,7 @@ class _GamePageState extends ConsumerState<GamePage> {
     if (!isDefault) return KeyEventResult.ignored;
     if (_bustDialogOpen) return KeyEventResult.ignored;
     if (snapshot.isHandOver) {
-      _dealNext(vm);
+      _dealNext(vm, settings);
       return KeyEventResult.handled;
     }
     // Mid-hand: on the human's turn, play the coach's recommendation.
@@ -413,9 +419,8 @@ class _GamePageState extends ConsumerState<GamePage> {
   }
 
   /// In all-bots mode, when auto-deal is on and the current hand has finished,
-  /// deal the next one after a short pause. Each completed hand rebuilds and
-  /// re-arms this, so it loops until the toggle is switched off.
-  void _maybeAutoDeal(TableSnapshot snapshot, TableViewModel vm) {
+  /// deal the next one after a short pause for UI responsiveness.
+  void _maybeAutoDeal(TableSnapshot snapshot, TableViewModel vm, GameSettings settings) {
     if (!_autoDeal ||
         !vm.isAllBots ||
         !snapshot.isHandOver ||
@@ -445,7 +450,7 @@ class _GamePageState extends ConsumerState<GamePage> {
         if (!snapshot.isHandOver) _nextHandPending = false;
         _maybePromptStartup(snapshot);
         _maybePromptBust(snapshot, vm);
-        _maybeAutoDeal(snapshot, vm);
+        _maybeAutoDeal(snapshot, vm, settings);
         return MoneyScope(
           format: MoneyFormat(
             showBigBlinds: settings.showBigBlinds,
@@ -460,9 +465,10 @@ class _GamePageState extends ConsumerState<GamePage> {
               humanName: ref.watch(playerNameProvider),
               playerCount: settings.playerCount,
               showBehavior: settings.showBehavior,
+              animateCardDeal: settings.animateCardDeal,
               onAction: vm.submitAction,
               onNewGame: () => _openNewGame(snapshot, settings, vm),
-              onNextHand: () => _dealNext(vm),
+              onNextHand: () => _dealNext(vm, settings),
               onOpenSettings: _openSettings,
               onOpenHistory: _openHistory,
               onOpenTournament: _openTournament,

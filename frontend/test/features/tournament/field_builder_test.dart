@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:monte/core/util/format.dart';
 import 'package:monte/features/tournament/domain/field_builder.dart';
 import 'package:monte/features/tournament/domain/tournament_preset.dart';
 
@@ -11,10 +12,10 @@ void main() {
       FieldBuilder(humanName: humanName, rng: Random(seed));
 
   group('pools', () {
-    test('are alphabetical', () {
+    test('are alphabetical by last name', () {
       final b = builderFor('You');
-      final names = b.recreational.map((p) => p.name.toLowerCase()).toList();
-      final sorted = [...names]..sort();
+      final names = b.recreational.map((p) => p.name).toList();
+      final sorted = [...names]..sort(compareByLastName);
       expect(names, sorted);
     });
 

@@ -27,7 +27,18 @@ class FeatureHandView extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _PotHeader(pot: hand.pot, bigBlind: _bb, gold: gold),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
+        if (hand.headline != null) ...[
+          Text(
+            hand.headline!,
+            style: TextStyle(
+              fontSize: 12,
+              fontStyle: FontStyle.italic,
+              color: gold,
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
 
         // Who saw the flop.
         for (final seat in hand.seats)

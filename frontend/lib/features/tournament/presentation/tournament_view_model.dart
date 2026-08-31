@@ -16,11 +16,25 @@ import 'package:monte/features/eval_history/presentation/eval_history_provider.d
 /// tournament-wide snapshot, and background-simulation progress (null when no
 /// sim is running).
 class TournamentUiState {
-  const TournamentUiState({this.table, this.tour, this.sim});
+  const TournamentUiState({
+    this.table,
+    this.tour,
+    this.sim,
+    this.simPaused = false,
+    this.standings = const [],
+  });
 
   final TableSnapshot? table;
   final TournamentSnapshot? tour;
   final SimProgress? sim;
+  final bool simPaused;
+
+  /// A window of standings around the human, recomputed only when [tour]
+  /// itself changes (already throttled to every 10 hands + important events)
+  /// — not on every rebuild the table/sim streams also trigger. Recomputing a
+  /// thousands-deep sort on every action/sim tick was the actual cost behind
+  /// the standings panel's stutter.
+  final List<StandingRow> standings;
 
   /// True once both streams have produced a value and the table can be drawn.
   bool get isReady => table != null && tour != null;
@@ -30,10 +44,14 @@ class TournamentUiState {
     TournamentSnapshot? tour,
     SimProgress? sim,
     bool clearSim = false,
+    bool? simPaused,
+    List<StandingRow>? standings,
   }) => TournamentUiState(
     table: table ?? this.table,
     tour: tour ?? this.tour,
     sim: clearSim ? null : (sim ?? this.sim),
+    simPaused: simPaused ?? this.simPaused,
+    standings: standings ?? this.standings,
   );
 }
 
@@ -91,7 +109,10 @@ class TournamentViewModel extends Notifier<TournamentUiState> {
     _subs.addAll([
       _controller.tableStream.listen((s) => state = state.copyWith(table: s)),
       _controller.tournamentStream.listen(
-        (s) => state = state.copyWith(tour: s),
+        (s) => state = state.copyWith(
+          tour: s,
+          standings: _controller.standings(),
+        ),
       ),
       _controller.simProgressStream.listen(
         (s) => state = s.isRunning
@@ -129,8 +150,8 @@ class TournamentViewModel extends Notifier<TournamentUiState> {
     yieldToFrame: () => SchedulerBinding.instance.endOfFrame,
   );
 
-  /// The full live standings, built on demand — the field can be thousands of
-  /// players, so this is only materialised when something actually shows it.
+  /// A window of standings around the human, built on demand — see
+  /// [TournamentController.standings].
   List<StandingRow> standings() => _controller.standings();
 
   /// The two-way read on a seat for the table HUD, or null when untracked.
@@ -139,6 +160,17 @@ class TournamentViewModel extends Notifier<TournamentUiState> {
   /// Submits the human's action for the hand in progress.
   Future<void> submitLiveAction(GameAction action) =>
       _controller.submitLiveAction(action);
+
+  /// Toggle pause/resume on background table simulation.
+  void toggleSimulationPause() {
+    final currentPaused = state.simPaused;
+    if (currentPaused) {
+      _controller.resumeSimulation();
+    } else {
+      _controller.pauseSimulation();
+    }
+    state = state.copyWith(simPaused: !currentPaused);
+  }
 }
 
 /// Builds a provider scoped to a single tournament run. The screen creates one

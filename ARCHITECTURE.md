@@ -94,6 +94,14 @@ This is the "Monte" in Monte Carlo. Also pure Dart.
   and hands them to `heuristic_postflop_evaluator.dart` /
   `personality_post_processor.dart` below — see that pair for the actual
   postflop judgement.
+- `background_quality.dart` — `equityIterationScale(tableCount)`: scales
+  Monte-Carlo equity iteration counts down for background-table seats in a
+  big field (cheaper, still a real decision — not the fast heuristic this
+  once was), ramping back to full resolution as the field consolidates
+  toward the final tables. The live table's own opponents always get full
+  resolution regardless of field size (see `TournamentController`'s
+  `equityTableCountProvider`, separate from the search-cutover
+  `tableCountProvider`).
 - `decider_factory.dart` — **`buildDecider(BotType, profile, iterations)`**, the
   one factory. `BotType` lives here.
 - `action_candidate.dart` — **`ActionCandidate`**: the small data contract
@@ -241,11 +249,11 @@ the rest.
 
 | File | Role |
 |---|---|
-| `tournament_structure.dart` | Blind ladders + `LevelClockMode`. |
+| `tournament_structure.dart` | Blind ladders + `LevelClockMode`. `withLevelMinutes(minutes)` overrides every level's length to a fixed real-minute duration and switches to `LevelClockMode.minutes` — the lobby's "Level length" setting, applied on top of whichever preset's blind ramp was picked; replaces the old baked-in hand-count-per-level. |
 | `tournament_preset.dart` | The lobby's structure choices as an enum carrying its own label and structure. |
 | `tournament_state.dart` | Live tournament state: players, tables, level. |
-| `tournament_snapshot.dart` | Flat snapshot for the UI, incl. `StandingRow`, `SimProgress`, `ColorUpDisplay`. Stack-in-BB and vs-average maths live here as getters, not in widgets. |
-| `field_builder.dart` | Composes the bot field from selections + auto-fill. Seedable and reproducible. |
+| `tournament_snapshot.dart` | Flat snapshot for the UI, incl. `StandingRow`, `SimProgress`, `ColorUpDisplay`, `clockElapsed`/`timeRemainingInLevel`. Stack-in-BB and vs-average maths live here as getters, not in widgets. |
+| `field_builder.dart` | Composes the bot field from selections + auto-fill. Seedable and reproducible. `_recWeight` damps extremely loose recreational profiles (e.g. a 75%-VPIP "any two cards" caricature) so a big field doesn't over-sample them — steepened once already after they still turned up too often in practice. Pools sort by **last name** (`compareByLastName`, `core/util/format.dart`) at list-build time, not by hand-ordering the catalog files (a losing battle as more personalities get added). |
 | `name_pool.dart` | ~2,400 lines of first/last names. Pure data — the reason this file is huge and the reason that's fine. |
 | `payout_structure.dart`, `icm.dart` | Prize ladders (real pay jumps — tiers of tied places, not a distinct number per place) and ICM equity. |
 | `seat_manager.dart` | Table balancing and seat moves. |
@@ -288,6 +296,41 @@ the rest.
   `PokerGame` per table per hand, records busts, rebalances tables, runs
   hand-for-hand on the bubble, and drives live play. Exposes three streams
   (`tableStream`, `tournamentStream`, `simProgressStream`).
+  - **Background simulation is deliberately bounded to one round per human
+    hand**, triggered from `_endHumanHand`, not an independent loop. A fully
+    independent, continuously-running background loop was tried (so the
+    field would keep moving in real time even while the player was slow to
+    act) and caused catastrophic chip-conservation failures under stress — a
+    120-runner field lost over 95% of its chips, and a smaller one crashed
+    outright (`IntegerDivisionByZeroException`, an emptied table surviving
+    into `_playHand`). One-round-per-human-hand is what keeps background
+    hands playing at a pace near the player's own table (it can never get
+    more than one hand ahead) *and* keeps rebalancing's bookkeeping correct.
+    A separate lightweight `Timer` (`_startRealtimeTicker`) still advances
+    the minutes-mode level clock and the away-pause check independently —
+    it never touches `state.tables`/`state.players`, which is what makes it
+    safe to run on its own schedule.
+  - **`_humanHandActive`, not `_liveGame == null`, is the "is a hand in
+    progress" signal** rebalancing must stay out of. `_liveGame` is only
+    ever nulled once the human busts entirely (`_finishHeadless`) — between
+    ordinary hands it just holds the *previous* hand's finished game, so
+    guarding on it silently blocked rebalancing (and therefore table
+    breaking) for the rest of the tournament after hand one. Already shipped
+    once as a real bug.
+  - **`_reconcileChipDrift()`** is a safety net, not a fix: after any
+    narrow race in rebalancing loses or gains a few chips, it silently nudges
+    a handful of random off-table (never the human's) seats to bring the
+    total back to `entrants × startingStack`, in amounts far too small to
+    notice. Called at every rebalance point and at both places a tournament
+    can conclude (live and headless) — the finish check used to short-circuit
+    before reconciliation got a chance to run, letting a drift on the very
+    last hand survive into the final result.
+  - **Pausing must stop the level clock too**, not just background
+    simulation — `_startRealtimeTicker` pushes `_levelStartedAt` forward by
+    its own tick interval while `_bgSimulator.isPaused`, since
+    `_tickLevelRealtime` computes elapsed as `now - _levelStartedAt` fresh
+    each call rather than accumulating; skipping the tick alone would have
+    the next un-paused tick jump forward by the whole paused duration.
 - `chronicle_recorder.dart` — translates finished engine hands into
   `HandDigest`/`HandReplay`. Split out because the controller *runs* the
   tournament and this *observes* it.
@@ -311,7 +354,8 @@ the rest.
 - `widgets/` — `tournament_hud.dart` (the stat bar), `hud_detail_dialogs.dart`
   (the popup behind each stat), `standings_panel.dart`, `recap_dialog.dart`,
   `feature_hand_view.dart`, `results_overlay.dart`, `color_up_dialog.dart`,
-  `sim_progress_bar.dart`, `detail_dialog.dart`, `lobby_widgets.dart`.
+  `sim_pause_button.dart` (also `LevelClockBadge`, the ticking countdown next
+  to the pause button), `detail_dialog.dart`, `lobby_widgets.dart`.
 
 ### `features/coach/` — in-hand advice
 

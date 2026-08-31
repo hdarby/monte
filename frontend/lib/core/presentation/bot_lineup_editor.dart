@@ -7,6 +7,7 @@ import 'package:monte/core/domain/ai/personality.dart';
 import 'package:monte/core/domain/ai/player_profile.dart';
 import 'package:monte/core/domain/ai/player_profiles.dart';
 import 'package:monte/core/theme/app_theme.dart';
+import 'package:monte/core/util/format.dart';
 
 /// A non-null, unselectable value backing dropdown section-header rows, so they
 /// never collide with the null "custom" selection.
@@ -196,13 +197,18 @@ class _ProDropdown extends StatelessWidget {
           child: Text('— Custom —', style: TextStyle(fontSize: 14)),
         ),
         _header('PROS'),
-        for (final p in builtInProfiles)
+        // Sorted here, by last name, at display time — not by hand-ordering
+        // the catalog file, which would need re-sorting every time another
+        // personality is added.
+        for (final p in [...builtInProfiles]
+          ..sort((a, b) => compareByLastName(a.name, b.name)))
           DropdownMenuItem<PlayerProfile?>(
             value: p,
             child: Text(p.name, style: const TextStyle(fontSize: 14)),
           ),
         _header('HOME GAME'),
-        for (final p in homeGameProfiles)
+        for (final p in [...homeGameProfiles]
+          ..sort((a, b) => compareByLastName(a.name, b.name)))
           DropdownMenuItem<PlayerProfile?>(
             value: p,
             child: Text(p.name, style: const TextStyle(fontSize: 14)),

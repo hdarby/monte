@@ -151,6 +151,22 @@ class TournamentStructure {
   static const _defaultMinutes = 10;
   static const _defaultHands = 12;
 
+  /// Overrides every level's length to a fixed number of real minutes and
+  /// switches the clock to [LevelClockMode.minutes] — the lobby's "how long
+  /// should each level last" setting, applied on top of whichever preset's
+  /// blind ramp the player picked. Blinds/antes/starting stack are untouched;
+  /// only pacing changes.
+  TournamentStructure withLevelMinutes(int minutes) => TournamentStructure(
+        name: name,
+        levels: [
+          for (final l in levels) l.copyWith(durationMinutes: minutes),
+        ],
+        clockMode: LevelClockMode.minutes,
+        startingStack: startingStack,
+        maxRebuys: maxRebuys,
+        reentryLevelCutoff: reentryLevelCutoff,
+      );
+
   // ---- Presets -------------------------------------------------------------
 
   /// A geometric-ish blind ramp shared by the presets: SB doubles-ish each level
