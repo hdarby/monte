@@ -98,7 +98,10 @@ it can't be committed as a binary here.
 | Client-only single-player game | ✅ playable |
 | MVVM + Clean Architecture (feature-first, Riverpod) | ✅ done |
 | Multi-table tournaments (structures, ICM, seating, payouts) | ✅ done, client-side |
+| Real-time tournament level clock (lobby-configurable length) | ✅ done |
 | Tournament recaps + per-hand analysis ("Bart") | ✅ done |
+| Career stats across tournaments, per personality | ✅ done |
+| In-hand coach (equity, range read, per-action EV) | ✅ done |
 | Persistent opponent reads across sessions | ✅ done |
 | Save / load a tournament in progress | ✅ done (at hand boundaries) |
 | Ktor backend | 🟡 scaffold (routes/sockets/DB stubbed with TODOs) |
@@ -112,12 +115,24 @@ monte/
 │   └── lib/
 │       ├── core/             shared across features
 │       │   ├── di/           gameRepositoryProvider (composition root / swap seam)
-│       │   ├── domain/       pure-Dart Hold'em engine + hand-history entity
+│       │   ├── domain/       pure-Dart Hold'em engine + bot intelligence (ISMCTS,
+│       │   │                 personality/profile policies, hand-history entity)
 │       │   ├── presentation/ MoneyScope ($ vs BB) + shared widgets
+│       │   ├── util/format.dart   pure formatting primitives (chips, ordinals, names)
 │       │   └── theme/
 │       └── features/
-│           ├── table/{domain,data,presentation}      game + table UI
+│           ├── table/{domain,data,presentation}      the felt: game + table UI
+│           ├── tournament/{domain,data,presentation} multi-table tournaments: blind
+│           │                                         structures, ICM, seating/rebalancing,
+│           │                                         a real-time level clock, chronicle/
+│           │                                         recaps, career tracking
 │           ├── settings/{domain,data,presentation}   persisted GameSettings
-│           └── analytics/{domain,presentation}       VPIP/PFR/AF
+│           ├── analytics/{domain,presentation}       VPIP/PFR/AF, simulated at scale
+│           ├── coach/{domain,presentation}           in-hand advice: equity, range read,
+│           │                                         per-action EV + recommendation
+│           ├── history/presentation                  hand log
+│           ├── reads/data                            persistent per-opponent stats
+│           └── eval_history/{domain,data,presentation}  full-information tuning record
+│                                                     + offline calibration
 └── backend/                  Ktor scaffold (see backend/README.md)
 ```
