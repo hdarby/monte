@@ -23,6 +23,7 @@ TableSnapshot projectTableSnapshot(
   bool flagBusted = false,
   String? frontPlayerId,
   List<int>? denominations,
+  int? chipUnit,
   Set<String> newToTablePlayers = const {},
 }) {
   final showdownHappened = game.results.any((r) => r.handValue != null);
@@ -115,7 +116,10 @@ TableSnapshot projectTableSnapshot(
     log: List.of(game.log),
     actionContext: ctx,
     bustedPlayerIds: busted,
-    chipUnit: game.chipUnit,
+    // Display-only floor for which chip denominations get drawn — distinct
+    // from `ctx.chipUnit` above (the real betting granularity), so an
+    // override here never changes what a legal raise looks like.
+    chipUnit: chipUnit ?? game.chipUnit,
     denominations: denominations ?? _defaultDenominations,
   );
 }

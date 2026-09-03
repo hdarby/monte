@@ -104,12 +104,23 @@ class IcmAdjustedDecider implements DecisionPolicy {
     if (icmDiscipline) {
       if (ctx.bubbleFactor >= _tightenAt) {
         action = _bubbleTighten(game, p, action, ctx);
-      } else if (ctx.ladderPressure >= 0.15) {
+      } else {
         // Large-field bubble / in-the-money laddering, where exact ICM isn't
         // run: a stack-scaled survival premium demotes marginal stack-offs so
         // a short/mid stack doesn't bust when there's pay-jump value in simply
         // surviving.
-        action = _ladderTighten(game, p, action, ctx);
+        //
+        // Ramped rather than gated on a flat `ladderPressure >= 0.15` cutoff —
+        // that snapped the whole tighten on the instant a large field crossed
+        // the line, so betting went from completely unconstrained to fully
+        // laddered in a single hand. Below 0.15 the tighten now still fires,
+        // just with a probability that rises linearly with ladderPressure, so
+        // constraint eases in over the approach to the bubble instead of
+        // flipping on. At and above 0.15 this always fires, exactly as before.
+        final ramp = (ctx.ladderPressure / 0.15).clamp(0.0, 1.0);
+        if (ramp > 0 && _random.nextDouble() < ramp) {
+          action = _ladderTighten(game, p, action, ctx);
+        }
       }
     }
 

@@ -150,19 +150,36 @@ class PayoutStructure {
       }
       start += size;
     }
-    // The last tier's surplus above the pure floor, handed to the tier just
-    // above it so the total payout is unchanged.
+    // The last tier's surplus above the pure floor, handed to the tier(s)
+    // just above it so the total payout is unchanged.
     final lastSize = tiers.last;
     final lastStart = places - lastSize;
     final surplus =
         smooth.sublist(lastStart).fold<double>(0, (a, b) => a + b) -
             base * lastSize;
     if (surplus > 0 && tiers.length > 1) {
-      final priorSize = tiers[tiers.length - 2];
-      final priorStart = lastStart - priorSize;
-      final bump = surplus / priorSize;
-      for (var i = priorStart; i < lastStart; i++) {
-        out[i] += bump;
+      // Dumping the whole surplus onto the single tier directly above min-cash
+      // can overshoot the tier above *that* one — e.g. a small tier just above
+      // a huge min-cash tier can't absorb a large surplus without paying more
+      // than the tier ahead of it, breaking the "payouts never go down" rule.
+      // Cascade instead: cap each tier's bump at the value of the tier ahead
+      // of it, and carry any leftover further up the ladder (first place has
+      // no ceiling, so it always fully absorbs whatever reaches it).
+      var remaining = surplus;
+      var end = lastStart;
+      for (var t = tiers.length - 2; remaining > 0 && t >= 0; t--) {
+        final size = tiers[t];
+        final start = end - size;
+        final ceiling = t == 0 ? double.infinity : out[start - 1];
+        final headroom = ((ceiling - out[start]) * size).clamp(0, remaining);
+        if (headroom > 0) {
+          final bump = headroom / size;
+          for (var i = start; i < end; i++) {
+            out[i] += bump;
+          }
+          remaining -= headroom;
+        }
+        end = start;
       }
     } else if (surplus > 0) {
       // No tier above the min cash to absorb it (the whole field is one min-

@@ -1004,6 +1004,7 @@ class TournamentController {
     final oldUnit = _chipUnitFor(before);
     final newUnit = _chipUnitFor(after);
     if (newUnit <= oldUnit) return;
+    if (newUnit > _displayChipUnit) _displayChipUnit = newUnit;
 
     // Run color-up per table so spare chips stay at the table where they arose
     final deltas = <String, int>{};
@@ -1639,6 +1640,27 @@ class TournamentController {
     ante: level.ante,
   );
 
+  /// The smallest denomination the *display* should still draw, right now.
+  /// A color-up retires a denomination for good — real chips don't un-retire
+  /// — so this only ever rises, tracked in [_maybeColorUp]. [_chipUnitFor]
+  /// alone is not monotonic (e.g. the WSOP Circuit ladder needs a 500 unit at
+  /// 500/1000 but only a 100 unit at the very next level, 600/1200/1200,
+  /// since 600 isn't divisible by 500), which let a level like that draw an
+  /// already-retired denomination back onto the felt one level after the
+  /// color-up race removed it. Deliberately display-only: betting granularity
+  /// itself ([_chipUnitFor], used for `game.chipUnit`) still follows the raw,
+  /// non-monotonic value, which is separately load-bearing behaviour (see
+  /// `whole_chips_test.dart`).
+  ///
+  /// Seeded from every level up to and including the current one (not just the
+  /// current one) so a restored save recovers the same running high-water mark
+  /// a tournament played straight through would have reached, rather than
+  /// whatever the current level alone computes to.
+  late int _displayChipUnit = state.structure.levels
+      .where((l) => l.level <= state.currentLevel.level)
+      .map(_chipUnitFor)
+      .fold(1, (a, b) => a > b ? a : b);
+
   Random? _driftRng;
 
   /// Chips are meant to be a closed system — the total across every player
@@ -1737,8 +1759,10 @@ class TournamentController {
         frontPlayerId: humanId,
         // Colour each seat pro vs recreational, matching the standings panel.
         seatProfiles: _profileBySeat,
-        // Draw stacks in the denominations actually in play at this level.
+        // Draw stacks in the denominations actually in play at this level —
+        // never redraw a chip that's already been raced off by a color-up.
         denominations: chips.denominations,
+        chipUnit: _displayChipUnit,
         // Highlight players new to this table for their first hand.
         newToTablePlayers: _newToTablePlayers,
       ),
