@@ -46,44 +46,61 @@ class TournamentHud extends StatelessWidget {
           // itself moved out of here entirely (see LevelClockBadge, now next
           // to the pause button) — it was too easy to miss buried in this
           // scrollable row alongside six other chips.
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _HudChip(
-                  label: 'L${tour.level}',
-                  value: '${tour.smallBlind}/${tour.bigBlind}$ante',
-                  detail: () => BlindStructureDialog(tour: tour),
+          //
+          // Centered when it fits (the usual case, now that the top bar has
+          // real room either side): the `ConstrainedBox(minWidth: ...)` makes
+          // the scroll view's content at least as wide as the viewport, so
+          // `Center` has room to center the row rather than pinning it to the
+          // scroll origin. Falls back to plain left-aligned scrolling the
+          // moment the chips are actually wider than the bar.
+          child: LayoutBuilder(
+            builder: (context, constraints) => SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minWidth: constraints.maxWidth),
+                child: Center(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _HudChip(
+                        label: 'L${tour.level}',
+                        value: '${tour.smallBlind}/${tour.bigBlind}$ante',
+                        detail: () => BlindStructureDialog(tour: tour),
+                      ),
+                      _HudChip(
+                        label: 'Left',
+                        value: '${tour.playersLeft}/${tour.entrants}',
+                        detail: () => FieldDialog(tour: tour),
+                      ),
+                      _HudChip(
+                        label: 'Avg',
+                        value: '${tour.averageStack}',
+                        detail: () => StacksDialog(tour: tour),
+                      ),
+                      _HudChip(
+                        label: humanName,
+                        value:
+                            '${tour.yourChips} · ${ordinal(tour.yourPlace)}'
+                            '${tour.yourTable > 0 ? " · T${tour.yourTable}" : ""}',
+                        detail: () => YourStandingDialog(
+                          tour: tour,
+                          standings: standings(),
+                        ),
+                      ),
+                      _HudChip(
+                        label: 'Pool',
+                        value: '\$${tour.prizePool}',
+                        detail: () => PayoutsDialog(tour: tour),
+                      ),
+                      _HudChip(
+                        label: tour.inMoney ? 'ITM' : 'Next',
+                        value: nextPay,
+                        detail: () => PayoutsDialog(tour: tour),
+                      ),
+                    ],
+                  ),
                 ),
-                _HudChip(
-                  label: 'Left',
-                  value: '${tour.playersLeft}/${tour.entrants}',
-                  detail: () => FieldDialog(tour: tour),
-                ),
-                _HudChip(
-                  label: 'Avg',
-                  value: '${tour.averageStack}',
-                  detail: () => StacksDialog(tour: tour),
-                ),
-                _HudChip(
-                  label: humanName,
-                  value: '${tour.yourChips} · ${ordinal(tour.yourPlace)}'
-                      '${tour.yourTable > 0 ? " · T${tour.yourTable}" : ""}',
-                  detail: () =>
-                      YourStandingDialog(tour: tour, standings: standings()),
-                ),
-                _HudChip(
-                  label: 'Pool',
-                  value: '\$${tour.prizePool}',
-                  detail: () => PayoutsDialog(tour: tour),
-                ),
-                _HudChip(
-                  label: tour.inMoney ? 'ITM' : 'Next',
-                  value: nextPay,
-                  detail: () => PayoutsDialog(tour: tour),
-                ),
-              ],
+              ),
             ),
           ),
         ),

@@ -41,7 +41,7 @@ class PrizePool {
 /// [_flattenIntoTiers] is the step that turns that curve into the blocks of
 /// identical payouts a real table actually shows — see its doc for how a
 /// tier's shared value is chosen and where the min-cash tier's savings go.
-/// Below [_tierSizes]'s `minPlacesForTiers` threshold every place is still
+/// Below [_minPlacesForLargeFieldTreatment] every place is still
 /// paid individually: pay jumps are a large-field phenomenon, and a small
 /// tournament barely has room for a final table, let alone ties.
 @immutable
@@ -82,9 +82,7 @@ class PayoutStructure {
     final last = weights.last;
     final shifted = [for (final w in weights) w - last];
     final sum = shifted.fold<double>(0, (a, b) => a + b);
-    final fractions = [
-      for (final w in shifted) base + remaining * (w / sum),
-    ];
+    final fractions = [for (final w in shifted) base + remaining * (w / sum)];
 
     // Cap first place and push the overflow down the rest of the curve, keeping
     // the last place pinned to the min cash (the shifted weights are zero
@@ -142,8 +140,9 @@ class PayoutStructure {
     for (var t = 0; t < tiers.length; t++) {
       final size = tiers[t];
       final isLast = t == tiers.length - 1;
-      final groupSum =
-          smooth.sublist(start, start + size).fold<double>(0, (a, b) => a + b);
+      final groupSum = smooth
+          .sublist(start, start + size)
+          .fold<double>(0, (a, b) => a + b);
       final value = isLast ? base : groupSum / size;
       for (var i = start; i < start + size; i++) {
         out[i] = value;
@@ -156,7 +155,7 @@ class PayoutStructure {
     final lastStart = places - lastSize;
     final surplus =
         smooth.sublist(lastStart).fold<double>(0, (a, b) => a + b) -
-            base * lastSize;
+        base * lastSize;
     if (surplus > 0 && tiers.length > 1) {
       // Dumping the whole surplus onto the single tier directly above min-cash
       // can overshoot the tier above *that* one — e.g. a small tier just above
@@ -202,8 +201,9 @@ class PayoutStructure {
     // individually — pay jumps are a large-field phenomenon. A field this
     // small barely has room for a final table, let alone tiers of ties, which
     // is the other half of what "small tournaments, it doesn't matter" means.
-    const minPlacesForTiers = 10;
-    if (paidPlaces < minPlacesForTiers) return List.filled(paidPlaces, 1);
+    if (paidPlaces < _minPlacesForLargeFieldTreatment) {
+      return List.filled(paidPlaces, 1);
+    }
 
     // How much of the pay table is the flat min-cash tier. A real Main-Event-
     // scale structure spends roughly the bottom half of the money on min
@@ -212,10 +212,12 @@ class PayoutStructure {
     final minCashShare = paidPlaces >= 200
         ? 0.45
         : paidPlaces >= 50
-            ? 0.35
-            : 0.2;
-    final minCashSize =
-        (paidPlaces * minCashShare).round().clamp(1, paidPlaces - 3);
+        ? 0.35
+        : 0.2;
+    final minCashSize = (paidPlaces * minCashShare).round().clamp(
+      1,
+      paidPlaces - 3,
+    );
     final ladderTarget = paidPlaces - minCashSize;
 
     final tiers = <int>[];
@@ -258,7 +260,7 @@ class PayoutStructure {
     var remainder = prizePool - out.fold<int>(0, (a, b) => a + b);
     if (remainder == 0 || out.length == 1) {
       if (remainder != 0) out[0] += remainder;
-      return out;
+      return _roundForDisplay(out, prizePool);
     }
     final step = remainder > 0 ? 1 : -1;
     // Bounded: each sweep moves |remainder| by at least one per eligible place,
@@ -273,6 +275,115 @@ class PayoutStructure {
       if (++i >= out.length) i = 1;
     }
     if (remainder != 0) out[0] += remainder; // pathological pool; stay exact
-    return out;
+    return _roundForDisplay(out, prizePool);
+  }
+
+  /// Below this many paid places, a field gets neither pay-jump tiers
+  /// ([_tierSizes]) nor rounded display numbers ([_roundForDisplay]) — a real
+  /// small tournament's payouts genuinely are uneven numbers ($366.67 split
+  /// three ways), and there's no published table to imitate. One shared
+  /// threshold: pay jumps and pay-table-style rounding are the same "large
+  /// field" phenomenon, so there's no reason they'd ever want to disagree.
+  static const _minPlacesForLargeFieldTreatment = 10;
+
+  /// Rounds a large field's payouts to the round numbers a real published pay
+  /// table shows — $10,000,000 / $6,000,000, not $10,003,542 / $5,997,113 —
+  /// severely at the top (huge places round to the nearest million-ish) and
+  /// down to a $5 floor everywhere, never a bare-dollar number like $15,312 or
+  /// $507. [exact] is the unrounded, pool-exact payout vector; the result
+  /// still sums to [prizePool] exactly.
+  ///
+  /// Each place is rounded independently by its own order of magnitude
+  /// ([_roundSevere]), clamped back to non-increasing (independent rounding
+  /// can invert two close places), then the rounding error is repaid by
+  /// nudging places in *their own* rounding step, working from the bottom
+  /// (largest, finest-grained tier) upward — never by dumping it on 1st place,
+  /// which is exactly the "advertised, capped number" this rounding exists to
+  /// protect.
+  static List<int> _roundForDisplay(List<int> exact, int prizePool) {
+    if (exact.length < _minPlacesForLargeFieldTreatment) return exact;
+
+    final rounded = [for (final v in exact) _roundSevere(v)];
+    for (var i = 1; i < rounded.length; i++) {
+      if (rounded[i] > rounded[i - 1]) rounded[i] = rounded[i - 1];
+    }
+
+    final residual = prizePool - rounded.fold<int>(0, (a, b) => a + b);
+    if (residual == 0) return rounded;
+
+    // The min-cash tier (the trailing run of places all sharing the last
+    // place's value) is exactly as sacrosanct here as it is in
+    // [_flattenIntoTiers] — a real min cash is an advertised floor, not
+    // "whatever's left after rounding". Find where it starts so the repay
+    // sweep below can leave it alone on the first pass.
+    var minCashStart = rounded.length - 1;
+    while (minCashStart > 0 && rounded[minCashStart - 1] == rounded.last) {
+      minCashStart--;
+    }
+
+    // Repay the residual by nudging places in *their own* rounding step, so
+    // every adjusted number stays round. Two passes: first restricted to the
+    // ladder (above the min-cash tier, below 1st place) — ample room in any
+    // real field — then, only if that somehow isn't enough, the min-cash tier
+    // too. 1st place is never touched by either pass; a pathological leftover
+    // (should not happen for any real pool) is the only thing that reaches it.
+    var left = residual;
+    left = _repay(rounded, left, from: minCashStart - 1, to: 1);
+    if (left != 0) {
+      // The ladder alone couldn't absorb it — fall back to the min-cash tier
+      // too. Starts at `minCashStart`, not the very end: the ladder pass
+      // above already covers everything below it, so re-walking that same
+      // range again would just waste iterations before ever reaching new
+      // ground.
+      left = _repay(rounded, left, from: rounded.length - 1, to: minCashStart);
+    }
+    if (left != 0) rounded[0] += left; // pathological; stay exact
+    return rounded;
+  }
+
+  /// Nudges `rounded[from..to]` (inclusive, descending) by their own rounding
+  /// step to repay as much of [residual] as possible without crossing a
+  /// neighbour, returning whatever's left. Bounded the same way the
+  /// exact-split sweep in [payouts] is.
+  static int _repay(
+    List<int> rounded,
+    int residual, {
+    required int from,
+    required int to,
+  }) {
+    var guard = residual.abs() * 2 + (from - to + 1).clamp(0, 1 << 30);
+    var i = from;
+    while (residual != 0 && i >= to && guard-- > 0) {
+      final place = rounded[i];
+      final step = _stepFor(place);
+      final direction = residual > 0 ? 1 : -1;
+      final moved = place + step * direction;
+      final ceiling = rounded[i - 1];
+      final floor = i == rounded.length - 1 ? 0 : rounded[i + 1];
+      if (step <= residual.abs() && moved <= ceiling && moved >= floor) {
+        rounded[i] = moved;
+        residual -= step * direction;
+      } else {
+        i--;
+      }
+    }
+    return residual;
+  }
+
+  /// Rounds [amount] to a step scaled to its own size — 2 significant figures
+  /// (e.g. 10,003,542 → nearest 1,000,000 → 10,000,000; 15,312 → nearest
+  /// 1,000 → 15,000), floored at a minimum step of 5 so even a tiny payout
+  /// never lands on a bare-dollar number like $507.
+  static int _roundSevere(int amount) {
+    if (amount <= 0) return amount;
+    final step = _stepFor(amount);
+    return (amount / step).round() * step;
+  }
+
+  /// The rounding granularity for a value of this size — see [_roundSevere].
+  static int _stepFor(int amount) {
+    final digits = amount.abs().toString().length;
+    final magnitudeStep = digits >= 3 ? pow(10, digits - 2).toInt() : 1;
+    return max(5, magnitudeStep);
   }
 }

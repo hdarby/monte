@@ -3,6 +3,8 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:monte/core/domain/ai/player_profile.dart';
 import 'package:monte/core/presentation/money_format.dart';
+import 'package:monte/core/presentation/widgets/table_loading_view.dart';
+import 'package:monte/core/theme/app_theme.dart';
 import 'package:monte/features/table/presentation/table_screen.dart';
 import 'package:monte/features/tournament/domain/tournament_structure.dart';
 import 'package:monte/features/tournament/presentation/tournament_view_model.dart';
@@ -14,6 +16,8 @@ import 'package:monte/core/di/game_providers.dart';
 import 'package:monte/features/tournament/data/tournament_controller.dart';
 import 'package:monte/features/tournament/domain/tournament_save.dart';
 import 'package:monte/features/tournament/presentation/widgets/saved_tournaments_dialog.dart';
+import 'package:monte/core/util/format.dart';
+import 'package:monte/features/tournament/domain/tournament_snapshot.dart';
 import 'package:monte/features/tournament/presentation/widgets/standings_panel.dart';
 import 'package:monte/features/tournament/presentation/widgets/tournament_hud.dart';
 import 'package:monte/features/eval_history/domain/eval_hand.dart';
@@ -22,6 +26,9 @@ import 'package:monte/features/eval_history/domain/session_report.dart';
 import 'package:monte/features/tournament/domain/tournament_result.dart';
 import 'package:monte/features/eval_history/presentation/eval_history_provider.dart';
 import 'package:monte/features/eval_history/presentation/session_review_screen.dart';
+
+/// The player's choice from [_TournamentScreenState._confirmLeave]'s dialog.
+enum _LeaveChoice { save, abandon }
 
 /// The interactive tournament: the human plays their table live (via the reused
 /// [TableScreen]) with a tournament HUD overlaid; other tables simulate between
@@ -76,12 +83,12 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
     createController: widget.restore == null
         ? null
         : () => TournamentController.restore(
-              widget.restore!,
-              statsService: ref.read(opponentStatsServiceProvider),
-              onEvalHandRecorded: ref.read(evalHistoryStoreProvider).record,
-              resultStore: ref.read(tournamentResultStoreProvider),
-              yieldToFrame: () => SchedulerBinding.instance.endOfFrame,
-            ),
+            widget.restore!,
+            statsService: ref.read(opponentStatsServiceProvider),
+            onEvalHandRecorded: ref.read(evalHistoryStoreProvider).record,
+            resultStore: ref.read(tournamentResultStoreProvider),
+            yieldToFrame: () => SchedulerBinding.instance.endOfFrame,
+          ),
   );
 
   /// Saves the tournament as it stands, prompting for a name.
@@ -89,16 +96,17 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
     final controller = ref.read(_vm.notifier).controller;
     final name = await promptForSaveName(
       context,
-      initial: '${widget.structure.name} · level '
+      initial:
+          '${widget.structure.name} · level '
           '${controller.state.levelIndex + 1}',
     );
     if (name == null || name.isEmpty || !mounted) return;
     final save = controller.saveAs(name);
     await ref.read(tournamentSaveStoreProvider).save(save);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Saved "\${save.name}"')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('Saved "\${save.name}"')));
   }
 
   /// Opens the browser, and replaces this screen with the chosen tournament.
@@ -112,8 +120,10 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
     if (structure == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('That save uses an unknown blind structure '
-              '("${chosen.structureName}") and cannot be loaded.'),
+          content: Text(
+            'That save uses an unknown blind structure '
+            '("${chosen.structureName}") and cannot be loaded.',
+          ),
         ),
       );
       return;
@@ -135,6 +145,49 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
     );
   }
 
+  /// Asks whether to save the in-progress tournament, abandon it, or stay —
+  /// the only way out of a running tournament, since there's no other back
+  /// navigation once it's started.
+  Future<void> _confirmLeave() async {
+    final nav = Navigator.of(context);
+    final choice = await showDialog<_LeaveChoice>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        title: const Text('Leave this tournament?'),
+        content: const Text(
+          "Save your spot to resume later, or abandon it — abandoning stops "
+          "the tournament now, and this event won't be recorded in your "
+          'career results.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Stay'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, _LeaveChoice.abandon),
+            child: const Text('Abandon'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: AppTheme.gold,
+              foregroundColor: Colors.black,
+            ),
+            onPressed: () => Navigator.pop(ctx, _LeaveChoice.save),
+            child: const Text('Save & Exit'),
+          ),
+        ],
+      ),
+    );
+    if (choice == null || !mounted) return;
+    if (choice == _LeaveChoice.save) {
+      await _save();
+      if (!mounted) return;
+    }
+    nav.pop();
+  }
+
   /// Guards against re-showing a dialog for an event we've already announced —
   /// the snapshot stream rebuilds on every tick, but each event fires once.
   Object? _lastColorUp;
@@ -154,13 +207,15 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
       final latest = hands
           .where((h) => h.sessionId != null)
           .fold<EvalHand?>(
-              null,
-              (best, h) => best == null ||
-                      (h.timestampMs ?? 0) > (best.timestampMs ?? 0)
-                  ? h
-                  : best);
-      final mine =
-          hands.where((h) => h.sessionId == latest?.sessionId).toList();
+            null,
+            (best, h) =>
+                best == null || (h.timestampMs ?? 0) > (best.timestampMs ?? 0)
+                ? h
+                : best,
+          );
+      final mine = hands
+          .where((h) => h.sessionId == latest?.sessionId)
+          .toList();
       final seat = mine
           .expand((h) => h.players)
           .where((p) => p.modelId == 'human')
@@ -171,12 +226,13 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
         final worst = [
           for (final h in mine)
             for (final d in h.decisions)
-              if (d.playerId == seat) (d, h)
+              if (d.playerId == seat) (d, h),
         ]..sort((a, b) => b.$1.evLost.compareTo(a.$1.evLost));
         // Page two: the career, across every event ever finished — including
         // the stretches played out headless after the human busted.
         final career = CareerRow.from(
-            await ref.read(tournamentResultStoreProvider).loadAll());
+          await ref.read(tournamentResultStoreProvider).loadAll(),
+        );
         // This event's own finish — separate from the career aggregate above,
         // and previously shown nowhere but the results overlay the player
         // taps past to reach this screen.
@@ -191,9 +247,11 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
           entrants: tour?.entrants,
         );
         if (mounted) {
-          await nav.push(MaterialPageRoute<void>(
-            builder: (_) => SessionReviewScreen(markdown: md),
-          ));
+          await nav.push(
+            MaterialPageRoute<void>(
+              builder: (_) => SessionReviewScreen(markdown: md),
+            ),
+          );
         }
       }
     } catch (_) {
@@ -203,6 +261,13 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
   }
 
   void _announce(TournamentUiState state) {
+    // Once the human is out, the field plays out headless (see
+    // `_ResolvingFieldBanner`) — none of these mid-tournament interruptions
+    // (color-ups, table breaks, level recaps) are yours to see anymore, and
+    // popping a dialog on top of that banner for someone else's chip race
+    // would just be confusing. The only thing left to show is the final
+    // standings once it's done.
+    if (state.tour?.resolvingRestOfField ?? false) return;
     final colorUp = state.tour?.colorUp;
     if (colorUp != null && !identical(colorUp, _lastColorUp)) {
       _lastColorUp = colorUp;
@@ -227,29 +292,37 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
             : '${brk.arrivals.length} players have joined your table.';
         detail = brk.arrivals.length == 1 ? null : brk.arrivals.join(', ');
       } else {
-        title = 'Your table has broken. '
+        title =
+            'Your table has broken. '
             '${you == null ? '' : 'You move to table ${you.toTable}, '
-                'seat ${you.toSeat + 1}.'}';
+                      'seat ${you.toSeat + 1}.'}';
         detail = others.isEmpty
             ? null
-            : others.take(9).map((m) => '${m.name} → T${m.toTable}').join('   ')
-                + (others.length > 9 ? '   +${others.length - 9} more' : '');
+            : others
+                      .take(9)
+                      .map((m) => '${m.name} → T${m.toTable}')
+                      .join('   ') +
+                  (others.length > 9 ? '   +${others.length - 9} more' : '');
       }
       ScaffoldMessenger.of(context)
         ..clearSnackBars()
-        ..showSnackBar(SnackBar(
-          duration: const Duration(seconds: 6),
-          content: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(title,
-                  style: const TextStyle(fontWeight: FontWeight.w600)),
-              if (detail != null)
-                Text(detail, style: const TextStyle(fontSize: 11)),
-            ],
+        ..showSnackBar(
+          SnackBar(
+            duration: const Duration(seconds: 6),
+            content: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                if (detail != null)
+                  Text(detail, style: const TextStyle(fontSize: 11)),
+              ],
+            ),
           ),
-        ));
+        );
     }
     final recap = state.tour?.recap;
     if (recap != null && !identical(recap, _lastRecap)) {
@@ -271,7 +344,18 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
     final table = state.table;
     final tour = state.tour;
     if (table == null || tour == null) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const TableLoadingView();
+    }
+    // The human is out and the rest of the field is being played out for
+    // real (see `TournamentController._finishHeadless`) — no live table to
+    // show, so a dedicated banner takes over instead of the generic loading
+    // animation. `tour` keeps arriving fresh every round, so the remaining
+    // count genuinely counts down rather than sitting on one stale number.
+    if (tour.resolvingRestOfField) {
+      return _ResolvingFieldBanner(
+        playersLeft: tour.playersLeft,
+        topChipLeaders: tour.topChipLeaders,
+      );
     }
     final controller = ref.read(_vm.notifier);
 
@@ -279,177 +363,184 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
     // level's* big blind, not the cash-settings default.
     return MoneyScope(
       format: MoneyFormat(showBigBlinds: false, bigBlind: tour.bigBlind),
-      child: Stack(
+      // A real Column, not an overlay: the top bar's height is whatever it
+      // actually renders at, and the felt below gets the rest via Expanded.
+      // The previous version anchored the top bar and the felt to the same
+      // Stack (both `Positioned(top: 0, ...)`), guessing the bar's height to
+      // avoid the felt drawing underneath it — a Positioned.fill(right:...)
+      // on the final-table banner and a hand-tuned `top: 44` on the
+      // clock/pause row were both fallout from that guess. Real layout means
+      // there's no guess left to get wrong.
+      child: Column(
         children: [
-          TableScreen(
-            snapshot: table,
-            isAllBots: false,
-            humanName: widget.humanName,
-            isFinalTable: tour.atFinalTable,
-            // Tournament tables use a fixed 9-seat layout so consolidation doesn't
-            // redraw. Empty seats appear as players are eliminated.
-            playerCount: 9,
-            sidePanel: StandingsPanel(
-              rows: state.standings,
-              total: tour.entrants,
-            ),
-            readForSeat: controller.readForSeat,
-            onAction: controller.submitLiveAction,
-            // Hands auto-advance in a tournament, and the table's own chrome is
-            // replaced by the tournament HUD.
-            onNewGame: _noop,
-            onNextHand: _noop,
-            onOpenSettings: _noop,
-            onOpenHistory: _noop,
-          ),
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: SafeArea(
-              child: TournamentHud(
-                tour: tour,
-                standings: controller.standings,
-                humanName: widget.humanName,
-              ),
-            ),
-          ),
-          // Final table framing — the thing everybody played for, marked in gold.
-          // Dollar signs were another option and read as a slot machine;
-          // the tournament is tense, not tacky.
-          if (tour.atFinalTable)
-            Positioned.fill(
-              child: IgnorePointer(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    border: Border.all(
-                      color: const Color(0xCCFFC107),
-                      width: 3,
+          SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Leave — the only way out of an in-progress tournament,
+                  // since the cash table's own back arrow is hidden here
+                  // (`showHeader: false`) and the HUD has none of its own.
+                  if (!tour.finished)
+                    _chromeButton(
+                      icon: Icons.arrow_back,
+                      tooltip: 'Leave tournament',
+                      onPressed: _confirmLeave,
                     ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFFFFC107).withValues(alpha: 0.22),
-                        blurRadius: 40,
-                        spreadRadius: -8,
+                  Expanded(
+                    child: TournamentHud(
+                      tour: tour,
+                      standings: controller.standings,
+                      humanName: widget.humanName,
+                    ),
+                  ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _chromeButton(
+                            icon: Icons.save_outlined,
+                            tooltip: 'Save this tournament',
+                            onPressed: tour.finished ? null : _save,
+                          ),
+                          const SizedBox(width: 4),
+                          _chromeButton(
+                            icon: Icons.folder_open_outlined,
+                            tooltip: 'Saved tournaments',
+                            onPressed: _openSaves,
+                          ),
+                        ],
                       ),
+                      if (!tour.finished) ...[
+                        const SizedBox(height: 4),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            LevelClockBadge(tour: tour),
+                            const SizedBox(width: 8),
+                            SimPauseButton(
+                              isPaused: state.simPaused,
+                              onPauseToggle: controller.toggleSimulationPause,
+                            ),
+                          ],
+                        ),
+                      ],
                     ],
                   ),
-                ),
+                ],
               ),
             ),
-          if (tour.atFinalTable)
-            Positioned(
-              bottom: 0,
-              left: 0,
-              right: 0,
-              child: IgnorePointer(
-                child: SafeArea(
-                  child: Center(
-                    child: Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: (tour.atFinalTable
-                                  ? const Color(0xFFFFC107)
-                                  : const Color(0xFFFF8A50))
-                              .withValues(alpha: 0.18),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
+          ),
+          Expanded(
+            child: Stack(
+              children: [
+                TableScreen(
+                  snapshot: table,
+                  isAllBots: false,
+                  humanName: widget.humanName,
+                  isFinalTable: tour.atFinalTable,
+                  // Tournament tables use a fixed 9-seat layout so
+                  // consolidation doesn't redraw. Empty seats appear as
+                  // players are eliminated.
+                  playerCount: 9,
+                  sidePanel: StandingsPanel(
+                    rows: state.standings,
+                    total: tour.entrants,
+                  ),
+                  readForSeat: controller.readForSeat,
+                  onAction: controller.submitLiveAction,
+                  // Hands auto-advance in a tournament, and the table's own
+                  // chrome is replaced by the tournament HUD above.
+                  onNewGame: _noop,
+                  onNextHand: _noop,
+                  onOpenSettings: _noop,
+                  onOpenHistory: _noop,
+                  showHeader: false,
+                ),
+                if (tour.atFinalTable)
+                  // Anchored near the top of the felt, not the bottom — the
+                  // bottom edge is where the action bar's call/raise/fold
+                  // buttons live. Excludes the standings panel's width on the
+                  // right so it centers over the felt itself, not the whole
+                  // row (panel + felt).
+                  Positioned.fill(
+                    right: StandingsPanel.width,
+                    child: IgnorePointer(
+                      child: Align(
+                        alignment: const Alignment(0, -0.88),
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 14, vertical: 4),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                tour.atFinalTable
-                                    ? Icons.emoji_events
-                                    : Icons.timer_outlined,
-                                size: 15,
-                                color: tour.atFinalTable
-                                    ? const Color(0xFFFFC107)
-                                    : const Color(0xFFFF8A50),
+                          padding: const EdgeInsets.only(bottom: 4),
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color:
+                                  (tour.atFinalTable
+                                          ? const Color(0xFFFFC107)
+                                          : const Color(0xFFFF8A50))
+                                      .withValues(alpha: 0.18),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 4,
                               ),
-                              const SizedBox(width: 7),
-                              Text(
-                                tour.atFinalTable
-                                    ? 'FINAL TABLE'
-                                    : 'HAND FOR HAND — '
-                                        '${tour.playersLeft - tour.paidPlaces} '
-                                        'from the money',
-                                style: TextStyle(
-                                  color: tour.atFinalTable
-                                      ? const Color(0xFFFFC107)
-                                      : const Color(0xFFFF8A50),
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: 1.4,
-                                ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    tour.atFinalTable
+                                        ? Icons.emoji_events
+                                        : Icons.timer_outlined,
+                                    size: 15,
+                                    color: tour.atFinalTable
+                                        ? const Color(0xFFFFC107)
+                                        : const Color(0xFFFF8A50),
+                                  ),
+                                  const SizedBox(width: 7),
+                                  Text(
+                                    tour.atFinalTable
+                                        ? 'FINAL TABLE'
+                                        : 'HAND FOR HAND — '
+                                              '${tour.playersLeft - tour.paidPlaces} '
+                                              'from the money',
+                                    style: TextStyle(
+                                      color: tour.atFinalTable
+                                          ? const Color(0xFFFFC107)
+                                          : const Color(0xFFFF8A50),
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                      letterSpacing: 1.4,
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ],
+                            ),
                           ),
                         ),
                       ),
                     ),
                   ),
-                ),
-              ),
-            ),
-          // Save / load, top-right, clear of the HUD.
-          Positioned(
-            top: 0,
-            right: 0,
-            child: SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.only(right: 8, top: 4),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _chromeButton(
-                      icon: Icons.save_outlined,
-                      tooltip: 'Save this tournament',
-                      onPressed: tour.finished ? null : _save,
+                if (tour.finished)
+                  ResultsOverlay(tour: tour, onBackToLobby: _reviewThenLeave),
+                // A fresh tournament (never shown for a restored save — the
+                // field has already been dealt in for however many levels)
+                // waits here until the player confirms they're ready. The
+                // first hand is already dealt underneath and awaiting the
+                // human's action same as any other hand; this just keeps it
+                // out of view until dismissed.
+                if (widget.restore == null && !_started)
+                  Positioned.fill(
+                    child: _ShuffleUpBanner(
+                      onOk: () => setState(() => _started = true),
                     ),
-                    const SizedBox(width: 4),
-                    _chromeButton(
-                      icon: Icons.folder_open_outlined,
-                      tooltip: 'Saved tournaments',
-                      onPressed: _openSaves,
-                    ),
-                  ],
-                ),
-              ),
+                  ),
+              ],
             ),
           ),
-          if (!tour.finished)
-            Positioned(
-              right: 12,
-              bottom: 12,
-              child: SafeArea(
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    LevelClockBadge(tour: tour),
-                    const SizedBox(width: 8),
-                    SimPauseButton(
-                      isPaused: state.simPaused,
-                      onPauseToggle: controller.toggleSimulationPause,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          if (tour.finished)
-            ResultsOverlay(tour: tour, onBackToLobby: _reviewThenLeave),
-          // A fresh tournament (never shown for a restored save — the field
-          // has already been dealt in for however many levels) waits here
-          // until the player confirms they're ready. The first hand is
-          // already dealt underneath and awaiting the human's action same as
-          // any other hand; this just keeps it out of view until dismissed.
-          if (widget.restore == null && !_started)
-            Positioned.fill(
-              child: _ShuffleUpBanner(onOk: () => setState(() => _started = true)),
-            ),
         ],
       ),
     );
@@ -462,26 +553,174 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
     required IconData icon,
     required String tooltip,
     required VoidCallback? onPressed,
-  }) =>
-      Tooltip(
-        message: tooltip,
-        child: Material(
-          color: Colors.black54,
-          shape: const CircleBorder(),
-          child: InkWell(
-            customBorder: const CircleBorder(),
-            onTap: onPressed,
-            child: Padding(
-              padding: const EdgeInsets.all(8),
-              child: Icon(
-                icon,
-                size: 18,
-                color: onPressed == null ? Colors.white24 : Colors.white70,
-              ),
-            ),
+  }) => Tooltip(
+    message: tooltip,
+    child: Material(
+      color: Colors.black54,
+      shape: const CircleBorder(),
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onPressed,
+        child: Padding(
+          padding: const EdgeInsets.all(8),
+          child: Icon(
+            icon,
+            size: 18,
+            color: onPressed == null ? Colors.white24 : Colors.white70,
           ),
         ),
-      );
+      ),
+    ),
+  );
+}
+
+/// Shown in place of the table while the rest of the field plays out headless
+/// after the human busts (see `TournamentController._finishHeadless`).
+/// Deliberately no spinner — [playersLeft] itself is the progress indicator,
+/// counting down as real hands actually eliminate people, so a wheel that
+/// spins without reference to that would be a worse signal, not a better one.
+/// A slow, non-spinning pulse on the count is the only motion, so the screen
+/// still reads as "working" between the (possibly seconds-apart) updates a
+/// huge field's rounds arrive at.
+class _ResolvingFieldBanner extends StatefulWidget {
+  const _ResolvingFieldBanner({
+    required this.playersLeft,
+    required this.topChipLeaders,
+  });
+
+  final int playersLeft;
+  final List<StandingRow> topChipLeaders;
+
+  @override
+  State<_ResolvingFieldBanner> createState() => _ResolvingFieldBannerState();
+}
+
+class _ResolvingFieldBannerState extends State<_ResolvingFieldBanner>
+    with SingleTickerProviderStateMixin {
+  late final _pulse = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1400),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppTheme.surface,
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Running out the event…',
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 16),
+            FadeTransition(
+              opacity: _pulse.drive(Tween(begin: 0.55, end: 1.0)),
+              child: Text(
+                '${widget.playersLeft} players remain',
+                style: const TextStyle(
+                  color: AppTheme.gold,
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              "You've busted — the rest of the field is being played out.",
+              style: TextStyle(color: Colors.white54, fontSize: 13),
+            ),
+            if (widget.topChipLeaders.isNotEmpty) ...[
+              const SizedBox(height: 28),
+              _ChipLeaderboard(rows: widget.topChipLeaders),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The current top 10 by chip count, shown on [_ResolvingFieldBanner] — the
+/// human's own name never appears here (they're the reason this screen is up
+/// at all), but it's still worth seeing who's actually left with the chips
+/// while the rest of the field plays out.
+class _ChipLeaderboard extends StatelessWidget {
+  const _ChipLeaderboard({required this.rows});
+
+  final List<StandingRow> rows;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 320,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      decoration: BoxDecoration(
+        color: Colors.black26,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white12),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text(
+            'CHIP LEADERS',
+            style: TextStyle(
+              color: Colors.white38,
+              fontSize: 11,
+              letterSpacing: 1.4,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 10),
+          for (final r in rows)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 3),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 22,
+                    child: Text(
+                      '${r.place}',
+                      style: const TextStyle(
+                        color: Colors.white54,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      r.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: Colors.white, fontSize: 13),
+                    ),
+                  ),
+                  Text(
+                    formatChips(r.chips),
+                    style: const TextStyle(
+                      color: AppTheme.gold,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
 }
 
 /// A full-screen scrim shown once at the start of a fresh tournament, over
@@ -539,9 +778,7 @@ class _ShuffleUpBannerState extends State<_ShuffleUpBanner>
               animation: Listenable.merge([_entrance, _colorCycle]),
               builder: (context, _) => Wrap(
                 alignment: WrapAlignment.center,
-                children: [
-                  for (var i = 0; i < _text.length; i++) _letter(i),
-                ],
+                children: [for (var i = 0; i < _text.length; i++) _letter(i)],
               ),
             ),
             const SizedBox(height: 28),
@@ -566,8 +803,11 @@ class _ShuffleUpBannerState extends State<_ShuffleUpBanner>
     final n = _text.length;
     final start = 0.15 + 0.75 * (i / n);
     final end = (start + 0.25).clamp(0.0, 1.0);
-    final reveal =
-        Interval(start, end, curve: Curves.easeOut).transform(_entrance.value);
+    final reveal = Interval(
+      start,
+      end,
+      curve: Curves.easeOut,
+    ).transform(_entrance.value);
     final hue = (_colorCycle.value * 360 + i * 14) % 360;
     final color = HSVColor.fromAHSV(1.0, hue, 0.55, 1.0).toColor();
     final ch = _text[i];

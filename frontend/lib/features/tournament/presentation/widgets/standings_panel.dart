@@ -13,10 +13,15 @@ class StandingsPanel extends StatelessWidget {
   /// is passed separately rather than read off `rows.length`.
   final int total;
 
+  /// The panel's fixed width — public so overlays sharing the tournament
+  /// screen (e.g. the final-table banner) can size themselves around it
+  /// instead of centering over the panel too.
+  static const double width = 260;
+
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 260,
+      width: width,
       margin: const EdgeInsets.only(right: 16, top: 16, bottom: 16),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -44,10 +49,7 @@ class StandingsPanel extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          Container(
-            height: 1,
-            color: Colors.white10,
-          ),
+          Container(height: 1, color: Colors.white10),
           const SizedBox(height: 12),
           // Only the main tournament-page panel gets the flip-clock cascade —
           // see StandingsList's `animated` doc.
@@ -129,9 +131,10 @@ class _StandingsListState extends State<StandingsList> {
   /// list (which the player may be scrolled far past).
   int get _topVisibleIndex {
     if (!_controller.hasClients) return 0;
-    return (_controller.position.pixels / _itemExtent)
-        .floor()
-        .clamp(0, widget.rows.isEmpty ? 0 : widget.rows.length - 1);
+    return (_controller.position.pixels / _itemExtent).floor().clamp(
+      0,
+      widget.rows.isEmpty ? 0 : widget.rows.length - 1,
+    );
   }
 
   @override
@@ -199,9 +202,10 @@ class _StandingsRowState extends State<_StandingsRow>
       duration: const Duration(milliseconds: 1400),
       vsync: this,
     );
-    _flipAnim = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
-    );
+    _flipAnim = Tween<double>(
+      begin: 0,
+      end: 1,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
     _prevKey = _makeKey(widget.row);
   }
 
@@ -246,8 +250,9 @@ class _StandingsRowState extends State<_StandingsRow>
     final nameColor = isBusted
         ? Colors.grey
         : _colorForKind(r.isHuman ? StandingKind.human : r.kind, r.generated);
-    final chipsColor =
-        isBusted ? Colors.grey : Colors.white.withValues(alpha: 0.95);
+    final chipsColor = isBusted
+        ? Colors.grey
+        : Colors.white.withValues(alpha: 0.95);
 
     final nameText = AdaptivePlayerName(
       name: r.name,
@@ -298,7 +303,9 @@ class _StandingsRowState extends State<_StandingsRow>
         color: const Color(0xFF151515),
         borderRadius: BorderRadius.circular(3),
         border: Border.all(
-          color: isBusted ? Colors.grey[700]! : Colors.white.withValues(alpha: 0.15),
+          color: isBusted
+              ? Colors.grey[700]!
+              : Colors.white.withValues(alpha: 0.15),
           width: 0.5,
         ),
       ),

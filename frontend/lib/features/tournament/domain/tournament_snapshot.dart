@@ -19,8 +19,11 @@ class SimProgress {
 /// One player's line in a color-up (chip race) result: their name and the chips
 /// they gained (+) or lost (-) racing off their odd chips.
 class ColorUpRow {
-  const ColorUpRow(
-      {required this.name, required this.isHuman, required this.delta});
+  const ColorUpRow({
+    required this.name,
+    required this.isHuman,
+    required this.delta,
+  });
   final String name;
   final bool isHuman;
   final int delta;
@@ -30,8 +33,11 @@ class ColorUpRow {
 /// who won/lost what (biggest swings first). Present only on the snapshot for
 /// the single tick the race happened.
 class ColorUpDisplay {
-  const ColorUpDisplay(
-      {required this.retiredUnit, required this.newUnit, required this.rows});
+  const ColorUpDisplay({
+    required this.retiredUnit,
+    required this.newUnit,
+    required this.rows,
+  });
   final int retiredUnit;
   final int newUnit;
   final List<ColorUpRow> rows;
@@ -125,6 +131,8 @@ class TournamentSnapshot {
     this.yourTable = 0,
     this.recap,
     this.finalResults,
+    this.resolvingRestOfField = false,
+    this.topChipLeaders = const [],
   });
 
   final TournamentStatus status;
@@ -207,6 +215,16 @@ class TournamentSnapshot {
   /// Final standings once [status] is finished (best first), else null.
   final List<FinishRow>? finalResults;
 
+  /// True while the controller is grinding out the rest of the field after
+  /// the human busted or railed — no live table to show, so the screen shows
+  /// a dedicated "running out the field" banner instead. [playersLeft] keeps
+  /// updating throughout, since this ticks a real snapshot every round.
+  final bool resolvingRestOfField;
+
+  /// The current top 10 by chip count, for the [resolvingRestOfField] banner —
+  /// empty otherwise (nobody else pays for computing it every tick).
+  final List<StandingRow> topChipLeaders;
+
   bool get finished => status == TournamentStatus.finished;
 
   /// Real time left in the current level (minutes-mode only; null in
@@ -243,6 +261,8 @@ class TournamentSnapshot {
     ColorUpEvent? colorUp,
     TableBreakDisplay? tableBreak,
     LevelRecap? recap,
+    bool resolvingRestOfField = false,
+    List<StandingRow> topChipLeaders = const [],
   }) {
     final level = state.currentLevel;
     final chips = chipSet ?? ChipSet.wsop();
@@ -253,29 +273,38 @@ class TournamentSnapshot {
     );
     ColorUpDisplay? colorUpDisplay;
     if (colorUp != null && colorUp.deltas.isNotEmpty) {
-      final rows = colorUp.deltas.entries
-          .map((e) => ColorUpRow(
-                name: state.players[e.key]?.name ?? e.key,
-                isHuman: state.players[e.key]?.isHuman ?? false,
-                delta: e.value,
-              ))
-          .toList()
-        ..sort((a, b) => b.delta.compareTo(a.delta));
+      final rows =
+          colorUp.deltas.entries
+              .map(
+                (e) => ColorUpRow(
+                  name: state.players[e.key]?.name ?? e.key,
+                  isHuman: state.players[e.key]?.isHuman ?? false,
+                  delta: e.value,
+                ),
+              )
+              .toList()
+            ..sort((a, b) => b.delta.compareTo(a.delta));
       colorUpDisplay = ColorUpDisplay(
-          retiredUnit: colorUp.oldUnit, newUnit: colorUp.newUnit, rows: rows);
+        retiredUnit: colorUp.oldUnit,
+        newUnit: colorUp.newUnit,
+        rows: rows,
+      );
     }
     final you = state.players[humanId];
     final payouts = state.payoutTable;
     final nextPlace = state.nextPayoutPlace;
-    final nextAmount =
-        (nextPlace >= 1 && nextPlace <= payouts.length) ? payouts[nextPlace - 1] : 0;
+    final nextAmount = (nextPlace >= 1 && nextPlace <= payouts.length)
+        ? payouts[nextPlace - 1]
+        : 0;
 
     // Your standing: finish place if out; otherwise your live chip rank.
     int yourPlace;
     if (you != null && you.finishPlace != null) {
       yourPlace = you.finishPlace!;
     } else if (you != null) {
-      final richer = state.activePlayers.where((p) => p.chips > you.chips).length;
+      final richer = state.activePlayers
+          .where((p) => p.chips > you.chips)
+          .length;
       yourPlace = richer + 1;
     } else {
       yourPlace = state.entrants;
@@ -283,16 +312,21 @@ class TournamentSnapshot {
 
     List<FinishRow>? results;
     if (state.status == TournamentStatus.finished) {
-      results = (state.players.values.toList()
-            ..sort((a, b) => (a.finishPlace ?? 1 << 30)
-                .compareTo(b.finishPlace ?? 1 << 30)))
-          .map((p) => FinishRow(
-                place: p.finishPlace ?? state.entrants,
-                name: p.name,
-                isHuman: p.isHuman,
-                prize: p.prizeWon,
+      results =
+          (state.players.values.toList()..sort(
+                (a, b) => (a.finishPlace ?? 1 << 30).compareTo(
+                  b.finishPlace ?? 1 << 30,
+                ),
               ))
-          .toList();
+              .map(
+                (p) => FinishRow(
+                  place: p.finishPlace ?? state.entrants,
+                  name: p.name,
+                  isHuman: p.isHuman,
+                  prize: p.prizeWon,
+                ),
+              )
+              .toList();
     }
 
     return TournamentSnapshot(
@@ -329,6 +363,8 @@ class TournamentSnapshot {
       yourTable: _tableNumberOf(state, humanId),
       recap: recap,
       finalResults: results,
+      resolvingRestOfField: resolvingRestOfField,
+      topChipLeaders: topChipLeaders,
     );
   }
 }
