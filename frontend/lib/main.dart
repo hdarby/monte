@@ -13,10 +13,12 @@ import 'package:monte/core/domain/ai/decider_factory.dart';
 import 'package:monte/features/reads/data/player_stats_store.dart';
 import 'package:monte/features/table/data/local_game_repository.dart';
 import 'package:monte/core/presentation/money_format.dart';
+import 'package:monte/core/presentation/widgets/table_loading_view.dart';
 import 'package:monte/features/coach/domain/hand_coach.dart';
 import 'package:monte/features/coach/presentation/coach_screen.dart';
 import 'package:monte/core/theme/app_theme.dart';
 import 'package:monte/features/history/presentation/history_screen.dart';
+import 'package:monte/features/landing/presentation/landing_screen.dart';
 import 'package:monte/features/tournament/presentation/career_screen.dart';
 import 'package:monte/features/tournament/presentation/lobby_screen.dart';
 import 'package:monte/features/settings/domain/game_settings.dart';
@@ -31,6 +33,7 @@ import 'package:monte/features/tournament/data/tournament_result_store.dart';
 import 'package:monte/features/eval_history/presentation/auto_tune_job.dart';
 import 'package:monte/features/eval_history/presentation/eval_history_provider.dart';
 import 'package:monte/features/table/presentation/widgets/new_game_dialog.dart';
+import 'package:monte/features/table/presentation/widgets/change_player_dialog.dart';
 
 /// Bumped whenever a change (e.g. a hand-evaluation fix) invalidates
 /// previously-learned tuning. On a mismatch, [_resetStaleTuning] wipes the
@@ -48,33 +51,35 @@ Future<void> main() async {
   await _resetStaleTuning(store);
   // Persistent per-opponent reads (VPIP/PFR/3-bet/steal/etc.), loaded once so
   // exploitative pros carry their reads across sessions and events.
-  final statsService =
-      await OpponentStatsService.load(FilePlayerStatsStore(dir));
+  final statsService = await OpponentStatsService.load(
+    FilePlayerStatsStore(dir),
+  );
   // Own the container explicitly so the background auto-tune job can be started
   // here (in the real entrypoint only — widget tests pump `MonteApp` directly
   // and never start its timer).
   final container = ProviderContainer(
     overrides: [
       evalHistoryStoreProvider.overrideWithValue(store),
-      tournamentResultStoreProvider
-          .overrideWithValue(FileTournamentResultStore(dir)),
+      tournamentResultStoreProvider.overrideWithValue(
+        FileTournamentResultStore(dir),
+      ),
       opponentStatsServiceProvider.overrideWithValue(statsService),
-      tournamentSaveStoreProvider
-          .overrideWithValue(FileTournamentSaveStore(dir)),
+      tournamentSaveStoreProvider.overrideWithValue(
+        FileTournamentSaveStore(dir),
+      ),
     ],
   );
   // Seed the human's name from the last session so the UI can address them by
   // name (and so a changed name can trigger a reads wipe on first prompt).
-  final savedName = (await SharedPreferences.getInstance()).getString('player_name');
+  final savedName = (await SharedPreferences.getInstance()).getString(
+    'player_name',
+  );
   if (savedName != null && savedName.trim().isNotEmpty) {
     container.read(playerNameProvider.notifier).set(savedName);
   }
   container.read(autoTuneJobProvider.notifier).start();
   runApp(
-    UncontrolledProviderScope(
-      container: container,
-      child: const MonteApp(),
-    ),
+    UncontrolledProviderScope(container: container, child: const MonteApp()),
   );
 }
 
@@ -104,7 +109,35 @@ class MonteApp extends StatelessWidget {
       title: 'Monte',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.dark(),
-      home: const GamePage(),
+      home: const AppLandingPage(),
+    );
+  }
+}
+
+/// The app's entry point: [LandingScreen] routes to a cash game, the
+/// tournament lobby, or settings.
+class AppLandingPage extends ConsumerWidget {
+  const AppLandingPage({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return LandingScreen(
+      onCashGames: () {
+        Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (_) => const GamePage()));
+      },
+      onTournaments: () {
+        final name = ref.read(playerNameProvider);
+        Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (_) => LobbyScreen(humanName: name)));
+      },
+      onOptions: () {
+        Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (_) => const SettingsScreen()));
+      },
     );
   }
 }
@@ -129,64 +162,18 @@ class _GamePageState extends ConsumerState<GamePage> {
   /// Guards a "deal next hand" from firing twice for one key press / click.
   bool _nextHandPending = false;
 
-  /// Whether the pre-game personality chooser has been shown for the current
-  /// table. Reset when the table is rebuilt (player-count / mode change) so a
-  /// fresh game always starts on the chooser.
-  bool _startupPrompted = false;
+  /// Whether the very first hand of this session has reached a point the
+  /// player can actually engage with (their turn, or the hand already over).
+  /// Until then, bots may still be acting through their pre-turn seats with a
+  /// real per-action delay (see `LocalGameRepository._runBots`) — that's the
+  /// stretch the loading animation covers. Sticky once true: later hands'
+  /// identical bots-acting-first stretches are the normal "watch them play"
+  /// experience, not something to hide behind a loading screen every time.
+  bool _tableSettled = false;
 
   /// The last per-seat lineup chosen in the New Game dialog (bot-seat order),
   /// used to pre-fill it next time. Null until the player customizes once.
   List<BotSpec>? _seatBots;
-
-  /// Guards the once-per-launch name prompt.
-  bool _namePrompted = false;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _promptForName());
-  }
-
-  /// Asks the human for their display name, prefilled with the name carried over
-  /// from the last session. If they enter a *different* name we treat it as a
-  /// different player and wipe the accumulated reads (their old book was built
-  /// against someone else). Runs once per launch.
-  Future<void> _promptForName() async {
-    if (_namePrompted || !mounted) return;
-    _namePrompted = true;
-    final current = ref.read(playerNameProvider);
-    final controller = TextEditingController(
-        text: (current == 'Player' || current == 'You') ? '' : current);
-    final entered = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('What should we call you?'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          textCapitalization: TextCapitalization.words,
-          decoration: const InputDecoration(
-            labelText: 'Your name',
-            hintText: 'e.g. Alex',
-          ),
-          onSubmitted: (v) => Navigator.of(ctx).pop(v),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(controller.text),
-            child: const Text('Play'),
-          ),
-        ],
-      ),
-    );
-    final name = (entered ?? '').trim();
-    if (name.isEmpty || name == current) return;
-    // Different player → their reads don't apply. Clear and start fresh.
-    await ref.read(opponentStatsServiceProvider)?.wipe();
-    ref.read(playerNameProvider.notifier).set(name);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('player_name', name);
-  }
 
   void _openSettings() {
     Navigator.of(
@@ -202,9 +189,9 @@ class _GamePageState extends ConsumerState<GamePage> {
 
   void _openTournament() {
     final name = ref.read(playerNameProvider);
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => LobbyScreen(humanName: name)),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => LobbyScreen(humanName: name)));
   }
 
   void _openCareer() {
@@ -246,18 +233,18 @@ class _GamePageState extends ConsumerState<GamePage> {
     final human = snapshot.human;
     if (human == null) return null;
     final ctx = snapshot.actionContext;
-    final live = snapshot.seats
-        .where((s) => !s.isHuman && !s.folded)
-        .toList();
+    final live = snapshot.seats.where((s) => !s.isHuman && !s.folded).toList();
     // Who's actually in with a range: opponents who've voluntarily raised or
     // matched the going bet. This deliberately excludes the blinds when they're
     // still short of the current bet (posting a blind isn't a range — counting
     // them as extra opponents wrecks the multiway equity read).
-    final goingBet = ctx?.currentBet ??
+    final goingBet =
+        ctx?.currentBet ??
         live.fold<int>(0, (m, s) => math.max(m, s.currentBet));
     final committed = live
-        .where((s) =>
-            s.raiseLevel > 0 || (goingBet > 0 && s.currentBet >= goingBet))
+        .where(
+          (s) => s.raiseLevel > 0 || (goingBet > 0 && s.currentBet >= goingBet),
+        )
         .toList();
     final acted = committed.isNotEmpty
         ? committed
@@ -268,7 +255,8 @@ class _GamePageState extends ConsumerState<GamePage> {
         : math.min(human.stack, live.map((s) => s.stack).reduce(math.max));
     // raiseCount is only on ActionContext (hero's turn); off-turn fall back to
     // the loudest seat's raise level so the range read still reflects aggression.
-    final raiseCount = ctx?.raiseCount ??
+    final raiseCount =
+        ctx?.raiseCount ??
         snapshot.seats.fold<int>(0, (m, s) => math.max(m, s.raiseLevel));
 
     return HandCoach.analyze(
@@ -330,18 +318,39 @@ class _GamePageState extends ConsumerState<GamePage> {
     if (chosen == null) return; // cancelled
     setState(() => _seatBots = chosen);
     await vm.newGameWithBots(chosen);
+    _persistSeatBots(vm);
   }
 
-  /// On a freshly built table, open the Settings screen first so each session
-  /// starts on setup (stakes, players, bots) before play — that's the natural
-  /// order. The default deal sits behind it; leaving Settings (Apply/Cancel)
-  /// drops the player onto the table.
-  void _maybePromptStartup(TableSnapshot snapshot) {
-    if (_startupPrompted || snapshot.seats.isEmpty) return;
-    _startupPrompted = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _openSettings();
-    });
+  /// Opens the pro/amateur picker for one bot seat and, if the player chooses
+  /// someone, reseats that bot with the picked profile. Excludes whoever is
+  /// already seated so the same player can't sit at the table twice.
+  Future<void> _openChangePlayer(
+    TableSnapshot snapshot,
+    TableViewModel vm,
+    String seatId,
+  ) async {
+    final seated = {for (final s in snapshot.seats) s.profileId};
+    final profile = await showChangePlayerDialog(
+      context,
+      seatedProfileIds: seated,
+    );
+    if (profile == null) return;
+    vm.replacePlayerWithProfile(seatId, profile);
+    _persistSeatBots(vm);
+  }
+
+  /// Saves the table's current lineup into settings, so the same players are
+  /// still there the next time the table is built — leaving for the landing
+  /// screen and coming back, or relaunching the app, both rebuild the table
+  /// from persisted `GameSettings`, which otherwise still held whatever
+  /// lineup was last saved from the New Game/Settings dialogs, not whatever
+  /// was actually live (a fresh deal, or an individual reseat).
+  void _persistSeatBots(TableViewModel vm) {
+    final settings = ref.read(settingsControllerProvider).value;
+    if (settings == null) return;
+    ref
+        .read(settingsControllerProvider.notifier)
+        .save(settings.copyWith(seatBots: vm.currentSeatBots));
   }
 
   /// Deals the next hand, guarded so a single space/enter or click can't trigger
@@ -349,9 +358,6 @@ class _GamePageState extends ConsumerState<GamePage> {
   Future<void> _dealNext(TableViewModel vm, GameSettings settings) async {
     if (_nextHandPending) return;
     _nextHandPending = true;
-    // Wait 5 seconds so player can see the showdown
-    await Future<void>.delayed(const Duration(seconds: 5));
-    if (!mounted) return;
     await vm.startNextHand();
     if (mounted) {
       _nextHandPending = false;
@@ -420,7 +426,11 @@ class _GamePageState extends ConsumerState<GamePage> {
 
   /// In all-bots mode, when auto-deal is on and the current hand has finished,
   /// deal the next one after a short pause for UI responsiveness.
-  void _maybeAutoDeal(TableSnapshot snapshot, TableViewModel vm, GameSettings settings) {
+  void _maybeAutoDeal(
+    TableSnapshot snapshot,
+    TableViewModel vm,
+    GameSettings settings,
+  ) {
     if (!_autoDeal ||
         !vm.isAllBots ||
         !snapshot.isHandOver ||
@@ -439,16 +449,28 @@ class _GamePageState extends ConsumerState<GamePage> {
   Widget build(BuildContext context) {
     final settingsAsync = ref.watch(settingsControllerProvider);
     return settingsAsync.when(
-      loading: () =>
-          const Scaffold(body: Center(child: CircularProgressIndicator())),
+      loading: () => const TableLoadingView(),
       error: (e, _) =>
           Scaffold(body: Center(child: Text('Failed to load settings: $e'))),
       data: (settings) {
         final snapshot = ref.watch(tableViewModelProvider);
         final vm = ref.read(tableViewModelProvider.notifier);
+        // Cover the real, visible stretch at the start of a session where
+        // seats haven't been dealt into yet, or bots are still acting through
+        // their seats before the player's first turn (each with a genuine
+        // pace-of-play delay) — everything up to that point can't be acted
+        // on anyway. All-bots mode has no "player's turn" to wait for, so it
+        // skips straight to watching the table.
+        if (!vm.isAllBots && !_tableSettled) {
+          if (snapshot.seats.isNotEmpty &&
+              (snapshot.isHumanTurn || snapshot.isHandOver)) {
+            _tableSettled = true;
+          } else {
+            return const TableLoadingView();
+          }
+        }
         // A hand is dealing/in progress again — re-arm the deal guard.
         if (!snapshot.isHandOver) _nextHandPending = false;
-        _maybePromptStartup(snapshot);
         _maybePromptBust(snapshot, vm);
         _maybeAutoDeal(snapshot, vm, settings);
         return MoneyScope(
@@ -487,6 +509,8 @@ class _GamePageState extends ConsumerState<GamePage> {
                           ? repo.readForSeat(id)
                           : null;
                     },
+              onChangePlayer: (id) => _openChangePlayer(snapshot, vm, id),
+              onBack: () => Navigator.of(context).pop(),
             ),
           ),
         );

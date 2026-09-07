@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 
 import 'package:monte/core/domain/engine/actions.dart';
 import 'package:monte/core/presentation/money_format.dart';
-import 'package:monte/core/presentation/widgets/career_icon.dart';
 import 'package:monte/core/theme/app_theme.dart';
 import 'package:monte/core/domain/ai/opponent_range_read.dart';
 import 'package:monte/core/domain/ai/player_read.dart';
@@ -14,6 +13,7 @@ import 'package:monte/features/table/presentation/widgets/action_bar.dart';
 import 'package:monte/features/table/presentation/widgets/community_board.dart';
 import 'package:monte/features/table/presentation/widgets/player_read_card.dart';
 import 'package:monte/features/table/presentation/widgets/player_seat.dart';
+import 'package:monte/core/presentation/widgets/table_loading_view.dart';
 
 /// The main game screen: felt table, seats, board, event log and controls.
 ///
@@ -43,12 +43,20 @@ class TableScreen extends StatefulWidget {
     this.humanName = 'You',
     this.isFinalTable = false,
     this.animateCardDeal = true,
+    this.onChangePlayer,
+    this.onBack,
+    this.showHeader = true,
   });
 
   final TableSnapshot snapshot;
   final bool isAllBots;
   final int playerCount;
   final bool animateCardDeal;
+
+  /// Whether to show the title bar (game icon, "Texas Hold'em", player count,
+  /// hand history). Off for a tournament table, whose own HUD sits in the
+  /// same space and already carries the equivalent information.
+  final bool showHeader;
 
   /// The human's display name, used where a read refers back to the hero (e.g.
   /// "⟨opponent⟩'s read of ⟨humanName⟩") instead of a bare "you".
@@ -93,6 +101,15 @@ class TableScreen extends StatefulWidget {
   /// tournament lobby's own appbar already has this).
   final VoidCallback? onOpenCareer;
 
+  /// Opens the "change player" picker for a bot seat (by seat id). Cash games
+  /// only — null hides the icon (e.g. in tournaments, where seats are the
+  /// field you chose at the lobby).
+  final ValueChanged<String>? onChangePlayer;
+
+  /// Navigates back to the landing screen. Null hides the back arrow (e.g.
+  /// inside a tournament, which has its own exit path).
+  final VoidCallback? onBack;
+
   @override
   State<TableScreen> createState() => _TableScreenState();
 }
@@ -117,6 +134,8 @@ class _TableScreenState extends State<TableScreen> {
   VoidCallback? get onCoach => widget.onCoach;
   VoidCallback? get onOpenTournament => widget.onOpenTournament;
   VoidCallback? get onOpenCareer => widget.onOpenCareer;
+  ValueChanged<String>? get onChangePlayer => widget.onChangePlayer;
+  VoidCallback? get onBack => widget.onBack;
   ValueChanged<GameAction> get onAction => widget.onAction;
   VoidCallback get onNewGame => widget.onNewGame;
   VoidCallback get onNextHand => widget.onNextHand;
@@ -136,14 +155,14 @@ class _TableScreenState extends State<TableScreen> {
   @override
   Widget build(BuildContext context) {
     if (snapshot.seats.isEmpty) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const TableLoadingView();
     }
 
     return Scaffold(
       body: SafeArea(
         child: Column(
           children: [
-            _header(),
+            if (widget.showHeader) _header(),
             Expanded(
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -170,6 +189,12 @@ class _TableScreenState extends State<TableScreen> {
     color: AppTheme.surface,
     child: Row(
       children: [
+        if (onBack != null)
+          IconButton(
+            tooltip: 'Back to home',
+            icon: const Icon(Icons.arrow_back, color: Colors.white70),
+            onPressed: onBack,
+          ),
         const Icon(Icons.style, color: AppTheme.gold),
         const SizedBox(width: 10),
         const Text(
@@ -203,27 +228,10 @@ class _TableScreenState extends State<TableScreen> {
           ),
         ],
         const SizedBox(width: 8),
-        if (onOpenTournament != null)
-          IconButton(
-            tooltip: 'Play a tournament',
-            icon: const Icon(Icons.emoji_events, color: Colors.white70),
-            onPressed: onOpenTournament,
-          ),
-        if (onOpenCareer != null)
-          IconButton(
-            tooltip: 'Career winnings',
-            icon: const CareerIcon(),
-            onPressed: onOpenCareer,
-          ),
         IconButton(
           tooltip: 'Hand history',
           icon: const Icon(Icons.history, color: Colors.white70),
           onPressed: onOpenHistory,
-        ),
-        IconButton(
-          tooltip: 'Table settings',
-          icon: const Icon(Icons.settings, color: Colors.white70),
-          onPressed: onOpenSettings,
         ),
       ],
     ),
@@ -252,8 +260,9 @@ class _TableScreenState extends State<TableScreen> {
       final w = winners.first;
       text = '${w.name} ${chop ? 'chops' : 'wins'} — ${net(w.wonNet)}';
     } else {
-      final parts =
-          winners.map((w) => '${w.name} ${net(w.wonNet)}').join('  ·  ');
+      final parts = winners
+          .map((w) => '${w.name} ${net(w.wonNet)}')
+          .join('  ·  ');
       text = 'Chop — $parts';
     }
     return Align(
@@ -264,7 +273,11 @@ class _TableScreenState extends State<TableScreen> {
           color: AppTheme.gold,
           borderRadius: BorderRadius.circular(20),
           boxShadow: const [
-            BoxShadow(color: Colors.black54, blurRadius: 12, offset: Offset(0, 4)),
+            BoxShadow(
+              color: Colors.black54,
+              blurRadius: 12,
+              offset: Offset(0, 4),
+            ),
           ],
         ),
         child: Row(
@@ -341,7 +354,9 @@ class _TableScreenState extends State<TableScreen> {
               ),
         borderRadius: BorderRadius.circular(180),
         border: Border.all(
-          color: widget.isFinalTable ? AppTheme.finalTableEdge : AppTheme.feltEdge,
+          color: widget.isFinalTable
+              ? AppTheme.finalTableEdge
+              : AppTheme.feltEdge,
           width: widget.isFinalTable ? 18 : 10,
         ),
         boxShadow: const [
@@ -371,7 +386,8 @@ class _TableScreenState extends State<TableScreen> {
                   chipUnit: snapshot.chipUnit,
                   denominations: snapshot.denominations,
                   onCoach: seats[i].isHuman ? onCoach : null,
-                  onTap: (showOpponentRanges &&
+                  onTap:
+                      (showOpponentRanges &&
                           !seats[i].isHuman &&
                           !seats[i].folded)
                       ? () => _showOpponentRange(context, seats[i])
@@ -381,6 +397,15 @@ class _TableScreenState extends State<TableScreen> {
                       ? null
                       : () => readForSeat!(seats[i].id),
                   onReadHover: readForSeat == null ? null : _onReadHover,
+                  // Between hands only — reseating a bot that's already
+                  // committed chips to the current pot would hand it a fresh
+                  // starting stack on top of what it's already wagered,
+                  // conjuring chips out of nowhere.
+                  onChangePlayer: (onChangePlayer != null &&
+                          !seats[i].isHuman &&
+                          snapshot.isHandOver)
+                      ? () => onChangePlayer!(seats[i].id)
+                      : null,
                 ),
               ),
             // One reads card, centered on the felt, for the hovered seat — no

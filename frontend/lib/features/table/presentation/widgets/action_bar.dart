@@ -47,9 +47,7 @@ class _ActionBarState extends State<ActionBar> {
     // Every displayed amount is chip-aligned: at a 100/100 level you can bet
     // 100, never 33. Snapping here (not just in the engine) means the number on
     // screen is the number that gets wagered.
-    final raiseTo = canRaise
-        ? ctx.snapRaise(_raiseTo ?? min).toDouble()
-        : min;
+    final raiseTo = canRaise ? ctx.snapRaise(_raiseTo ?? min).toDouble() : min;
     final isBet = ctx.currentBet == 0;
 
     return _bar(
@@ -221,11 +219,7 @@ class _ActionBarState extends State<ActionBar> {
 
   Widget _waiting() => _bar(
     children: const [
-      SizedBox(
-        width: 16,
-        height: 16,
-        child: CircularProgressIndicator(strokeWidth: 2),
-      ),
+      _WaitingChip(),
       SizedBox(width: 12),
       Text('Waiting for opponents…', style: TextStyle(fontSize: 15)),
     ],
@@ -331,6 +325,53 @@ class _ActionButton extends StatelessWidget {
           textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
         ),
         child: Text(label),
+      ),
+    );
+  }
+}
+
+/// A small poker chip that gently rocks and pulses in place of a generic
+/// spinner — shown in the action bar whenever it isn't the human's turn, so
+/// even the "nothing to do yet" state carries the table's own visual language.
+class _WaitingChip extends StatefulWidget {
+  const _WaitingChip();
+
+  @override
+  State<_WaitingChip> createState() => _WaitingChipState();
+}
+
+class _WaitingChipState extends State<_WaitingChip>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        final t = _controller.value;
+        return Transform.rotate(
+          angle: (t - 0.5) * 0.5,
+          child: Transform.scale(scale: 0.85 + t * 0.25, child: child),
+        );
+      },
+      child: Container(
+        width: 18,
+        height: 18,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: AppTheme.chip,
+          border: Border.all(color: Colors.white, width: 2),
+        ),
       ),
     );
   }
