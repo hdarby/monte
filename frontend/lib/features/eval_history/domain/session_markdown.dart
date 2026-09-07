@@ -352,8 +352,6 @@ class SessionMarkdown {
     return b.toString();
   }
 
-  static String _bbMoney(int v) => '${v >= 0 ? '+' : '-'}\$${v.abs()}';
-
   static void _row(
     StringBuffer b,
     String name,

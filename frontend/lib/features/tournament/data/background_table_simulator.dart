@@ -72,7 +72,7 @@ class TableSimulationJob {
 /// - Simulation paces itself based on the player's table speed
 /// - Supports pause/resume (especially for hand-for-hand)
 class BackgroundTableSimulator {
-  BackgroundTableSimulator({int poolSize = 4}) : _poolSize = poolSize;
+  BackgroundTableSimulator({this._poolSize = 4});
 
   final int _poolSize;
   final List<SendPort> _sendPorts = [];
@@ -100,7 +100,8 @@ class BackgroundTableSimulator {
 
   /// Moving average of hand durations at the player's table (milliseconds)
   double _averageHandDurationMs = 5000.0; // Start with 5 second estimate
-  static const _movingAverageFactor = 0.3; // Exponential moving average smoothing
+  static const _movingAverageFactor =
+      0.3; // Exponential moving average smoothing
 
   /// Initialize the isolate pool
   Future<void> initialize() async {
@@ -195,7 +196,9 @@ class BackgroundTableSimulator {
     List<TableSimulationJob> jobs,
   ) async {
     if (!_initialized) {
-      throw StateError('BackgroundTableSimulator not initialized. Call initialize() first.');
+      throw StateError(
+        'BackgroundTableSimulator not initialized. Call initialize() first.',
+      );
     }
 
     if (jobs.isEmpty) return [];
@@ -257,11 +260,7 @@ class BackgroundTableSimulator {
     final enginePlayers = <Player>[];
     for (final playerId in job.playerIds) {
       enginePlayers.add(
-        Player(
-          id: playerId,
-          name: playerId,
-          stack: job.stacks[playerId] ?? 0,
-        ),
+        Player(id: playerId, name: playerId, stack: job.stacks[playerId] ?? 0),
       );
     }
 
