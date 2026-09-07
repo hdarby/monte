@@ -23,16 +23,6 @@ class RecapDialog extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // TEMP diagnostic — see LevelRecap.debugBustRates.
-              if (recap.debugBustRates != null)
-                Text(
-                  recap.debugBustRates!,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: Colors.orangeAccent,
-                    fontStyle: FontStyle.italic,
-                  ),
-                ),
               Text(
                 recap.intro,
                 style: const TextStyle(fontSize: 13, height: 1.3),
@@ -58,9 +48,18 @@ class RecapDialog extends StatelessWidget {
                 _RecapHeading('LAST LEVEL\'S LEADER', color: gold),
                 _RecapLine(recap.leaderFollowUp!),
               ],
-              if (recap.bountyLine != null) ...[
-                _RecapHeading('BOUNTIES', color: gold),
-                _RecapLine(recap.bountyLine!),
+              if (recap.yourStory != null) ...[
+                _RecapHeading('YOUR LEVEL', color: gold),
+                Text(
+                  recap.yourStory!,
+                  style: TextStyle(
+                    fontSize: 13,
+                    height: 1.3,
+                    color: gold,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                for (final line in recap.yourPlayStyle) _RecapLine(line),
               ],
               if (recap.chipLeaders.isNotEmpty) ...[
                 _RecapHeading('CHIP LEADERS', color: gold),
@@ -71,10 +70,30 @@ class RecapDialog extends StatelessWidget {
                     bigBlind: recap.bigBlind,
                   ),
               ],
+              if (recap.bountyLine != null) ...[
+                _RecapHeading('BOUNTIES', color: gold),
+                _RecapLine(recap.bountyLine!),
+              ],
               if (recap.biggestPots.isNotEmpty) ...[
                 _RecapHeading('BIGGEST POT', color: gold),
                 for (final p in recap.biggestPots.take(2))
                   _RecapLine(p.describe(recap.bigBlind)),
+              ],
+              if (recap.risers.isNotEmpty) ...[
+                _RecapHeading('RUNNING DEEP', color: gold),
+                for (final r in recap.risers) _RecapLine(r),
+              ],
+              if (recap.eliminations.isNotEmpty) ...[
+                _RecapHeading('HIT THE RAIL', color: gold),
+                for (final e in recap.eliminations) _RecapLine(e),
+              ],
+              if (recap.fallers.isNotEmpty) ...[
+                _RecapHeading('IN TROUBLE', color: gold),
+                for (final f in recap.fallers) _RecapLine(f),
+              ],
+              if (recap.notables.isNotEmpty) ...[
+                _RecapHeading('STORYLINES', color: gold),
+                for (final n in recap.notables) _RecapLine('• $n'),
               ],
               if (recap.featureHand != null) ...[
                 _RecapHeading(
@@ -97,35 +116,6 @@ class RecapDialog extends StatelessWidget {
                   hand: recap.featureHand!,
                   bigBlind: recap.bigBlind,
                 ),
-              ],
-              if (recap.risers.isNotEmpty) ...[
-                _RecapHeading('RUNNING DEEP', color: gold),
-                for (final r in recap.risers) _RecapLine(r),
-              ],
-              if (recap.eliminations.isNotEmpty) ...[
-                _RecapHeading('HIT THE RAIL', color: gold),
-                for (final e in recap.eliminations) _RecapLine(e),
-              ],
-              if (recap.fallers.isNotEmpty) ...[
-                _RecapHeading('IN TROUBLE', color: gold),
-                for (final f in recap.fallers) _RecapLine(f),
-              ],
-              if (recap.notables.isNotEmpty) ...[
-                _RecapHeading('STORYLINES', color: gold),
-                for (final n in recap.notables) _RecapLine('• $n'),
-              ],
-              if (recap.yourStory != null) ...[
-                _RecapHeading('YOUR LEVEL', color: gold),
-                Text(
-                  recap.yourStory!,
-                  style: TextStyle(
-                    fontSize: 13,
-                    height: 1.3,
-                    color: gold,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                for (final line in recap.yourPlayStyle) _RecapLine(line),
               ],
             ],
           ),

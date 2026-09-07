@@ -5,8 +5,7 @@ import 'package:monte/features/tournament/domain/tournament_chronicle.dart';
 
 /// Renders a replayed hand the way a broadcast would call it: a roster of who
 /// saw the flop (position, cards, stack in big blinds), then each street —
-/// board, what happened, and Bart's read — followed by his closing take and a
-/// verdict on every player.
+/// board, what happened, and Bart's read — followed by his closing take.
 class FeatureHandView extends StatelessWidget {
   const FeatureHandView({
     super.key,
@@ -53,12 +52,6 @@ class FeatureHandView extends StatelessWidget {
           const SizedBox(height: 10),
           _SectionRule(gold: gold, label: "BART'S TAKE"),
           for (final line in hand.commentary) _Commentary(line, gold: gold),
-        ],
-
-        // A word on each player.
-        if (hand.verdicts.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          for (final v in hand.verdicts) _VerdictRow(verdict: v),
         ],
       ],
     );
@@ -285,44 +278,6 @@ class _SectionRule extends StatelessWidget {
       ),
     ),
   );
-}
-
-/// Bart's one-line verdict on a player, colour-coded by grade.
-class _VerdictRow extends StatelessWidget {
-  const _VerdictRow({required this.verdict});
-  final PlayerVerdict verdict;
-
-  static const _colors = {
-    VerdictGrade.excellent: Color(0xFF66BB6A),
-    VerdictGrade.good: Color(0xFF9CCC65),
-    VerdictGrade.standard: Colors.white70,
-    VerdictGrade.questionable: Color(0xFFFFB74D),
-    VerdictGrade.poor: Color(0xFFEF5350),
-    VerdictGrade.unlucky: Color(0xFF4FC3F7),
-  };
-
-  @override
-  Widget build(BuildContext context) {
-    final color = _colors[verdict.grade] ?? Colors.white70;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
-      child: RichText(
-        text: TextSpan(
-          style: const TextStyle(fontSize: 12, height: 1.3),
-          children: [
-            TextSpan(
-              text: '${verdict.name} (${verdict.position.label}) ',
-              style: TextStyle(color: color, fontWeight: FontWeight.bold),
-            ),
-            TextSpan(
-              text: verdict.line,
-              style: const TextStyle(color: Colors.white70),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 /// A small suit-coloured card chip, e.g. A♥, for inline use in recap text.

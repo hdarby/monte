@@ -274,11 +274,6 @@ class TournamentChronicle {
         _levelStartIds.where((id) => !currentChips.containsKey(id)).toList();
     final eliminatedCount = eliminated.length;
 
-    // TEMP diagnostic, requested to eyeball bust rates by skill tier before
-    // deciding whether to act on them — not a real feature, rip out once
-    // reviewed.
-    final debugBustRates = _debugBustRatesByKind(eliminated);
-
     // Ranking (for chip leaders + "top 100" personality watch).
     final ranked = currentChips.keys.toList()
       ..sort((a, b) => currentChips[b]!.compareTo(currentChips[a]!));
@@ -407,36 +402,7 @@ class TournamentChronicle {
       featureTable: featureTable,
       yourStory: yourStory,
       yourPlayStyle: yourPlayStyle,
-      debugBustRates: debugBustRates,
     );
-  }
-
-  /// TEMP: "N% of pros busted, M% of amateurs busted" this level, so bust
-  /// rates by skill tier can be eyeballed across a run. Remove this method,
-  /// the `debugBustRates` field on [LevelRecap], and its render line once
-  /// that's done — it is diagnostic, not a recap feature.
-  String? _debugBustRatesByKind(List<String> eliminated) {
-    final startByKind = <StandingKind, int>{};
-    for (final id in _levelStartIds) {
-      final k = _meta[id]?.kind;
-      if (k == null) continue;
-      startByKind[k] = (startByKind[k] ?? 0) + 1;
-    }
-    final bustedByKind = <StandingKind, int>{};
-    for (final id in eliminated) {
-      final k = _meta[id]?.kind;
-      if (k == null) continue;
-      bustedByKind[k] = (bustedByKind[k] ?? 0) + 1;
-    }
-    String pct(StandingKind k) {
-      final start = startByKind[k] ?? 0;
-      if (start == 0) return 'n/a';
-      final busted = bustedByKind[k] ?? 0;
-      return '${(100 * busted / start).toStringAsFixed(1)}% ($busted/$start)';
-    }
-
-    return 'DEBUG bust rate — pros: ${pct(StandingKind.pro)}, '
-        'amateurs: ${pct(StandingKind.amateur)}';
   }
 
   /// A big-stack "bully": the chip leader who's well above average and racking
