@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:monte/features/eval_history/presentation/eval_history_provider.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:monte/core/domain/ai/bot_spec.dart';
 import 'package:monte/core/domain/ai/decider_factory.dart';
 import 'package:monte/core/di/game_providers.dart';
-import 'package:monte/core/presentation/bot_lineup_editor.dart';
 import 'package:monte/core/theme/app_theme.dart';
 import 'package:monte/features/settings/domain/game_settings.dart';
 import 'package:monte/features/settings/domain/play_pace.dart';
@@ -33,6 +33,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   final _sbController = TextEditingController();
   final _bbController = TextEditingController();
   final _stackController = TextEditingController();
+  final _nameController = TextEditingController();
+  late String _initialName;
 
   @override
   void initState() {
@@ -40,6 +42,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final settings =
         ref.read(settingsControllerProvider).value ?? const GameSettings();
     _initial = settings;
+    _initialName = ref.read(playerNameProvider);
+    // The placeholder defaults read like a prompt, not a name — start the
+    // field blank rather than showing "Player"/"You" as if it were chosen.
+    _nameController.text = (_initialName == 'Player' || _initialName == 'You')
+        ? ''
+        : _initialName;
     _count = settings.playerCount;
     _showBigBlinds = settings.showBigBlinds;
     _showBehavior = settings.showBehavior;
@@ -63,7 +71,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final n = _botSeatCount;
     _specs = [
       for (var i = 0; i < n; i++)
-        i < _specs.length ? _specs[i] : const BotSpec(brain: BotType.personality),
+        i < _specs.length
+            ? _specs[i]
+            : const BotSpec(brain: BotType.personality),
     ];
   }
 
@@ -72,6 +82,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     _sbController.dispose();
     _bbController.dispose();
     _stackController.dispose();
+    _nameController.dispose();
     super.dispose();
   }
 
@@ -87,9 +98,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       appBar: AppBar(
         title: const Text('Table Settings'),
         backgroundColor: AppTheme.surface,
-        // No back arrow: changes are a draft until you Cancel or Apply, so we
-        // don't want a back gesture to silently discard a toggle.
+        // The default swipe-back gesture is still off — changes are a draft
+        // until Cancel/Apply, and a gesture shouldn't silently discard a
+        // toggle. The explicit button below is the same "discard and leave"
+        // as Cancel, just reachable the same way every other screen's back
+        // arrow is.
         automaticallyImplyLeading: false,
+        leading: IconButton(
+          tooltip: 'Back to home',
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
       ),
       body: Center(
         child: ConstrainedBox(
@@ -103,222 +122,243 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                const Text(
-                  'Number of players',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 6),
-                const Text(
-                  'You plus the rest of the seats filled by bots.',
-                  style: TextStyle(color: Colors.white60),
-                ),
-                const SizedBox(height: 24),
-                Center(
-                  child: Column(
-                    children: [
-                      Text(
-                        '$_count',
-                        style: const TextStyle(
-                          fontSize: 64,
+                      const Text(
+                        'Player',
+                        style: TextStyle(
+                          fontSize: 20,
                           fontWeight: FontWeight.bold,
-                          color: AppTheme.gold,
-                          height: 1,
                         ),
                       ),
-                      Text(
-                        _countLabel,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          color: Colors.white70,
+                      const SizedBox(height: 6),
+                      const Text(
+                        'What the bots and hand history call you. Changing it '
+                        'wipes accumulated opponent reads — they were built '
+                        'reading someone else.',
+                        style: TextStyle(color: Colors.white60),
+                      ),
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: _nameController,
+                        textCapitalization: TextCapitalization.words,
+                        decoration: const InputDecoration(
+                          labelText: 'Your name',
+                          hintText: 'e.g. Alex',
+                          isDense: true,
+                          border: OutlineInputBorder(),
                         ),
                       ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-                SliderTheme(
-                  data: SliderTheme.of(context).copyWith(
-                    activeTrackColor: AppTheme.gold,
-                    thumbColor: AppTheme.gold,
-                    overlayColor: AppTheme.gold.withValues(alpha: 0.2),
-                  ),
-                  child: Slider(
-                    value: _count.toDouble(),
-                    min: GameSettings.minPlayers.toDouble(),
-                    max: GameSettings.maxPlayers.toDouble(),
-                    divisions:
-                        GameSettings.maxPlayers - GameSettings.minPlayers,
-                    label: '$_count',
-                    onChanged: (v) => setState(() {
-                      _count = v.round();
-                      _resizeSpecs();
-                    }),
-                  ),
-                ),
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 8),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Heads-up (2)',
-                        style: TextStyle(color: Colors.white54, fontSize: 13),
+                      const SizedBox(height: 12),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        activeThumbColor: AppTheme.gold,
+                        value: _allBots,
+                        onChanged: (v) => setState(() {
+                          _allBots = v;
+                          _resizeSpecs();
+                        }),
+                        title: const Text('Play as bot'),
+                        subtitle: const Text(
+                          'Your seat keeps your name but is piloted by a bot — '
+                          'watch hands play out, or batch-simulate from Analytics.',
+                          style: TextStyle(color: Colors.white54),
+                        ),
                       ),
-                      Text(
-                        'Full table (10)',
-                        style: TextStyle(color: Colors.white54, fontSize: 13),
+                      const SizedBox(height: 28),
+                      const Divider(color: Colors.white12),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'Number of players',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 28),
-                const Divider(color: Colors.white12),
-                const SizedBox(height: 12),
-                const Text(
-                  'Stakes',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 6),
-                const Text(
-                  'Blinds and buy-in (each seat\'s starting stack). Changing '
-                  'these starts a new game at the new stake.',
-                  style: TextStyle(color: Colors.white60),
-                ),
-                const SizedBox(height: 16),
-                _stakeField('Small blind', _sbController),
-                _stakeField('Big blind', _bbController),
-                _stakeField('Buy-in (starting stack)', _stackController),
-                const SizedBox(height: 28),
-                const Divider(color: Colors.white12),
-                const SizedBox(height: 12),
-                const Text(
-                  'Display amounts',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 6),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  activeThumbColor: AppTheme.gold,
-                  value: _showBigBlinds,
-                  onChanged: (v) => setState(() => _showBigBlinds = v),
-                  title: Text(
-                    _showBigBlinds ? 'Big blinds (BB)' : 'Dollars (\$)',
-                  ),
-                  subtitle: Text(
-                    _showBigBlinds
-                        ? 'Stacks and bets shown as multiples of the big blind.'
-                        : 'Stacks and bets shown as actual chip amounts.',
-                    style: const TextStyle(color: Colors.white54),
-                  ),
-                ),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  activeThumbColor: AppTheme.gold,
-                  value: _showBehavior,
-                  onChanged: (v) => setState(() => _showBehavior = v),
-                  title: const Text('Show behavior model on seats'),
-                  subtitle: const Text(
-                    'Badge each bot with its brain and playing style '
-                    '(e.g. "Maniac · MCTS").',
-                    style: TextStyle(color: Colors.white54),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                const Divider(color: Colors.white12),
-                const SizedBox(height: 12),
-                const Text(
-                  'Pace of play',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 6),
-                const Text(
-                  'How long opponents take to act. Slower settings spend the '
-                  'extra time searching deeper — not idling.',
-                  style: TextStyle(color: Colors.white60),
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<PlayPace>(
-                  initialValue: _playPace,
-                  isExpanded: true,
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    border: OutlineInputBorder(),
-                  ),
-                  items: [
-                    for (final p in PlayPace.values)
-                      DropdownMenuItem(
-                        value: p,
-                        child: Text('${p.label}  ·  ${_paceHint(p)}'),
+                      const SizedBox(height: 6),
+                      const Text(
+                        'You plus the rest of the seats filled by bots.',
+                        style: TextStyle(color: Colors.white60),
                       ),
-                  ],
-                  onChanged: (v) =>
-                      setState(() => _playPace = v ?? _playPace),
-                ),
-                const SizedBox(height: 16),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  activeThumbColor: AppTheme.gold,
-                  value: _animateCardDeal,
-                  onChanged: (v) => setState(() => _animateCardDeal = v),
-                  title: const Text('Animate card deal'),
-                  subtitle: const Text(
-                    'Show cards being dealt with a ~2 second animation.',
-                    style: TextStyle(color: Colors.white54),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                const Divider(color: Colors.white12),
-                const SizedBox(height: 12),
-                const Text(
-                  'Bots',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 6),
-                const Text(
-                  'Set each opponent: a named Pro, or a custom Brain + '
-                  'Personality.',
-                  style: TextStyle(color: Colors.white60),
-                ),
-                const SizedBox(height: 16),
-                BotLineupEditor(
-                  seatNames: [
-                    for (var i = 0; i < _specs.length; i++) 'Bot ${i + 1}',
-                  ],
-                  specs: _specs,
-                  onChanged: (s) => setState(() => _specs = s),
-                ),
-                const SizedBox(height: 20),
-                const Divider(color: Colors.white12),
-                const SizedBox(height: 12),
-                const Text(
-                  'Evaluation',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 6),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  activeThumbColor: AppTheme.gold,
-                  value: _allBots,
-                  onChanged: (v) => setState(() {
-                    _allBots = v;
-                    _resizeSpecs();
-                  }),
-                  title: const Text('All bots (no human)'),
-                  subtitle: const Text(
-                    'Every seat is a bot. Watch hands play out, or batch-'
-                    'simulate from Analytics, then mine the recorded histories.',
-                    style: TextStyle(color: Colors.white54),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Divider(color: Colors.white12),
-                const SizedBox(height: 12),
-                const Text(
-                  'Opponent reads',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 6),
-                _clearReads(context),
+                      const SizedBox(height: 24),
+                      Center(
+                        child: Column(
+                          children: [
+                            Text(
+                              '$_count',
+                              style: const TextStyle(
+                                fontSize: 64,
+                                fontWeight: FontWeight.bold,
+                                color: AppTheme.gold,
+                                height: 1,
+                              ),
+                            ),
+                            Text(
+                              _countLabel,
+                              style: const TextStyle(
+                                fontSize: 16,
+                                color: Colors.white70,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      SliderTheme(
+                        data: SliderTheme.of(context).copyWith(
+                          activeTrackColor: AppTheme.gold,
+                          thumbColor: AppTheme.gold,
+                          overlayColor: AppTheme.gold.withValues(alpha: 0.2),
+                        ),
+                        child: Slider(
+                          value: _count.toDouble(),
+                          min: GameSettings.minPlayers.toDouble(),
+                          max: GameSettings.maxPlayers.toDouble(),
+                          divisions:
+                              GameSettings.maxPlayers - GameSettings.minPlayers,
+                          label: '$_count',
+                          onChanged: (v) => setState(() {
+                            _count = v.round();
+                            _resizeSpecs();
+                          }),
+                        ),
+                      ),
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 8),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Heads-up (2)',
+                              style: TextStyle(
+                                color: Colors.white54,
+                                fontSize: 13,
+                              ),
+                            ),
+                            Text(
+                              'Full table (10)',
+                              style: TextStyle(
+                                color: Colors.white54,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 28),
+                      const Divider(color: Colors.white12),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'Stakes',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      const Text(
+                        'Blinds and buy-in (each seat\'s starting stack). Changing '
+                        'these starts a new game at the new stake.',
+                        style: TextStyle(color: Colors.white60),
+                      ),
+                      const SizedBox(height: 16),
+                      _stakeField('Small blind', _sbController),
+                      _stakeField('Big blind', _bbController),
+                      _stakeField('Buy-in (starting stack)', _stackController),
+                      const SizedBox(height: 28),
+                      const Divider(color: Colors.white12),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'Display amounts',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        activeThumbColor: AppTheme.gold,
+                        value: _showBigBlinds,
+                        onChanged: (v) => setState(() => _showBigBlinds = v),
+                        title: Text(
+                          _showBigBlinds ? 'Big blinds (BB)' : 'Dollars (\$)',
+                        ),
+                        subtitle: Text(
+                          _showBigBlinds
+                              ? 'Stacks and bets shown as multiples of the big blind.'
+                              : 'Stacks and bets shown as actual chip amounts.',
+                          style: const TextStyle(color: Colors.white54),
+                        ),
+                      ),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        activeThumbColor: AppTheme.gold,
+                        value: _showBehavior,
+                        onChanged: (v) => setState(() => _showBehavior = v),
+                        title: const Text('Show behavior model on seats'),
+                        subtitle: const Text(
+                          'Badge each bot with its brain and playing style '
+                          '(e.g. "Maniac · MCTS").',
+                          style: TextStyle(color: Colors.white54),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      const Divider(color: Colors.white12),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'Pace of play',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      const Text(
+                        'How long opponents take to act. Slower settings spend the '
+                        'extra time searching deeper — not idling.',
+                        style: TextStyle(color: Colors.white60),
+                      ),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<PlayPace>(
+                        initialValue: _playPace,
+                        isExpanded: true,
+                        decoration: const InputDecoration(
+                          isDense: true,
+                          border: OutlineInputBorder(),
+                        ),
+                        items: [
+                          for (final p in PlayPace.values)
+                            DropdownMenuItem(
+                              value: p,
+                              child: Text('${p.label}  ·  ${_paceHint(p)}'),
+                            ),
+                        ],
+                        onChanged: (v) =>
+                            setState(() => _playPace = v ?? _playPace),
+                      ),
+                      const SizedBox(height: 16),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        activeThumbColor: AppTheme.gold,
+                        value: _animateCardDeal,
+                        onChanged: (v) => setState(() => _animateCardDeal = v),
+                        title: const Text('Animate card deal'),
+                        subtitle: const Text(
+                          'Show cards being dealt with a ~2 second animation.',
+                          style: TextStyle(color: Colors.white54),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      const Divider(color: Colors.white12),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'Opponent reads',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      _clearReads(context),
                     ],
                   ),
                 ),
@@ -330,7 +370,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       ),
     );
   }
-
 
   /// Clears every persisted opponent read.
   ///
@@ -419,9 +458,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (ok != true) return;
     await ref.read(tournamentResultStoreProvider).wipe();
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Career results cleared')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Career results cleared')));
   }
 
   Future<void> _confirmClearReads(BuildContext context) async {
@@ -454,9 +493,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (ok != true) return;
     await ref.read(opponentStatsServiceProvider)?.wipe();
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Opponent reads cleared')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Opponent reads cleared')));
   }
 
   /// A short descriptor of what a pace step means for the player.
@@ -483,6 +522,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       ),
     ),
   );
+
+  /// Persists a changed player name and wipes accumulated opponent reads —
+  /// they were built reading whoever played under the old name. A no-op if
+  /// the name field wasn't touched (or was left blank).
+  Future<void> _applyNameChange() async {
+    final name = _nameController.text.trim();
+    if (name.isEmpty || name == _initialName) return;
+    await ref.read(opponentStatsServiceProvider)?.wipe();
+    ref.read(playerNameProvider.notifier).set(name);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('player_name', name);
+  }
 
   /// A pinned footer so Cancel/Apply are always visible — the settings list can
   /// scroll behind it, but the actions never disappear below the fold.
@@ -511,7 +562,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               foregroundColor: Colors.black,
               padding: const EdgeInsets.symmetric(vertical: 16),
             ),
-            onPressed: () {
+            onPressed: () async {
               // Blank/invalid entries keep the loaded value; then coerce into a
               // coherent stake (bb ≥ 1, sb ≤ bb, buy-in ≥ bb).
               final stake = GameSettings.sanitizeStake(
@@ -519,7 +570,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 int.tryParse(_bbController.text) ?? _initial.bigBlind,
                 int.tryParse(_stackController.text) ?? _initial.startingStack,
               );
-              ref.read(settingsControllerProvider.notifier).save(
+              ref
+                  .read(settingsControllerProvider.notifier)
+                  .save(
                     GameSettings(
                       playerCount: _count,
                       showBigBlinds: _showBigBlinds,
@@ -537,7 +590,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       animateCardDeal: _animateCardDeal,
                     ),
                   );
-              Navigator.pop(context);
+              await _applyNameChange();
+              if (context.mounted) Navigator.pop(context);
             },
             child: const Text('Apply'),
           ),

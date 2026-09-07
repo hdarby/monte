@@ -17,7 +17,14 @@ class CareerScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Career')),
+      appBar: AppBar(
+        title: const Text('Career'),
+        leading: IconButton(
+          tooltip: 'Back',
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+      ),
       body: FutureBuilder<List<TournamentResult>>(
         future: ref.read(tournamentResultStoreProvider).loadAll(),
         builder: (context, snapshot) {

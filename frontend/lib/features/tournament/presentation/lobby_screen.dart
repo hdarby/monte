@@ -3,10 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:monte/core/di/game_providers.dart';
 import 'package:monte/core/presentation/widgets/career_icon.dart';
+import 'package:monte/core/presentation/widgets/table_loading_view.dart';
 import 'package:monte/core/domain/ai/player_profile.dart';
 import 'package:monte/core/util/format.dart';
 import 'package:monte/features/tournament/domain/field_builder.dart';
 import 'package:monte/features/tournament/domain/tournament_preset.dart';
+import 'package:monte/features/tournament/domain/tournament_structure.dart';
 import 'package:monte/features/tournament/presentation/career_screen.dart';
 import 'package:monte/features/tournament/presentation/tournament_screen.dart';
 import 'package:monte/features/tournament/presentation/widgets/lobby_widgets.dart';
@@ -95,7 +97,11 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen> {
     await prefs.setInt(_kLevelMinutes, _levelMinutes);
   }
 
-  static T _enumByName<T extends Enum>(List<T> values, String? name, T fallback) {
+  static T _enumByName<T extends Enum>(
+    List<T> values,
+    String? name,
+    T fallback,
+  ) {
     for (final v in values) {
       if (v.name == name) return v;
     }
@@ -106,6 +112,7 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen> {
     fieldSize: _fieldSize,
     selectedCount: _selected.length,
   );
+
   /// Seats per table: the explicit choice, or the field-derived default.
   ///
   /// Capped at the number of entrants, since a 10-max table cannot be dealt to
@@ -159,17 +166,21 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen> {
   Future<void> _start() async {
     await _offerWipe();
     if (!mounted) return;
+    // Building a large field (up to 8,000 entrants) is real synchronous work —
+    // push the animated loading screen first so it actually paints a frame
+    // before that work runs, instead of freezing on the lobby with no
+    // feedback.
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => TournamentScreen(
-          structure: _preset.structure.withLevelMinutes(_levelMinutes),
-          field: _builder.build(
+        builder: (_) => _TournamentBuildingScreen(
+          buildField: () => _builder.build(
             selectedIds: _selected,
             entrants: _entrants,
-            // The buy-in shapes the field: a $10k Main draws a tougher mix, and
-            // everyone in it plays tighter and harder than they would for $100.
+            // The buy-in shapes the field: a $10k Main draws a tougher mix,
+            // and everyone in it plays tighter and harder than for $100.
             buyIn: _buyIn,
           ),
+          structure: _preset.structure.withLevelMinutes(_levelMinutes),
           buyIn: _buyIn,
           tableSize: _tableSize,
           humanName: widget.humanName,
@@ -183,13 +194,18 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Tournament lobby'),
+        leading: IconButton(
+          tooltip: 'Back to home',
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
         actions: [
           IconButton(
             tooltip: 'Career',
             icon: const CareerIcon(),
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const CareerScreen()),
-            ),
+            onPressed: () => Navigator.of(
+              context,
+            ).push(MaterialPageRoute(builder: (_) => const CareerScreen())),
           ),
         ],
       ),
@@ -337,3 +353,58 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen> {
   }
 }
 
+/// Shows the animated loading view for one frame, then runs [buildField]
+/// (potentially expensive for a large field) and replaces itself with the
+/// dealt [TournamentScreen] — so the field build never freezes the lobby with
+/// no feedback.
+class _TournamentBuildingScreen extends StatefulWidget {
+  const _TournamentBuildingScreen({
+    required this.buildField,
+    required this.structure,
+    required this.buyIn,
+    required this.tableSize,
+    required this.humanName,
+  });
+
+  final List<PlayerProfile> Function() buildField;
+  final TournamentStructure structure;
+  final int buyIn;
+  final int tableSize;
+  final String humanName;
+
+  @override
+  State<_TournamentBuildingScreen> createState() =>
+      _TournamentBuildingScreenState();
+}
+
+class _TournamentBuildingScreenState extends State<_TournamentBuildingScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final field = widget.buildField();
+      if (!mounted) return;
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => TournamentScreen(
+            structure: widget.structure,
+            field: field,
+            buyIn: widget.buyIn,
+            tableSize: widget.tableSize,
+            humanName: widget.humanName,
+          ),
+        ),
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => const TableLoadingView(
+    messages: [
+      'Building the field…',
+      'Seating players…',
+      'Collecting buy-ins…',
+      'Shuffling the deck…',
+    ],
+  );
+}
