@@ -66,6 +66,7 @@ TableSnapshot projectTableSnapshot(
         kind: PlayerKind.of(seatProfiles[p.id], isHuman: p.isHuman),
         generated: seatProfiles[p.id]?.generated ?? false,
         isNewToTable: newToTablePlayers.contains(p.id),
+        profileId: seatProfiles[p.id]?.id,
       ),
     );
   }

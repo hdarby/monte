@@ -12,8 +12,9 @@ import 'package:monte/features/tournament/data/tournament_save_store.dart';
 
 /// The persistent per-opponent reads model, or null (no accumulation) in tests
 /// and headless runs. `main` overrides it with a file-backed, loaded service.
-final opponentStatsServiceProvider =
-    Provider<OpponentStatsService?>((ref) => null);
+final opponentStatsServiceProvider = Provider<OpponentStatsService?>(
+  (ref) => null,
+);
 
 /// Where tournaments are saved. Defaults to a no-op so tests and headless runs
 /// need no disk; `main` overrides it with a file-backed store.
@@ -30,8 +31,7 @@ class PlayerName extends Notifier<String> {
   void set(String name) => state = name;
 }
 
-final playerNameProvider =
-    NotifierProvider<PlayerName, String>(PlayerName.new);
+final playerNameProvider = NotifierProvider<PlayerName, String>(PlayerName.new);
 
 /// Composition root for the game.
 ///
@@ -45,6 +45,17 @@ final playerNameProvider =
 final gameRepositoryProvider = Provider<GameRepository>((ref) {
   // Select only the fields that define the game itself, so a display-unit
   // toggle (dollars vs BB) doesn't restart the game — but a stake change does.
+  //
+  // Deliberately NOT watching seatBots here. It used to be included (keyed by
+  // content) so a lineup change would rebuild the table — from back when
+  // Settings had its own Bot Lineup editor and "Apply" was the only way to
+  // change it. That editor is gone; today `seatBots` is written by
+  // `main.dart`'s `_persistSeatBots` purely so the *next* rebuild (a real one,
+  // triggered by one of the fields below, or an app relaunch) starts with
+  // whatever lineup was actually live — not so that saving it destroys the
+  // live table. Watching it here meant every reseat-one-bot action
+  // immediately rebuilt the whole table (fresh deal, every stack reset to
+  // starting), undoing the very thing it just did.
   final (
     playerCount,
     allBots,
@@ -53,7 +64,6 @@ final gameRepositoryProvider = Provider<GameRepository>((ref) {
     smallBlind,
     bigBlind,
     startingStack,
-    seatBotsKey,
     playPace,
   ) = ref.watch(
     settingsControllerProvider.select((s) {
@@ -66,23 +76,20 @@ final gameRepositoryProvider = Provider<GameRepository>((ref) {
         v.smallBlind,
         v.bigBlind,
         v.startingStack,
-        // Content-based key so a per-seat lineup change triggers a rebuild.
-        v.seatBots.map((b) => b.encode()).join(';'),
         v.playPace,
       );
     }),
   );
   // Each bot seat plays its own configured spec (brain + style, or a named pro),
-  // padded with a usable Personality default when shorter than the table.
-  final lineup = seatBotsKey.isEmpty
-      ? const <BotSpec>[]
-      : [for (final s in seatBotsKey.split(';')) BotSpec.decode(s)];
+  // padded with a usable Personality default when shorter than the table. Read
+  // (not watched) so the persisted lineup seeds this rebuild without itself
+  // triggering one.
+  final lineup =
+      ref.read(settingsControllerProvider).value?.seatBots ?? const [];
   final botCount = allBots ? playerCount : playerCount - 1;
   final seatBots = [
     for (var i = 0; i < botCount; i++)
-      i < lineup.length
-          ? lineup[i]
-          : const BotSpec(brain: BotType.personality),
+      i < lineup.length ? lineup[i] : const BotSpec(brain: BotType.personality),
   ];
   final repo = LocalGameRepository(
     statsService: ref.watch(opponentStatsServiceProvider),
@@ -99,8 +106,9 @@ final gameRepositoryProvider = Provider<GameRepository>((ref) {
       startingStack: startingStack,
       // All-bots evaluation keeps its own fast cadence; interactive play uses
       // the player's chosen pace (slower = deeper MCTS search, not idling).
-      botThinkTime:
-          allBots ? const Duration(milliseconds: 250) : playPace.budget,
+      botThinkTime: allBots
+          ? const Duration(milliseconds: 250)
+          : playPace.budget,
       // Log each interactive hand to the run console (prefixed for grepping) so
       // played hands can be read back for diagnosis.
       onHandRecorded: (hand) {

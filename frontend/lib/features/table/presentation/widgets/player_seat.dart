@@ -29,6 +29,7 @@ class PlayerSeat extends StatefulWidget {
     this.read,
     this.onReadHover,
     this.animateCardDeal = true,
+    this.onChangePlayer,
   });
 
   final SeatView seat;
@@ -37,6 +38,10 @@ class PlayerSeat extends StatefulWidget {
 
   /// Tapped to open the in-hand coach. Only shown on the human seat.
   final VoidCallback? onCoach;
+
+  /// Tapped to open the "change player" picker for this seat. Only offered on
+  /// bot seats — the human can't reassign their own seat.
+  final VoidCallback? onChangePlayer;
 
   /// Tapped anywhere on the seat box (used for the opponent range read). Null
   /// disables the tap (e.g. the human's own seat, or in tournaments).
@@ -76,6 +81,7 @@ class _PlayerSeatState extends State<PlayerSeat> {
   SeatView get seat => widget.seat;
   bool get compact => widget.compact;
   VoidCallback? get onCoach => widget.onCoach;
+  VoidCallback? get onChangePlayer => widget.onChangePlayer;
   VoidCallback? get onTap => widget.onTap;
   ButtonPlacement get buttonPlacement => widget.buttonPlacement;
   bool get showBehavior => widget.showBehavior;
@@ -113,7 +119,8 @@ class _PlayerSeatState extends State<PlayerSeat> {
 
     final showButton = seat.isButton && buttonPlacement != ButtonPlacement.none;
     final showCoach = seat.isHuman && onCoach != null;
-    final content = (!showButton && !showCoach)
+    final showChangePlayer = !seat.isHuman && onChangePlayer != null;
+    final content = (!showButton && !showCoach && !showChangePlayer)
         ? box
         // Overlays straddle the box edges (clipped none) so they read as attached.
         : Stack(
@@ -122,6 +129,7 @@ class _PlayerSeatState extends State<PlayerSeat> {
               box,
               if (showButton) _button(),
               if (showCoach) _coachIcon(),
+              if (showChangePlayer) _changePlayerIcon(),
             ],
           );
     return _withReadHover(content);
@@ -133,7 +141,8 @@ class _PlayerSeatState extends State<PlayerSeat> {
   Widget _withReadHover(Widget content) {
     if (widget.read == null || widget.onReadHover == null) return content;
     return MouseRegion(
-      onEnter: (_) => widget.onReadHover!(widget.read!(), seat.name, seat.isHuman),
+      onEnter: (_) =>
+          widget.onReadHover!(widget.read!(), seat.name, seat.isHuman),
       onExit: (_) => widget.onReadHover!(null, seat.name, seat.isHuman),
       child: content,
     );
@@ -153,6 +162,26 @@ class _PlayerSeatState extends State<PlayerSeat> {
         child: const Padding(
           padding: EdgeInsets.all(4),
           child: Icon(Icons.school, size: 16, color: Colors.black),
+        ),
+      ),
+    ),
+  );
+
+  /// A small "swap" button pinned to the seat's top-left corner, opening the
+  /// pro/amateur picker to reseat this bot with a different named player.
+  Widget _changePlayerIcon() => Positioned(
+    top: -10,
+    left: -10,
+    child: Material(
+      color: AppTheme.surface,
+      shape: const CircleBorder(),
+      elevation: 2,
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onChangePlayer,
+        child: const Padding(
+          padding: EdgeInsets.all(4),
+          child: Icon(Icons.swap_horiz, size: 16, color: AppTheme.gold),
         ),
       ),
     ),
@@ -230,17 +259,19 @@ class _PlayerSeatState extends State<PlayerSeat> {
         color: seat.isNewToTable
             ? Colors.grey.withValues(alpha: 0.15)
             : (highlight
-                ? AppTheme.gold.withValues(alpha: 0.18)
-                : (tint ?? Colors.black26)),
+                  ? AppTheme.gold.withValues(alpha: 0.18)
+                  : (tint ?? Colors.black26)),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: seat.isNewToTable
               ? Colors.grey.withValues(alpha: 0.4)
               : (highlight
-                  ? AppTheme.gold
-                  : (kind == null
-                        ? Colors.white10
-                        : kind.accent.withValues(alpha: seat.generated ? 0.3 : 0.5))),
+                    ? AppTheme.gold
+                    : (kind == null
+                          ? Colors.white10
+                          : kind.accent.withValues(
+                              alpha: seat.generated ? 0.3 : 0.5,
+                            ))),
           width: highlight ? 2 : 1,
         ),
       ),
@@ -352,7 +383,8 @@ class _PlayerSeatState extends State<PlayerSeat> {
       // screen at once. Signed, because a chop can be a net loss.
       final gain = seat.wonNet;
       return (
-        text: '${seat.wonIsChop ? 'CHOP' : 'WON'} '
+        text:
+            '${seat.wonIsChop ? 'CHOP' : 'WON'} '
             '${gain < 0 ? '−' : '+'}${money.format(gain.abs())}',
         bg: AppTheme.gold,
         fg: Colors.black,
@@ -405,34 +437,35 @@ class _PlayerSeatState extends State<PlayerSeat> {
   /// Revealed hole cards with the bet/won amount as a translucent strip across
   /// their lower third, so the hand stays readable underneath at showdown (the
   /// top corners — where the rank and suit sit — stay clear).
-  Widget _revealedCardsWithMoney(({String text, Color bg, Color fg}) ms) => Stack(
-    alignment: Alignment.bottomCenter,
-    children: [
-      _cards(),
-      Container(
-        width: _contentWidth,
-        alignment: Alignment.center,
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-        decoration: BoxDecoration(
-          color: ms.bg.withValues(alpha: 0.8),
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: FittedBox(
-          fit: BoxFit.scaleDown,
-          child: Text(
-            ms.text,
-            maxLines: 1,
-            softWrap: false,
-            style: TextStyle(
-              color: ms.fg,
-              fontSize: compact ? 11 : 13,
-              fontWeight: FontWeight.bold,
+  Widget _revealedCardsWithMoney(({String text, Color bg, Color fg}) ms) =>
+      Stack(
+        alignment: Alignment.bottomCenter,
+        children: [
+          _cards(),
+          Container(
+            width: _contentWidth,
+            alignment: Alignment.center,
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+            decoration: BoxDecoration(
+              color: ms.bg.withValues(alpha: 0.8),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                ms.text,
+                maxLines: 1,
+                softWrap: false,
+                style: TextStyle(
+                  color: ms.fg,
+                  fontSize: compact ? 11 : 13,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
           ),
-        ),
-      ),
-    ],
-  );
+        ],
+      );
 
   Widget _cards() {
     final faceDown = seat.holeCards == null;

@@ -3,9 +3,12 @@ import 'dart:math' as math;
 
 import 'package:monte/core/domain/ai/bot_spec.dart';
 import 'package:monte/core/domain/ai/decider_factory.dart';
+import 'package:monte/core/domain/ai/home_game_profiles.dart';
 import 'package:monte/core/domain/ai/ismcts.dart';
 import 'package:monte/core/domain/ai/opponent_model.dart';
 import 'package:monte/core/domain/ai/opponent_reads.dart';
+import 'package:monte/core/domain/ai/player_profile.dart';
+import 'package:monte/core/domain/ai/player_profiles.dart';
 import 'package:monte/core/domain/ai/player_read.dart';
 import 'package:monte/core/domain/ai/player_stats.dart';
 import 'package:monte/core/domain/ai/personality.dart';
@@ -140,6 +143,12 @@ class LocalGameRepository extends GameRepository {
   bool get isAllBots => config.allBots;
 
   @override
+  List<BotSpec> get currentSeatBots => [
+    for (final p in _game?.players ?? const <Player>[])
+      if (!p.isHuman) _specByPlayer[p.id] ?? const BotSpec(),
+  ];
+
+  @override
   List<HandHistory> get history => List.unmodifiable(_history);
 
   @override
@@ -166,6 +175,12 @@ class LocalGameRepository extends GameRepository {
     // persona fall back to the generic name pool.
     final specs = [for (var i = 0; i < config.botCount; i++) _specForSeat(i)];
     final botNames = _seatNamesFor(specs);
+    // Toggling to all-bots turns the player's own seat into a bot rather than
+    // removing it — it keeps the player's name so the table still reads as
+    // "you", just piloted by the personality/brain assigned to that seat.
+    if (config.allBots && botNames.isNotEmpty) {
+      botNames[0] = config.humanName;
+    }
     final players = <Player>[
       if (!config.allBots)
         Player(
@@ -175,11 +190,7 @@ class LocalGameRepository extends GameRepository {
           isHuman: true,
         ),
       for (var i = 0; i < config.botCount; i++)
-        Player(
-          id: 'bot_$i',
-          name: botNames[i],
-          stack: config.startingStack,
-        ),
+        Player(id: 'bot_$i', name: botNames[i], stack: config.startingStack),
     ];
     _game = PokerGame(
       players: players,
@@ -201,12 +212,45 @@ class LocalGameRepository extends GameRepository {
     }
   }
 
+  /// The lineup to resolve seats against. Identical to [_seatBots] unless
+  /// [TableConfig.allBots] has turned the player's own seat into a bot: seat 0
+  /// then stands in for the player, playing their own named personality if
+  /// [TableConfig.humanName] matches one in the catalog, or a generic decent
+  /// amateur if it doesn't (nobody in the pro/home-game roster is a beginner
+  /// or a maniac by default). Computed fresh rather than baked into
+  /// [_seatBots] so toggling [TableConfig.allBots] off restores the original
+  /// lineup untouched.
+  List<BotSpec> _effectiveSeatBots() {
+    if (!config.allBots || _seatBots.isEmpty) return _seatBots;
+    // Replaces seat 0, rather than prepending — the list is already sized to
+    // `config.botCount` (== playerCount in all-bots mode), so prepending
+    // would push every other seat's configured spec down by one and drop the
+    // last seat's entirely.
+    final profile = _profileForName(config.humanName) ?? justinVidovitch;
+    return [BotSpec(profile: profile), ..._seatBots.skip(1)];
+  }
+
+  /// A catalog profile (pro or home-game) whose name matches [name], ignoring
+  /// case and surrounding whitespace — so playing yourself as a bot plays like
+  /// *you*, when you happen to share a name with someone in the catalog.
+  static PlayerProfile? _profileForName(String name) {
+    final needle = name.trim().toLowerCase();
+    if (needle.isEmpty) return null;
+    for (final p in [...builtInProfiles, ...homeGameProfiles]) {
+      if (p.name.trim().toLowerCase() == needle) return p;
+    }
+    return null;
+  }
+
   /// The resolved behavior model for the bot at [botIndex] (seat order, human
   /// excluded): its configured lineup spec, or the table default for seats past
   /// the lineup. Mirrors [_deciderForBot]'s resolution, used to name seats.
-  BotSpec _specForSeat(int botIndex) => botIndex < _seatBots.length
-      ? _seatBots[botIndex]
-      : BotSpec(brain: config.botType, style: config.defaultStyle);
+  BotSpec _specForSeat(int botIndex) {
+    final seatBots = _effectiveSeatBots();
+    return botIndex < seatBots.length
+        ? seatBots[botIndex]
+        : BotSpec(brain: config.botType, style: config.defaultStyle);
+  }
 
   /// Names each bot seat after its persona (pro or distinctive archetype),
   /// numbering repeats ("Maniac 1", "Maniac 2"). Seats with no persona fall back
@@ -239,13 +283,16 @@ class LocalGameRepository extends GameRepository {
       _specByPlayer[playerId] = BotSpec(brain: config.botType);
       return override;
     }
-    if (botIndex < _seatBots.length) {
-      final spec = _seatBots[botIndex];
+    final seatBots = _effectiveSeatBots();
+    if (botIndex < seatBots.length) {
+      final spec = seatBots[botIndex];
       _specByPlayer[playerId] = spec;
       final base = spec.profile;
       // Apply the offline auto-tuner's tuned baseline (amateurs only; pros are
       // never in the override map, so they keep their cached calibration).
-      final pro = base == null ? null : (config.overrideProfile?.call(base) ?? base);
+      final pro = base == null
+          ? null
+          : (config.overrideProfile?.call(base) ?? base);
       if (pro != null) {
         // Amateurs get the degraded AmateurPolicy; pros get calibrated preflop
         // frequencies + the range-aware postflop brain. Shared with tournaments
@@ -273,8 +320,11 @@ class LocalGameRepository extends GameRepository {
         // are still the generic `BotStrategy`, not the real seated
         // personalities, and 500 iterations may simply be too few for some
         // matchups.
-        return deciderForProfile(pro,
-            reads: _readsAs(playerId), mental: _mental);
+        return deciderForProfile(
+          pro,
+          reads: _readsAs(playerId),
+          mental: _mental,
+        );
       }
       return buildDecider(
         spec.brain,
@@ -408,6 +458,32 @@ class LocalGameRepository extends GameRepository {
         mctsIterations: config.mctsIterations,
       );
     }
+    _publish();
+  }
+
+  @override
+  void replacePlayerWithProfile(String id, PlayerProfile profile) {
+    final p = _playerById(id);
+    // Between hands only: resetting the stack mid-hand would hand this seat
+    // a fresh buy-in on top of whatever it's already put in the current pot,
+    // conjuring chips out of nowhere. The UI already gates the icon on
+    // `isHandOver`; this is the belt-and-braces backstop.
+    if (p == null || p.isHuman || (_game != null && !_game!.isHandOver)) {
+      return;
+    }
+    p.stack = config.startingStack;
+    final spec = BotSpec(profile: profile);
+    _specByPlayer[id] = spec;
+    p.name = _freshBotName(profile.name);
+    // Same resolution path used at initial seating (`_deciderForBot`), so a
+    // profile seated mid-session plays identically to one dealt in from the
+    // start — calibrated preflop + range-aware postflop for a pro, the
+    // degraded `AmateurPolicy` for a recreational.
+    _deciders[id] = deciderForProfile(
+      config.overrideProfile?.call(profile) ?? profile,
+      reads: _readsAs(id),
+      mental: _mental,
+    );
     _publish();
   }
 
@@ -666,12 +742,13 @@ class LocalGameRepository extends GameRepository {
       case ActionType.bet:
       case ActionType.raise:
       case ActionType.allIn:
-        final sized =
-            options.where((o) => o.toAmount != null).toList();
+        final sized = options.where((o) => o.toAmount != null).toList();
         if (sized.isEmpty) return null;
-        sized.sort((a, b) => (a.toAmount! - action.amount)
-            .abs()
-            .compareTo((b.toAmount! - action.amount).abs()));
+        sized.sort(
+          (a, b) => (a.toAmount! - action.amount).abs().compareTo(
+            (b.toAmount! - action.amount).abs(),
+          ),
+        );
         return sized.first;
     }
   }
@@ -705,7 +782,9 @@ class LocalGameRepository extends GameRepository {
   EvalHand _buildEvalHand(PokerGame game) {
     final n = game.players.length;
     final board = game.board.map((c) => c.code).toList();
-    final startingStackOf = {for (final r in _recPlayers) r.id: r.startingStack};
+    final startingStackOf = {
+      for (final r in _recPlayers) r.id: r.startingStack,
+    };
 
     final players = <EvalHandPlayer>[];
     for (final live in game.players) {
@@ -724,7 +803,8 @@ class LocalGameRepository extends GameRepository {
         EvalHandPlayer(
           id: live.id,
           name: live.name,
-          modelId: profile?.id ??
+          modelId:
+              profile?.id ??
               (spec != null
                   ? '${spec.brain.name}:${spec.style.name}'
                   : 'human'),
@@ -778,18 +858,18 @@ class LocalGameRepository extends GameRepository {
   }
 
   TableSnapshot _buildSnapshot() => projectTableSnapshot(
-        _game!,
-        // In all-bots mode there's no human to protect, so reveal everyone.
-        revealAll: config.allBots,
-        behaviorLabels: {
-          for (final e in _specByPlayer.entries) e.key: e.value.label,
-        },
-        // Colour each seat pro vs recreational, matching the tournament table.
-        seatProfiles: {
-          for (final e in _specByPlayer.entries)
-            if (e.value.profile != null) e.key: e.value.profile!,
-        },
-        // Flag busted seats only in human-vs-bots play (all-bots tops up).
-        flagBusted: !config.allBots,
-      );
+    _game!,
+    // In all-bots mode there's no human to protect, so reveal everyone.
+    revealAll: config.allBots,
+    behaviorLabels: {
+      for (final e in _specByPlayer.entries) e.key: e.value.label,
+    },
+    // Colour each seat pro vs recreational, matching the tournament table.
+    seatProfiles: {
+      for (final e in _specByPlayer.entries)
+        if (e.value.profile != null) e.key: e.value.profile!,
+    },
+    // Flag busted seats only in human-vs-bots play (all-bots tops up).
+    flagBusted: !config.allBots,
+  );
 }

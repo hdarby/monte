@@ -34,6 +34,7 @@ class SeatView {
     this.kind,
     this.generated = false,
     this.isNewToTable = false,
+    this.profileId,
   });
 
   final String id;
@@ -103,6 +104,11 @@ class SeatView {
   /// consolidation) and has not yet played a hand at this table. Used to
   /// highlight the seat for their first hand.
   final bool isNewToTable;
+
+  /// The id of the named [PlayerProfile] currently seated here (pro or
+  /// home-game catalog), or null for the human seat or an unprofiled bot.
+  /// Lets the UI exclude already-seated players when offering a replacement.
+  final String? profileId;
 }
 
 /// What the human can legally do right now. Null unless it's their turn.

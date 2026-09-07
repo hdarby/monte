@@ -1,5 +1,6 @@
 import 'package:monte/core/domain/ai/bot_spec.dart';
 import 'package:monte/core/domain/ai/personality.dart';
+import 'package:monte/core/domain/ai/player_profile.dart';
 import 'package:monte/core/domain/engine/actions.dart';
 import 'package:monte/core/domain/hand_history.dart';
 import 'package:monte/features/table/domain/game_repository.dart';
@@ -29,6 +30,9 @@ class RemoteGameRepository extends GameRepository {
   bool get isAllBots => false;
 
   @override
+  List<BotSpec> get currentSeatBots => const [];
+
+  @override
   List<HandHistory> get history => const [];
 
   @override
@@ -43,7 +47,8 @@ class RemoteGameRepository extends GameRepository {
   );
 
   @override
-  Future<void> newGameWithBots(List<BotSpec> bots) => throw UnimplementedError();
+  Future<void> newGameWithBots(List<BotSpec> bots) =>
+      throw UnimplementedError();
 
   @override
   Future<void> startNextHand() => throw UnimplementedError();
@@ -65,6 +70,10 @@ class RemoteGameRepository extends GameRepository {
 
   @override
   void replacePlayer(String id, PersonalityArchetype archetype) =>
+      throw UnimplementedError();
+
+  @override
+  void replacePlayerWithProfile(String id, PlayerProfile profile) =>
       throw UnimplementedError();
 
   @override

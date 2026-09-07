@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:monte/core/di/game_providers.dart';
 import 'package:monte/core/domain/ai/bot_spec.dart';
 import 'package:monte/core/domain/ai/personality.dart';
+import 'package:monte/core/domain/ai/player_profile.dart';
 import 'package:monte/core/domain/engine/actions.dart';
 import 'package:monte/features/table/domain/game_repository.dart';
 import 'package:monte/features/table/domain/table_snapshot.dart';
@@ -42,6 +43,7 @@ class TableViewModel extends Notifier<TableSnapshot> {
   }
 
   bool get isAllBots => _repo.isAllBots;
+  List<BotSpec> get currentSeatBots => _repo.currentSeatBots;
 
   Future<void> submitAction(GameAction action) => _repo.submitAction(action);
   Future<void> newGame() => _repo.newGame();
@@ -59,6 +61,10 @@ class TableViewModel extends Notifier<TableSnapshot> {
   /// Replaces a busted bot with a fresh opponent of [archetype].
   void replacePlayer(String id, PersonalityArchetype archetype) =>
       _repo.replacePlayer(id, archetype);
+
+  /// Reseats a bot with a specific named [profile] (pro or home-game).
+  void replacePlayerWithProfile(String id, PlayerProfile profile) =>
+      _repo.replacePlayerWithProfile(id, profile);
 }
 
 final tableViewModelProvider = NotifierProvider<TableViewModel, TableSnapshot>(

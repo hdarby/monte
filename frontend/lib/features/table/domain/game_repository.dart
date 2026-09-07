@@ -1,5 +1,6 @@
 import 'package:monte/core/domain/ai/bot_spec.dart';
 import 'package:monte/core/domain/ai/personality.dart';
+import 'package:monte/core/domain/ai/player_profile.dart';
 import 'package:monte/core/domain/engine/actions.dart';
 import 'package:monte/core/domain/hand_history.dart';
 import 'package:monte/features/table/domain/table_snapshot.dart';
@@ -21,6 +22,11 @@ abstract class GameRepository {
 
   /// Whether this is an all-bots evaluation game (no human seat).
   bool get isAllBots;
+
+  /// The behavior model currently seated at each bot seat, in seat order
+  /// (human excluded) — reflects any live changes (a fresh lineup from New
+  /// Game, or an individual reseat), not just what the table started with.
+  List<BotSpec> get currentSeatBots;
 
   /// Recorded hand histories accumulated this session, oldest first.
   List<HandHistory> get history;
@@ -57,6 +63,12 @@ abstract class GameRepository {
   /// Replaces a busted bot seat with a fresh opponent of the given
   /// [archetype], full bankroll and a new name.
   void replacePlayer(String id, PersonalityArchetype archetype);
+
+  /// Reseats a bot with a specific named [profile] (pro or home-game), full
+  /// bankroll and a new name. Unlike [replacePlayer] (archetype-only, for a
+  /// busted seat) this lets the player swap in any catalog personality at any
+  /// non-human seat, whether or not it's busted.
+  void replacePlayerWithProfile(String id, PlayerProfile profile);
 
   /// Clears the recorded hand history.
   void clearHistory();
