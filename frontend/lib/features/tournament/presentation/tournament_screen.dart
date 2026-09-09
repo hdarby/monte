@@ -279,50 +279,50 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
     // A break is a banner rather than a dialog: it is orienting information, not
     // something to stop the game and read. A dialog every time the field
     // consolidates would be intolerable in a large event.
+    //
+    // Arrivals (someone else joining your table) no longer get a banner at
+    // all — the arriving seat turns white for its first hand instead (see
+    // `SeatView.isNewToTable`/`PlayerSeat`), which says the same thing without
+    // interrupting play. Only your *own* table breaking (you move somewhere
+    // else) is still worth a banner, since that's something you need to
+    // orient to, not just notice.
     final brk = state.tour?.tableBreak;
     if (brk != null && !identical(brk, _lastTableBreak)) {
       _lastTableBreak = brk;
-      final you = brk.moves.where((m) => m.isHuman).firstOrNull;
-      final others = brk.moves.where((m) => !m.isHuman).toList();
-      final String title;
-      final String? detail;
-      if (!brk.broke) {
-        title = brk.arrivals.length == 1
-            ? '${brk.arrivals.first} has joined your table.'
-            : '${brk.arrivals.length} players have joined your table.';
-        detail = brk.arrivals.length == 1 ? null : brk.arrivals.join(', ');
-      } else {
-        title =
+      if (brk.broke) {
+        final you = brk.moves.where((m) => m.isHuman).firstOrNull;
+        final others = brk.moves.where((m) => !m.isHuman).toList();
+        final title =
             'Your table has broken. '
             '${you == null ? '' : 'You move to table ${you.toTable}, '
                       'seat ${you.toSeat + 1}.'}';
-        detail = others.isEmpty
+        final detail = others.isEmpty
             ? null
             : others
                       .take(9)
                       .map((m) => '${m.name} → T${m.toTable}')
                       .join('   ') +
                   (others.length > 9 ? '   +${others.length - 9} more' : '');
-      }
-      ScaffoldMessenger.of(context)
-        ..clearSnackBars()
-        ..showSnackBar(
-          SnackBar(
-            duration: const Duration(seconds: 6),
-            content: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-                if (detail != null)
-                  Text(detail, style: const TextStyle(fontSize: 11)),
-              ],
+        ScaffoldMessenger.of(context)
+          ..clearSnackBars()
+          ..showSnackBar(
+            SnackBar(
+              duration: const Duration(seconds: 6),
+              content: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  if (detail != null)
+                    Text(detail, style: const TextStyle(fontSize: 11)),
+                ],
+              ),
             ),
-          ),
-        );
+          );
+      }
     }
     final recap = state.tour?.recap;
     if (recap != null && !identical(recap, _lastRecap)) {

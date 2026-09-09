@@ -257,14 +257,14 @@ class _PlayerSeatState extends State<PlayerSeat> {
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
         color: seat.isNewToTable
-            ? Colors.grey.withValues(alpha: 0.15)
+            ? Colors.white.withValues(alpha: 0.22)
             : (highlight
                   ? AppTheme.gold.withValues(alpha: 0.18)
                   : (tint ?? Colors.black26)),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: seat.isNewToTable
-              ? Colors.grey.withValues(alpha: 0.4)
+              ? Colors.white.withValues(alpha: 0.6)
               : (highlight
                     ? AppTheme.gold
                     : (kind == null
