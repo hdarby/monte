@@ -14,12 +14,16 @@ class ActionBar extends StatefulWidget {
     required this.onAction,
     required this.onNewGame,
     required this.onNextHand,
+    this.onShowPreviousHand,
   });
 
   final TableSnapshot snapshot;
   final ValueChanged<GameAction> onAction;
   final VoidCallback onNewGame;
   final VoidCallback onNextHand;
+
+  /// Shows the previous hand's replay. Null hides the button.
+  final VoidCallback? onShowPreviousHand;
 
   @override
   State<ActionBar> createState() => _ActionBarState();
@@ -32,11 +36,27 @@ class _ActionBarState extends State<ActionBar> {
   Widget build(BuildContext context) {
     final snap = widget.snapshot;
 
-    if (snap.isHandOver) return _endOfHandControls();
-    final ctx = snap.actionContext;
-    if (ctx == null) return _waiting();
+    final content = snap.isHandOver
+        ? _endOfHandControls()
+        : (snap.actionContext == null
+              ? _waiting()
+              : _actions(snap.actionContext!));
 
-    return _actions(ctx);
+    if (widget.onShowPreviousHand == null) return content;
+    // Pinned to the top-left corner, overlapping the bar's own edge rather
+    // than sitting in the button row — deliberately away from Fold/Check/
+    // Raise so it can never be mis-tapped mid-decision.
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        content,
+        Positioned(
+          left: 12,
+          top: -14,
+          child: _PreviousHandButton(onTap: widget.onShowPreviousHand!),
+        ),
+      ],
+    );
   }
 
   Widget _actions(ActionContext ctx) {
@@ -327,6 +347,30 @@ class _ActionButton extends StatelessWidget {
           textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
         ),
         child: Text(label),
+      ),
+    );
+  }
+}
+
+/// A small "show me the last hand" affordance, tucked into the action bar's
+/// own top-left corner so it reads as a permanent utility rather than one of
+/// the in-hand decision buttons.
+class _PreviousHandButton extends StatelessWidget {
+  const _PreviousHandButton({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: const Color(0xFF2A332C),
+      shape: const CircleBorder(side: BorderSide(color: Colors.white24)),
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onTap,
+        child: const Padding(
+          padding: EdgeInsets.all(6),
+          child: Icon(Icons.history, size: 16, color: Colors.white70),
+        ),
       ),
     );
   }

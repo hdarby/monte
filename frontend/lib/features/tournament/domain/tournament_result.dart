@@ -178,3 +178,47 @@ class CareerRow {
     return rows;
   }
 }
+
+/// A personality's (or the human's) hardware haul: WSOP Main Event
+/// bracelets and WSOP Circuit rings, so the standings can flag past
+/// large-field champions as "special" without the standings panel itself
+/// needing to know anything about tournament structures.
+@immutable
+class WinDecorations {
+  const WinDecorations({this.bracelets = 0, this.rings = 0});
+  final int bracelets;
+  final int rings;
+
+  bool get isEmpty => bracelets == 0 && rings == 0;
+
+  /// One row per champion, keyed the same way [CareerRow.from] groups a
+  /// career — `'human'` for the human, else the profile id — so a
+  /// generated field-filler's incidental win (the same template reused at
+  /// hundreds of tables) never counts. Only [TournamentStructure]'s two
+  /// real named events carry hardware; every other preset (turbo/standard/
+  /// deep) is a home-game-style structure with no ring or bracelet on the
+  /// line.
+  static Map<String, WinDecorations> fromResults(
+    List<TournamentResult> results,
+  ) {
+    final bracelets = <String, int>{};
+    final rings = <String, int>{};
+    for (final r in results) {
+      final isBracelet = r.structureName == 'WSOP Main Event';
+      final isRing = r.structureName == 'WSOP Circuit';
+      if (!isBracelet && !isRing) continue;
+      for (final f in r.finishes) {
+        if (f.generated || f.place != 1) continue;
+        final key = f.isHuman ? 'human' : f.profileId;
+        if (key.isEmpty) continue;
+        if (isBracelet) bracelets[key] = (bracelets[key] ?? 0) + 1;
+        if (isRing) rings[key] = (rings[key] ?? 0) + 1;
+      }
+    }
+    final keys = {...bracelets.keys, ...rings.keys};
+    return {
+      for (final k in keys)
+        k: WinDecorations(bracelets: bracelets[k] ?? 0, rings: rings[k] ?? 0),
+    };
+  }
+}

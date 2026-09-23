@@ -26,6 +26,7 @@ import 'package:monte/core/domain/engine/hand_evaluator.dart';
 import 'package:monte/core/domain/engine/player.dart';
 import 'package:monte/features/tournament/data/chronicle_recorder.dart';
 import 'package:monte/features/tournament/domain/tournament_chronicle.dart';
+import 'package:monte/features/tournament/domain/chronicle/hand_narrator.dart';
 import 'package:monte/features/table/data/table_snapshot_projection.dart';
 import 'package:monte/features/table/domain/table_snapshot.dart';
 import 'package:monte/features/tournament/domain/chip_set.dart';
@@ -331,6 +332,67 @@ class TournamentController {
 
   /// Writes the finished event to the career store, once.
   bool _careerRecorded = false;
+
+  /// Past-event bracelets/rings by identity (`'human'` or profile id), for
+  /// the standings' decorations. [TournamentResultStore.loadAll] is async
+  /// and file-backed, but `standings()` is called synchronously on every
+  /// redraw — loaded once in the background at [startLive] and cached here,
+  /// rather than making every standings read touch disk. Empty (not null)
+  /// until that load resolves, so a standings read before then just shows
+  /// no decorations yet instead of throwing.
+  Map<String, WinDecorations> _winDecorations = const {};
+
+  /// The human's most recently completed hand, cached so a "show me the
+  /// previous hand" button can display it on demand — see [_endHumanHand].
+  /// Null before the human's first hand, or when the hand didn't qualify
+  /// for a full replay (see [ReplayBuilder.build]), in which case
+  /// [lastHandFallbackSummary] carries a plain-text description instead.
+  HandReplay? _lastHandReplay;
+  int _lastHandBigBlind = 0;
+  String? _lastHandFallbackSummary;
+
+  /// The last hand's replay, narrated on demand — narration enumerates outs
+  /// street by street and is only worth paying for if the player actually
+  /// asks to see it, unlike the level recap's one feature hand (chosen and
+  /// narrated regardless of whether anyone opens it).
+  HandReplay? get lastHandReplay =>
+      _lastHandReplay == null ? null : HandNarrator.narrate(_lastHandReplay!);
+  int get lastHandBigBlind => _lastHandBigBlind;
+
+  /// Set instead of [lastHandReplay] when the hand ended before two players
+  /// saw a flop (a walk, or folded around) — too little happened for a full
+  /// street-by-street replay, but the player still asked to see it.
+  String? get lastHandFallbackSummary => _lastHandFallbackSummary;
+
+  /// A one-line description for a hand [ReplayBuilder.build] declined to
+  /// replay — nobody contested the flop, so there's no board/street of
+  /// interest, only who took the blinds/antes and from whom.
+  String _summarizeUnreplayedHand(PokerGame game, List<ActionRecord> actions) {
+    final winner = game.results.where((r) => r.netWon > 0).firstOrNull;
+    if (winner == null) return 'No pot was won this hand.';
+    final folded = actions
+        .where((a) => a.type == ActionType.fold)
+        .map((a) => game.players.where((p) => p.id == a.playerId).firstOrNull?.name)
+        .whereType<String>()
+        .toList();
+    final pot = winner.netWon;
+    return folded.isEmpty
+        ? '${winner.player.name} wins the blinds and antes uncontested.'
+        : '${folded.join(', ')} fold${folded.length == 1 ? 's' : ''} — '
+              '${winner.player.name} takes the pot ($pot chips) uncontested.';
+  }
+
+  /// Loads [_winDecorations] from [resultStore] once, then republishes so
+  /// the standings panel picks up any hardware already on record. Fire-
+  /// and-forget: nothing in the live flow needs to wait on it.
+  void _loadWinDecorations() {
+    final store = resultStore;
+    if (store == null) return;
+    store.loadAll().then((results) {
+      _winDecorations = WinDecorations.fromResults(results);
+      _publishTournament();
+    });
+  }
 
   /// Everyone who has shared a table with the human at any point. A field-wide
   /// record is more complete; this is what makes it meaningful, since these are

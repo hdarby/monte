@@ -168,6 +168,11 @@ class BackgroundTableSimulator {
     _awayPaused = false;
   }
 
+  /// Whether the pause is (at least partly) the user's own manual toggle,
+  /// as opposed to purely automatic (recap/hand-for-hand/render/away) — the
+  /// one flag an explicit player action should be allowed to clear.
+  bool get isManuallyPaused => _userPaused;
+
   /// Check if simulation is paused (user, hand-for-hand, recap dialog, a
   /// standings read in progress, or the player appears to have stepped away)
   bool get isPaused =>

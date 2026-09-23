@@ -11,6 +11,7 @@ extension TournamentControllerLive on TournamentController {
   }) async {
     _botDelay = botDelay;
     _nextHandDelay = nextHandDelay;
+    _loadWinDecorations();
     await _bgSimulator.initialize();
     _levelStartedAt = DateTime.now();
     _recorder.beginLevel(
@@ -30,6 +31,15 @@ extension TournamentControllerLive on TournamentController {
   /// Applies the human's chosen action and continues the hand.
   Future<void> submitLiveAction(GameAction action) async {
     if (!_awaitingHuman || _liveGame == null) return;
+    // Acting is an unambiguous "I'm back" signal — resume the user's own
+    // manual pause rather than leave every other table frozen behind them
+    // until they separately remember to hit the pause button again. Only
+    // the manual flag: a recap/hand-for-hand/away pause is structural and
+    // isn't dismissed just because a bet went in.
+    if (_bgSimulator.isManuallyPaused) {
+      resumeSimulation();
+      _publishTournament();
+    }
     // Every other `applyAction` caller (`_runLiveBots`, `_playHand`,
     // `BackgroundTableSimulator`) re-checks `currentPlayer` directly right
     // before calling it; this one trusted `_awaitingHuman` alone, with
@@ -383,7 +393,7 @@ extension TournamentControllerLive on TournamentController {
         busts[p.id] = _preChipsLive[p.id] ?? 0;
       }
     }
-    _recorder.recordHand(
+    final replay = _recorder.recordHand(
       game,
       pre: _preChipsLive,
       tableId: humanTableId,
@@ -395,6 +405,15 @@ extension TournamentControllerLive on TournamentController {
       firedTriggers: _triggerLog.drain(),
       notables: _notablesAt(game),
     );
+    // Cached for the "previous hand" button — the player asked to see the
+    // hand they just missed, not necessarily the level's single narrated
+    // feature hand (which may be a different table, or never gets picked at
+    // all). Un-narrated: narration enumerates outs street by street and is
+    // only worth paying for if the button is actually pressed.
+    _lastHandReplay = replay;
+    _lastHandBigBlind = game.bigBlind;
+    _lastHandFallbackSummary =
+        replay == null ? _summarizeUnreplayedHand(game, liveActions) : null;
     // Drop busts from the human's table seats locally (avoids the O(tables) scan).
     if (busts.isNotEmpty) {
       final ht = state.tables.firstWhere(

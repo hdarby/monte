@@ -19,6 +19,7 @@ import 'package:monte/core/di/game_providers.dart';
 import 'package:monte/features/tournament/data/tournament_controller.dart';
 import 'package:monte/features/tournament/domain/tournament_save.dart';
 import 'package:monte/features/tournament/presentation/widgets/saved_tournaments_dialog.dart';
+import 'package:monte/features/tournament/presentation/widgets/previous_hand_dialog.dart';
 import 'package:monte/features/tournament/presentation/widgets/standings_panel.dart';
 import 'package:monte/features/tournament/presentation/widgets/tournament_hud.dart';
 import 'package:monte/features/eval_history/domain/eval_hand.dart';
@@ -456,6 +457,8 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
                   ),
                   readForSeat: controller.readForSeat,
                   onAction: controller.submitLiveAction,
+                  onShowPreviousHand: () =>
+                      _showPreviousHand(context, controller.controller),
                   // Hands auto-advance in a tournament, and the table's own
                   // chrome is replaced by the tournament HUD above.
                   onNewGame: _noop,
@@ -560,4 +563,16 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
   }
 
   static void _noop() {}
+
+  void _showPreviousHand(BuildContext context, TournamentController controller) {
+    showDialog<void>(
+      context: context,
+      builder: (_) => PreviousHandDialog(
+        hand: controller.lastHandReplay,
+        bigBlind: controller.lastHandBigBlind,
+        fallbackSummary: controller.lastHandFallbackSummary,
+      ),
+    );
+  }
+
 }

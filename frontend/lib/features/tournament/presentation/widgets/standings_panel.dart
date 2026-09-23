@@ -331,7 +331,12 @@ class _StandingsRowState extends State<_StandingsRow>
           Expanded(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: nameSlot,
+              child: Row(
+                children: [
+                  Expanded(child: nameSlot),
+                  ChampionBadges(bracelets: r.bracelets, rings: r.rings),
+                ],
+              ),
             ),
           ),
           ConstrainedBox(
@@ -368,5 +373,63 @@ class _StandingsRowState extends State<_StandingsRow>
     if (kind == StandingKind.human) return humanColor;
     final base = kind == StandingKind.amateur ? recColor : proColor;
     return generated ? base.withValues(alpha: 0.55) : base;
+  }
+}
+
+/// Past large-field championships, flagged small enough that a stacked
+/// handful still fit next to a standings name: a gold star per WSOP Main
+/// Event bracelet, a gold ring per WSOP Circuit ring. Capped per type so a
+/// prolific champion's row doesn't blow out the panel's fixed width — past
+/// the cap it folds into a single "×N" instead of repeating the icon.
+class ChampionBadges extends StatelessWidget {
+  const ChampionBadges({super.key, this.bracelets = 0, this.rings = 0});
+  final int bracelets;
+  final int rings;
+
+  static const _maxIcons = 3;
+  static const _gold = Color(0xFFFFC857);
+
+  @override
+  Widget build(BuildContext context) {
+    if (bracelets == 0 && rings == 0) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(left: 4),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ..._icons(Icons.star, bracelets, 'bracelet'),
+          ..._icons(Icons.trip_origin, rings, 'ring'),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _icons(IconData icon, int count, String label) {
+    if (count == 0) return const [];
+    final shown = count > _maxIcons ? 1 : count;
+    return [
+      for (var i = 0; i < shown; i++)
+        Padding(
+          padding: const EdgeInsets.only(left: 1),
+          child: Tooltip(
+            message: count > _maxIcons
+                ? '$count ${label}s'
+                : '$label${count > 1 ? 's' : ''}',
+            child: Icon(icon, size: 9, color: _gold),
+          ),
+        ),
+      if (count > _maxIcons)
+        Padding(
+          padding: const EdgeInsets.only(left: 1),
+          child: Text(
+            '×$count',
+            style: const TextStyle(
+              fontSize: 8,
+              fontWeight: FontWeight.w800,
+              color: _gold,
+            ),
+          ),
+        ),
+    ];
   }
 }

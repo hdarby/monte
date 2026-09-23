@@ -57,8 +57,12 @@ class ChronicleRecorder {
   }
 
   /// Builds a [HandDigest] from a completed [game] (pre-hand chips in [pre]) and
-  /// folds it into the chronicle.
-  void recordHand(
+  /// folds it into the chronicle. Returns the un-narrated replay it built (or
+  /// null when the hand didn't qualify — see [ReplayBuilder.build]), so a
+  /// caller wanting to show *this specific* hand later (independent of
+  /// whether the chronicle ever picks it as the level's one feature hand)
+  /// doesn't have to rebuild it from scratch.
+  HandReplay? recordHand(
     PokerGame game, {
     required Map<String, int> pre,
     required int tableId,
@@ -70,7 +74,7 @@ class ChronicleRecorder {
     List<ActionRecord> actions = const [],
     List<FiredTrigger> firedTriggers = const [],
   }) {
-    if (!enabled) return;
+    if (!enabled) return null;
 
     final showdown = _showdown(game, pre);
     final winners = [
@@ -110,6 +114,7 @@ class ChronicleRecorder {
       ),
       avgStack: averageStack,
     );
+    return replay;
   }
 
   /// The human's preflop play this hand, for "how you played this level" —

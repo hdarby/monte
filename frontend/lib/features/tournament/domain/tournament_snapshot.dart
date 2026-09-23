@@ -59,10 +59,19 @@ class StandingRow {
     required this.prize,
     this.kind = StandingKind.pro,
     this.generated = false,
+    this.bracelets = 0,
+    this.rings = 0,
   });
   final int place;
   final String name;
   final bool isHuman;
+
+  /// Past WSOP Main Event wins (place 1, non-generated) — shown as a small
+  /// gold star per bracelet.
+  final int bracelets;
+
+  /// Past WSOP Circuit wins — shown as a small gold ring per title.
+  final int rings;
 
   /// The player's brain class (human / pro / amateur), for the standings tint.
   final StandingKind kind;

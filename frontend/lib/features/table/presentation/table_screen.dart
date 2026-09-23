@@ -46,6 +46,7 @@ class TableScreen extends StatefulWidget {
     this.onChangePlayer,
     this.onBack,
     this.showHeader = true,
+    this.onShowPreviousHand,
   });
 
   final TableSnapshot snapshot;
@@ -106,6 +107,13 @@ class TableScreen extends StatefulWidget {
   /// field you chose at the lobby).
   final ValueChanged<String>? onChangePlayer;
 
+  /// Shows a replay of the hand the player just missed — the action bar
+  /// resets for the next hand quickly enough that a player who looked away
+  /// or was too slow to read the result can otherwise never see what
+  /// happened. Null hides the button (no such record kept, e.g. a cash game
+  /// without the tournament's per-hand chronicle).
+  final VoidCallback? onShowPreviousHand;
+
   /// Navigates back to the landing screen. Null hides the back arrow (e.g.
   /// inside a tournament, which has its own exit path).
   final VoidCallback? onBack;
@@ -139,6 +147,7 @@ class _TableScreenState extends State<TableScreen> {
   ValueChanged<GameAction> get onAction => widget.onAction;
   VoidCallback get onNewGame => widget.onNewGame;
   VoidCallback get onNextHand => widget.onNextHand;
+  VoidCallback? get onShowPreviousHand => widget.onShowPreviousHand;
   VoidCallback get onOpenSettings => widget.onOpenSettings;
   VoidCallback get onOpenHistory => widget.onOpenHistory;
 
@@ -177,6 +186,7 @@ class _TableScreenState extends State<TableScreen> {
               onAction: onAction,
               onNewGame: onNewGame,
               onNextHand: onNextHand,
+              onShowPreviousHand: onShowPreviousHand,
             ),
           ],
         ),

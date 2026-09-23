@@ -285,6 +285,8 @@ extension TournamentControllerStandings on TournamentController {
       for (var i = start; i <= end; i++) {
         final p = itemAt(i);
         final isBusted = bustedAt(i);
+        final deco = _winDecorations[_identityOf(p.id) ??
+            (p.isHuman ? 'human' : p.id)];
         rows.add(
           StandingRow(
             place: placeAt(i),
@@ -295,6 +297,8 @@ extension TournamentControllerStandings on TournamentController {
             prize: isBusted ? p.prizeWon : 0,
             kind: _kindOf(p),
             generated: _generatedOf(p),
+            bracelets: deco?.bracelets ?? 0,
+            rings: deco?.rings ?? 0,
           ),
         );
       }
