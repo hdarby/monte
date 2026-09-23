@@ -8,16 +8,17 @@ import 'package:monte/core/theme/app_theme.dart';
 import 'package:monte/features/table/presentation/table_screen.dart';
 import 'package:monte/features/tournament/domain/tournament_structure.dart';
 import 'package:monte/features/tournament/presentation/tournament_view_model.dart';
+import 'package:monte/features/tournament/presentation/widgets/chrome_button.dart';
 import 'package:monte/features/tournament/presentation/widgets/color_up_dialog.dart';
 import 'package:monte/features/tournament/presentation/widgets/recap_dialog.dart';
+import 'package:monte/features/tournament/presentation/widgets/resolving_field_banner.dart';
 import 'package:monte/features/tournament/presentation/widgets/results_overlay.dart';
+import 'package:monte/features/tournament/presentation/widgets/shuffle_up_banner.dart';
 import 'package:monte/features/tournament/presentation/widgets/sim_pause_button.dart';
 import 'package:monte/core/di/game_providers.dart';
 import 'package:monte/features/tournament/data/tournament_controller.dart';
 import 'package:monte/features/tournament/domain/tournament_save.dart';
 import 'package:monte/features/tournament/presentation/widgets/saved_tournaments_dialog.dart';
-import 'package:monte/core/util/format.dart';
-import 'package:monte/features/tournament/domain/tournament_snapshot.dart';
 import 'package:monte/features/tournament/presentation/widgets/standings_panel.dart';
 import 'package:monte/features/tournament/presentation/widgets/tournament_hud.dart';
 import 'package:monte/features/eval_history/domain/eval_hand.dart';
@@ -352,7 +353,7 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
     // animation. `tour` keeps arriving fresh every round, so the remaining
     // count genuinely counts down rather than sitting on one stale number.
     if (tour.resolvingRestOfField) {
-      return _ResolvingFieldBanner(
+      return ResolvingFieldBanner(
         playersLeft: tour.playersLeft,
         topChipLeaders: tour.topChipLeaders,
       );
@@ -384,7 +385,7 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
                   // since the cash table's own back arrow is hidden here
                   // (`showHeader: false`) and the HUD has none of its own.
                   if (!tour.finished)
-                    _chromeButton(
+                    ChromeButton(
                       icon: Icons.arrow_back,
                       tooltip: 'Leave tournament',
                       onPressed: _confirmLeave,
@@ -402,13 +403,13 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
                       Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          _chromeButton(
+                          ChromeButton(
                             icon: Icons.save_outlined,
                             tooltip: 'Save this tournament',
                             onPressed: tour.finished ? null : _save,
                           ),
                           const SizedBox(width: 4),
-                          _chromeButton(
+                          ChromeButton(
                             icon: Icons.folder_open_outlined,
                             tooltip: 'Saved tournaments',
                             onPressed: _openSaves,
@@ -546,7 +547,7 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
                 // out of view until dismissed.
                 if (widget.restore == null && !_started)
                   Positioned.fill(
-                    child: _ShuffleUpBanner(
+                    child: ShuffleUpBanner(
                       onOk: () => setState(() => _started = true),
                     ),
                   ),
@@ -559,283 +560,4 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
   }
 
   static void _noop() {}
-
-  /// A small, unobtrusive round button for the tournament's own chrome.
-  Widget _chromeButton({
-    required IconData icon,
-    required String tooltip,
-    required VoidCallback? onPressed,
-  }) => Tooltip(
-    message: tooltip,
-    child: Material(
-      color: Colors.black54,
-      shape: const CircleBorder(),
-      child: InkWell(
-        customBorder: const CircleBorder(),
-        onTap: onPressed,
-        child: Padding(
-          padding: const EdgeInsets.all(8),
-          child: Icon(
-            icon,
-            size: 18,
-            color: onPressed == null ? Colors.white24 : Colors.white70,
-          ),
-        ),
-      ),
-    ),
-  );
-}
-
-/// Shown in place of the table while the rest of the field plays out headless
-/// after the human busts (see `TournamentController._finishHeadless`).
-/// Deliberately no spinner — [playersLeft] itself is the progress indicator,
-/// counting down as real hands actually eliminate people, so a wheel that
-/// spins without reference to that would be a worse signal, not a better one.
-/// A slow, non-spinning pulse on the count is the only motion, so the screen
-/// still reads as "working" between the (possibly seconds-apart) updates a
-/// huge field's rounds arrive at.
-class _ResolvingFieldBanner extends StatefulWidget {
-  const _ResolvingFieldBanner({
-    required this.playersLeft,
-    required this.topChipLeaders,
-  });
-
-  final int playersLeft;
-  final List<StandingRow> topChipLeaders;
-
-  @override
-  State<_ResolvingFieldBanner> createState() => _ResolvingFieldBannerState();
-}
-
-class _ResolvingFieldBannerState extends State<_ResolvingFieldBanner>
-    with SingleTickerProviderStateMixin {
-  late final _pulse = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 1400),
-  )..repeat(reverse: true);
-
-  @override
-  void dispose() {
-    _pulse.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppTheme.surface,
-      body: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'Running out the event…',
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                color: Colors.white,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 16),
-            FadeTransition(
-              opacity: _pulse.drive(Tween(begin: 0.55, end: 1.0)),
-              child: Text(
-                '${widget.playersLeft} players remain',
-                style: const TextStyle(
-                  color: AppTheme.gold,
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              "You've busted — the rest of the field is being played out.",
-              style: TextStyle(color: Colors.white54, fontSize: 13),
-            ),
-            if (widget.topChipLeaders.isNotEmpty) ...[
-              const SizedBox(height: 28),
-              _ChipLeaderboard(rows: widget.topChipLeaders),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// The current top 10 by chip count, shown on [_ResolvingFieldBanner] — the
-/// human's own name never appears here (they're the reason this screen is up
-/// at all), but it's still worth seeing who's actually left with the chips
-/// while the rest of the field plays out.
-class _ChipLeaderboard extends StatelessWidget {
-  const _ChipLeaderboard({required this.rows});
-
-  final List<StandingRow> rows;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 320,
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      decoration: BoxDecoration(
-        color: Colors.black26,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white12),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Text(
-            'CHIP LEADERS',
-            style: TextStyle(
-              color: Colors.white38,
-              fontSize: 11,
-              letterSpacing: 1.4,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 10),
-          for (final r in rows)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 3),
-              child: Row(
-                children: [
-                  SizedBox(
-                    width: 22,
-                    child: Text(
-                      '${r.place}',
-                      style: const TextStyle(
-                        color: Colors.white54,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: Text(
-                      r.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: Colors.white, fontSize: 13),
-                    ),
-                  ),
-                  Text(
-                    formatChips(r.chips),
-                    style: const TextStyle(
-                      color: AppTheme.gold,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-/// A full-screen scrim shown once at the start of a fresh tournament, over
-/// an already-dealt-and-waiting first hand, until the player taps through.
-/// The banner zooms in with an elastic overshoot, reveals letter by letter,
-/// and cycles color continuously while it's on screen.
-class _ShuffleUpBanner extends StatefulWidget {
-  const _ShuffleUpBanner({required this.onOk});
-  final VoidCallback onOk;
-
-  @override
-  State<_ShuffleUpBanner> createState() => _ShuffleUpBannerState();
-}
-
-class _ShuffleUpBannerState extends State<_ShuffleUpBanner>
-    with TickerProviderStateMixin {
-  static const _text = 'Shuffle Up and Deal!';
-
-  // One-shot: drives the zoom-in pop and the letter-by-letter reveal.
-  late final AnimationController _entrance = AnimationController(
-    duration: const Duration(milliseconds: 1400),
-    vsync: this,
-  )..forward();
-
-  // Repeats for as long as the banner is on screen: continuous color cycling.
-  late final AnimationController _colorCycle = AnimationController(
-    duration: const Duration(seconds: 3),
-    vsync: this,
-  )..repeat();
-
-  late final Animation<double> _zoom = CurvedAnimation(
-    parent: _entrance,
-    curve: const Interval(0.0, 0.55, curve: Curves.elasticOut),
-  );
-
-  @override
-  void dispose() {
-    _entrance.dispose();
-    _colorCycle.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => Material(
-    color: Colors.black.withValues(alpha: 0.88),
-    child: Center(
-      child: AnimatedBuilder(
-        animation: _zoom,
-        builder: (context, child) =>
-            Transform.scale(scale: 0.4 + 0.6 * _zoom.value, child: child),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            AnimatedBuilder(
-              animation: Listenable.merge([_entrance, _colorCycle]),
-              builder: (context, _) => Wrap(
-                alignment: WrapAlignment.center,
-                children: [for (var i = 0; i < _text.length; i++) _letter(i)],
-              ),
-            ),
-            const SizedBox(height: 28),
-            FilledButton(
-              onPressed: widget.onOk,
-              child: const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 24, vertical: 4),
-                child: Text('OK'),
-              ),
-            ),
-          ],
-        ),
-      ),
-    ),
-  );
-
-  /// One character of the banner: revealed (fade + slight rise) on its own
-  /// slice of [_entrance]'s timeline, staggered across all the letters, and
-  /// colored from a continuously-rotating hue (offset per letter so the
-  /// cycling reads as a wave across the text, not one flat flashing color).
-  Widget _letter(int i) {
-    final n = _text.length;
-    final start = 0.15 + 0.75 * (i / n);
-    final end = (start + 0.25).clamp(0.0, 1.0);
-    final reveal = Interval(
-      start,
-      end,
-      curve: Curves.easeOut,
-    ).transform(_entrance.value);
-    final hue = (_colorCycle.value * 360 + i * 14) % 360;
-    final color = HSVColor.fromAHSV(1.0, hue, 0.55, 1.0).toColor();
-    final ch = _text[i];
-    return Opacity(
-      opacity: reveal,
-      child: Transform.translate(
-        offset: Offset(0, (1 - reveal) * 10),
-        child: Text(
-          ch == ' ' ? ' ' : ch,
-          style: TextStyle(
-            color: color,
-            fontSize: 28,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-      ),
-    );
-  }
 }

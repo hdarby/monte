@@ -208,12 +208,16 @@ class ProfilePolicy implements DecisionPolicy {
     // why a pot fraction degenerated into the constant 2.75 BB. Size it from
     // stack depth and dead money instead. See [OpenSizing].
     GameAction openRaise() {
-      // Positional_Warfare already only sharpens a per-seat shift that exists
-      // for everyone (see the comment above `posProf`) — firing whenever it's
-      // authored and an open actually goes out is the same "spot already
-      // gated" reasoning `Limp_Reraise`/`Float_And_Take_Away` use elsewhere in
-      // this file, not a claim that this exact hand only opened because of it.
-      if (posProf > 0) _triggers?.onFired('Positional_Warfare', p.id, game.round);
+      // Positional_Warfare's narration ("button-and-cutoff-only raise",
+      // "fewer players left to get through") is specifically about a late
+      // position widening the range — firing on every open regardless of
+      // seat (as this used to) claimed that read on early-position opens
+      // too, where the positional shift is mean-zero-negative (it *tightens*
+      // the range, if anything). Gate on the same lateness the flavor text
+      // describes: at most two players left to act behind this seat.
+      if (posProf > 0 && OpenRanges.playersBehind(game, p) <= 2) {
+        _triggers?.onFired('Positional_Warfare', p.id, game.round);
+      }
       return GameAction.raise(OpenSizing.raiseToFor(
           game, p,
           sizeScale: sizeScale, random: _random));

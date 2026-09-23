@@ -154,8 +154,10 @@ class _ActionBarState extends State<ActionBar> {
         _ActionButton(
           label: 'Fold',
           color: const Color(0xFFC0392B),
-          enabled: true,
-          onPressed: () => _send(const GameAction.fold()),
+          // Folding when checking is free gives away nothing but information
+          // — there's no bet to get away from, so it's never the right move.
+          enabled: !ctx.canCheck,
+          onPressed: ctx.canCheck ? null : () => _send(const GameAction.fold()),
         ),
         const SizedBox(width: 12),
         _ActionButton(
