@@ -23,7 +23,7 @@ void main() {
       justinVidovitch,
       frankDouglas,
       patWray,
-      philDiPinto,
+      philDepinto,
       dougNiemec,
     ];
 

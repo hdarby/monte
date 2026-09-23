@@ -55,8 +55,7 @@ class FieldBuilder {
       max(fieldSize, selectedCount + 1);
 
   /// Seats per table: short-handed only when the whole field fits on one table.
-  int tableSizeFor(int entrants) =>
-      entrants <= 9 ? entrants.clamp(2, 9) : 9;
+  int tableSizeFor(int entrants) => entrants <= 9 ? entrants.clamp(2, 9) : 9;
 
   /// Builds the `entrants - 1` bot profiles, shuffled so the selected players
   /// aren't clustered at one table.
@@ -74,7 +73,7 @@ class FieldBuilder {
   /// Draws a recreational, weighted toward the competent ones.
   ///
   /// A uniform draw made Dave Coyle at 75% VPIP exactly as likely as Phil
-  /// DiPinto at 24%, which is fine for one home game and absurd as the sampling
+  /// Depinto at 24%, which is fine for one home game and absurd as the sampling
   /// model for a thousand-runner field: every table got a maniac and pots ran
   /// five and six ways. Real large fields are mostly unremarkable players with
   /// a wild one occasionally.
@@ -159,17 +158,24 @@ class FieldBuilder {
       final beyondMain = buyIn > 10000
           ? (log(buyIn / 10000) / log(10)).clamp(0.0, 1.0)
           : 0.0;
-      final proShare = (0.25 + 0.23 * pressure + 0.40 * beyondMain)
-          .clamp(0.20, 0.85);
-      final preferred = ((i * proShare) % 1.0) >= proShare ? recreational : pros;
+      final proShare = (0.25 + 0.23 * pressure + 0.40 * beyondMain).clamp(
+        0.20,
+        0.85,
+      );
+      final preferred = ((i * proShare) % 1.0) >= proShare
+          ? recreational
+          : pros;
       i++;
       final src = preferred.isNotEmpty
           ? preferred
           : (recreational.isNotEmpty ? recreational : pros);
       if (src.isEmpty) break;
-      final profile = (identical(src, recreational) ? _drawRec(src) : src[_rng.nextInt(src.length)])
-          .atStakes(pressure)
-          .renamed(uniqueName(used), generated: true);
+      final profile =
+          (identical(src, recreational)
+                  ? _drawRec(src)
+                  : src[_rng.nextInt(src.length)])
+              .atStakes(pressure)
+              .renamed(uniqueName(used), generated: true);
       field.add(profile);
     }
     return field.take(botsNeeded).toList()..shuffle(_rng);

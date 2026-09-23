@@ -20,9 +20,9 @@ final List<PlayerProfile> homeGameProfiles = [
   frankDouglas,
   mitchGray,
   patWray,
-  philDiPinto,
+  philDepinto,
   robGustine,
-  ramseyYeheah,
+  ramseyYehia,
   justinVidovitch,
   haiLe,
   johnPineta,
@@ -215,10 +215,10 @@ final PlayerProfile patWray = buildAmateur(
 
 /// Tight-aggressive thinking player — the strongest amateur. Good opening
 /// ranges and sizing, understands pot odds, capable of big folds, limps rarely.
-final PlayerProfile philDiPinto = buildAmateur(
+final PlayerProfile philDepinto = buildAmateur(
   id: 'H008',
-  name: 'Phil DiPinto',
-  strength: 8,
+  name: 'Phil Depinto',
+  strength: 10,
   vpip: 0.24, // solid, near-standard
   pfr: 0.19,
   threeBet: 0.06,
@@ -242,10 +242,10 @@ final PlayerProfile robGustine = buildAmateur(
 
 /// Balanced; understands position and pot odds, river-bluffs missed draws,
 /// folds two pair to aggression when obvious draws complete.
-final PlayerProfile ramseyYeheah = buildAmateur(
+final PlayerProfile ramseyYehia = buildAmateur(
   id: 'H010',
-  name: 'Ramsey Yeheah',
-  strength: 5,
+  name: 'Ramsey Yehia',
+  strength: 8,
   vpip: 0.27,
   pfr: 0.18,
   threeBet: 0.05,

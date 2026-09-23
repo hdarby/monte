@@ -108,16 +108,18 @@ void main() {
     const seeds = [1, 2, 3];
 
     test('an amateur loses to a pro field; the best presses close', () {
-      // Phil DiPinto is the owner's strongest amateur (8/10); Frank Douglas the
+      // Phil Depinto is the owner's strongest amateur (10/10); Frank Douglas the
       // loose-passive station (3/10) — the two ends of the real roster.
-      final strong = _seatAmongPros(philDiPinto, hands: hands, seeds: seeds);
+      final strong = _seatAmongPros(philDepinto, hands: hands, seeds: seeds);
       final station = _seatAmongPros(frankDouglas, hands: hands, seeds: seeds);
 
       // ignore: avoid_print
-      print('among pros (bb/100): Phil DiPinto=${strong.amateur.toStringAsFixed(1)} '
-          '(avg pro ${strong.avgPro.toStringAsFixed(1)}); '
-          'Frank Douglas=${station.amateur.toStringAsFixed(1)} '
-          '(avg pro ${station.avgPro.toStringAsFixed(1)})');
+      print(
+        'among pros (bb/100): Phil Depinto=${strong.amateur.toStringAsFixed(1)} '
+        '(avg pro ${strong.avgPro.toStringAsFixed(1)}); '
+        'Frank Douglas=${station.amateur.toStringAsFixed(1)} '
+        '(avg pro ${station.avgPro.toStringAsFixed(1)})',
+      );
 
       // Pros are raise-or-fold first-in (no open-limping), which forfeits the
       // sim's cheap-flop edge against weak fields — so the very strongest, most
@@ -127,21 +129,37 @@ void main() {
       // field, weak amateurs stay crushed, and the pros are never crushed.
 
       // 1. The best amateur is at-or-below break-even; the station is a clear loser.
-      expect(strong.amateur, lessThan(_breakEvenBb),
-          reason: 'the best amateur should not meaningfully beat a pro field');
-      expect(station.amateur, lessThan(0),
-          reason: 'the station should lose to a pro field');
+      expect(
+        strong.amateur,
+        lessThan(_breakEvenBb),
+        reason: 'the best amateur should not meaningfully beat a pro field',
+      );
+      expect(
+        station.amateur,
+        lessThan(0),
+        reason: 'the station should lose to a pro field',
+      );
 
       // 2. Neither amateur crushes the pro field.
-      expect(strong.avgPro, greaterThan(-_breakEvenBb),
-          reason: 'the pro field should not be beaten meaningfully by the best amateur');
+      expect(
+        strong.avgPro,
+        greaterThan(-_breakEvenBb),
+        reason:
+            'the pro field should not be beaten meaningfully by the best amateur',
+      );
       expect(station.avgPro, greaterThan(station.amateur));
 
       // 3. The best amateur presses close to break-even; the station is crushed.
-      expect(strong.amateur, greaterThan(-_closeGapBb),
-          reason: 'best amateur should press close to the pros');
-      expect(strong.amateur, greaterThan(station.amateur + 20),
-          reason: 'the best amateur should clearly beat the station');
+      expect(
+        strong.amateur,
+        greaterThan(-_closeGapBb),
+        reason: 'best amateur should press close to the pros',
+      );
+      expect(
+        strong.amateur,
+        greaterThan(station.amateur + 20),
+        reason: 'the best amateur should clearly beat the station',
+      );
     });
 
     test('every amateur style is a net loser to a pro field', () {
@@ -153,12 +171,20 @@ void main() {
       for (final a in [daveCoyle, justinVidovitch, frankDouglas, mattCarter]) {
         final r = _seatAmongPros(a, hands: hands, seeds: seeds);
         // ignore: avoid_print
-        print('${a.name.padRight(18)} ${r.amateur.toStringAsFixed(1)} '
-            '(avg pro ${r.avgPro.toStringAsFixed(1)})');
-        expect(r.amateur, lessThan(_breakEvenBb),
-            reason: '${a.name} should not meaningfully beat a pro field');
-        expect(r.avgPro, greaterThan(-_breakEvenBb),
-            reason: 'the pro field should not be crushed by ${a.name}');
+        print(
+          '${a.name.padRight(18)} ${r.amateur.toStringAsFixed(1)} '
+          '(avg pro ${r.avgPro.toStringAsFixed(1)})',
+        );
+        expect(
+          r.amateur,
+          lessThan(_breakEvenBb),
+          reason: '${a.name} should not meaningfully beat a pro field',
+        );
+        expect(
+          r.avgPro,
+          greaterThan(-_breakEvenBb),
+          reason: 'the pro field should not be crushed by ${a.name}',
+        );
       }
     });
   });

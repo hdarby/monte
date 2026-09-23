@@ -12,9 +12,9 @@ EvalHand _sample() => EvalHand(
   players: [
     const EvalHandPlayer(
       id: 'bot_0',
-      name: 'Phil DiPinto',
+      name: 'Phil Depinto',
       modelId: 'H008',
-      modelLabel: 'Phil DiPinto',
+      modelLabel: 'Phil Depinto',
       position: 'BTN',
       seatsFromButton: 0,
       holeCards: ['As', 'Ks'],
