@@ -112,6 +112,11 @@ class TournamentViewModel extends Notifier<TournamentUiState> {
         (s) => state = state.copyWith(
           tour: s,
           standings: _controller.standings(),
+          // Reflects every pause reason (manual, recap, hand-for-hand, away),
+          // not just the manual toggle `toggleSimulationPause` itself flips —
+          // otherwise a recap/away pause would leave `simPaused` reporting
+          // "running" while the clock is actually frozen underneath it.
+          simPaused: _controller.isPaused,
         ),
       ),
       _controller.simProgressStream.listen(

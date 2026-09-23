@@ -772,6 +772,39 @@ class TournamentController {
     onRound?.call();
   }
 
+  /// Marks seats newly arrived at [table] (e.g. from a break/rebalance) as
+  /// "new" for exactly one hand — the one about to be dealt — clearing
+  /// whoever's "new" flag was set the *previous* time this table was played.
+  ///
+  /// Shared by [_playHand] (background/headless tables) and
+  /// `_beginHumanHand` (the human's own live table): both deal a hand for a
+  /// `TournamentTable` and need the same lifecycle, and the human's own table
+  /// used to never call this at all — arrivals there were silently never
+  /// marked "new" because only the background path did the detection,
+  /// which is exactly backwards: nobody watches a background table's seats
+  /// highlight, and the human's own table is the one place this is ever
+  /// actually seen.
+  ///
+  /// Done as a clear-then-detect pair rather than clearing the moment a
+  /// player acts (the original approach): a hand plays out synchronously in
+  /// one call, so clearing mid-hand added and removed the flag before any
+  /// snapshot showing it as "new" was ever published — the highlight was
+  /// never actually visible for a full hand.
+  void _updateNewToTableTracking(TournamentTable table) {
+    for (final seatId in table.playerIds) {
+      if (_playerTableMap[seatId] == table.id) {
+        _newToTablePlayers.remove(seatId);
+      }
+    }
+    for (final seatId in table.playerIds) {
+      final oldTable = _playerTableMap[seatId];
+      if (oldTable != table.id) {
+        _newToTablePlayers.add(seatId);
+        _playerTableMap[seatId] = table.id;
+      }
+    }
+  }
+
   /// Plays one hand at [table] and returns the players who busted (id -> their
   /// chips at the start of the hand, for worst-first place ordering). Does NOT
   /// record them — the caller decides when (immediately, or after the round on
@@ -784,15 +817,7 @@ class TournamentController {
     bool isBackground = false,
   }) {
     _handCounter++;
-
-    // Detect players new to this table (e.g., from table consolidation)
-    for (final seatId in table.playerIds) {
-      final oldTable = _playerTableMap[seatId];
-      if (oldTable != table.id) {
-        _newToTablePlayers.add(seatId);
-        _playerTableMap[seatId] = table.id;
-      }
-    }
+    _updateNewToTableTracking(table);
 
     final level = state.currentLevel;
     final seatIds = List<String>.of(table.playerIds);
@@ -826,8 +851,6 @@ class TournamentController {
       // PersonalityPolicy/ProfilePolicy deciders as the human's own table.
       final action = decider.decide(game, cur);
       game.applyAction(action);
-      // Once a player acts at their new table, they're no longer "new"
-      _newToTablePlayers.remove(cur.id);
       actions?.add(
         ActionRecord(
           playerId: cur.id,
@@ -1097,6 +1120,16 @@ class TournamentController {
   /// Applies the human's chosen action and continues the hand.
   Future<void> submitLiveAction(GameAction action) async {
     if (!_awaitingHuman || _liveGame == null) return;
+    // Every other `applyAction` caller (`_runLiveBots`, `_playHand`,
+    // `BackgroundTableSimulator`) re-checks `currentPlayer` directly right
+    // before calling it; this one trusted `_awaitingHuman` alone, with
+    // nothing re-validating that the engine's actor is still who it was when
+    // that flag was set. If it ever *is* stale — a UI double-submit, or a
+    // still-unproven edge case around a table move — this turns a crash
+    // (`StateError: No player is on action`) into a silently ignored stale
+    // action instead.
+    final cur = _liveGame!.currentPlayer;
+    if (cur == null || cur.id != (humanId ?? 'e0')) return;
     _awaitingHuman = false;
     if (onEvalHandRecorded != null) {
       _gradeHumanDecision(_liveGame!, action);
@@ -1143,6 +1176,11 @@ class TournamentController {
       (t) => t.id == tableId,
       orElse: () => state.tables.first,
     );
+    // Marks anyone rebalanced onto the human's own table as "new" for this
+    // hand — the only place this highlight is ever actually seen; see
+    // _updateNewToTableTracking's doc for why the background-only version of
+    // this call used to make the whole feature invisible.
+    _updateNewToTableTracking(table);
     final level = state.currentLevel;
     final enginePlayers = [for (final pid in table.playerIds) _synced(pid)];
     // Marks the window rebalancing must stay out of — see _humanHandActive's
@@ -1401,8 +1439,22 @@ class TournamentController {
         _publishTable();
         return; // wait for submitLiveAction
       }
+      // A dialog (recap, color-up) shares the same pause flag background
+      // simulation already respects — without this, the human's own table
+      // kept dealing and playing hands visibly behind the modal, which read
+      // as broken rather than paused.
+      await _waitWhilePaused();
+      if (_tableCtrl.isClosed) return;
       await Future<void>.delayed(_botDelay);
       if (_tableCtrl.isClosed) return;
+      // Re-validate against the live game rather than the `cur` captured
+      // above: the two awaits just passed (pause wait, bot pacing delay)
+      // give other async work a chance to run, and `currentPlayer` can have
+      // moved on (or the hand ended) by the time we get back here — applying
+      // against a stale reference is exactly what threw "No player is on
+      // action" from this loop.
+      final freshCur = game.currentPlayer;
+      if (freshCur == null || freshCur.id != cur.id) continue;
       final decider = _deciders[cur.id]!;
       final action = decider.decide(game, cur);
       _applyLive(game, cur.id, action);
@@ -1450,11 +1502,12 @@ class TournamentController {
     // This hand's results are fully settled — rebalancing is safe again from
     // here until the next _beginHumanHand deals a new one.
     _humanHandActive = false;
+    // Every human hand can introduce drift on its own, not only the ones that
+    // also finish the tournament or trigger a rebalance — reconciling only on
+    // those left a window where a poll right after this hand (before the next
+    // rebalance/finish checkpoint) could still observe an off total.
+    _reconcileChipDrift();
     if (_maybeFinish()) {
-      // The tournament can end here, before a background round's own
-      // reconciliation step ever gets a chance to run — reconcile now so a
-      // drift from this exact hand doesn't survive into the final result.
-      _reconcileChipDrift();
       _publishTournament();
       _publishTable();
       return;
@@ -1491,6 +1544,11 @@ class TournamentController {
       _bgSimFuture!.then((finished) {
         _bgSimRunning = false;
         if (finished || _tableCtrl.isClosed) return;
+        // Every round can introduce drift, not just the rounds that happen to
+        // also rebalance — reconciling only on a rebalance/finish left a gap
+        // where a `check('during')`-style read could observe a still-off
+        // total in between. Reconcile after every round instead.
+        _reconcileChipDrift();
         // Rebalance now that this round's busts are known. Guarded on
         // `_humanHandActive` (no hand in progress at all) rather than
         // `!_awaitingHuman`, since the latter is also false while bots are
@@ -1525,6 +1583,10 @@ class TournamentController {
     // had even finished reading the result. Configurable (not hardcoded) so
     // tests can zero it out the same way they already zero out botDelay.
     await Future<void>.delayed(_nextHandDelay);
+    if (_tableCtrl.isClosed) return;
+    // Don't deal the next hand out from under a dialog (recap, color-up) —
+    // same shared pause flag `_runLiveBots` now waits on for the same reason.
+    await _waitWhilePaused();
     if (_tableCtrl.isClosed) return;
     await _beginHumanHand();
   }
@@ -1636,6 +1698,10 @@ class TournamentController {
         _playHand(tables[i], isBackground: true),
         removeFromTables: false,
       );
+      // Reconcile after every table's hand, not just at round end — a poll
+      // landing mid-round (e.g. a test reading `state` between tables) could
+      // otherwise observe a still-drifted total for the length of the round.
+      _reconcileChipDrift();
 
       if (_maybeFinish()) {
         _emitSim(total, total);
@@ -1719,7 +1785,11 @@ class TournamentController {
         expected - state.players.values.fold<int>(0, (a, p) => a + p.chips);
     if (drift == 0) return;
 
-    final unit = _chipUnitFor(state.currentLevel).clamp(1, 1 << 30);
+    // Nudge by the smallest possible denomination (1), not the level's
+    // current chip unit — a drift smaller than that unit (observed: a
+    // 50-chip drift against a 100-unit level) made the loop below oscillate
+    // between +unit/-unit forever without ever landing on zero.
+    final unit = 1;
     final candidates =
         state.players.values
             .where((p) => p.isActive && !p.isHuman && p.chips >= unit)
@@ -1729,8 +1799,12 @@ class TournamentController {
 
     var i = 0;
     // Bounded iterations: this is cosmetic bookkeeping, never a loop that
-    // should be able to hang on a stubborn remainder.
-    while (drift != 0 && i < candidates.length * 4) {
+    // should be able to hang on a stubborn remainder. Unit is now 1, so the
+    // bound has to scale with the drift's own size too, not just the
+    // candidate count — a larger drift needs proportionally more single-chip
+    // nudges to fully unwind.
+    final bound = candidates.length * 4 + drift.abs();
+    while (drift != 0 && i < bound) {
       final p = candidates[i % candidates.length];
       if (drift > 0) {
         p.chips += unit;
@@ -1842,6 +1916,27 @@ class TournamentController {
         t.id,
   };
 
+  /// The single table a broadcast would actually put on screen: whichever
+  /// [_featureTables] candidate has the most recognisable players seated,
+  /// ties broken by the lower table id so the pick doesn't flicker between
+  /// two equally-loaded tables from one publish to the next. Null once
+  /// nothing qualifies (no table has two-plus named personalities).
+  int? get _nominatedFeatureTableId {
+    int? best;
+    var bestCount = 0;
+    for (final id in _featureTables()) {
+      final t = state.tables.firstWhere((t) => t.id == id);
+      final count = t.playerIds
+          .where((pid) => _profileBySeat[pid]?.generated == false)
+          .length;
+      if (best == null || count > bestCount || (count == bestCount && id < best)) {
+        best = id;
+        bestCount = count;
+      }
+    }
+    return best;
+  }
+
   /// The named personalities dealt into [game] — the ones a viewer would
   /// recognise, as opposed to the anonymous profiles that fill out a field.
   ///
@@ -1936,6 +2031,8 @@ class TournamentController {
         tableBreak: _lastTableBreak,
         resolvingRestOfField: _resolvingHeadless,
         topChipLeaders: _resolvingHeadless ? _cachedTopChipLeaders : const [],
+        atFeatureTable: _humanTableId != null &&
+            _humanTableId == _nominatedFeatureTableId,
       ),
     );
     lastColorUp = null; // one-shot: only the tick it happened carries it
@@ -2037,6 +2134,14 @@ class TournamentController {
         ),
     ];
   }
+
+  /// Whether the level clock is currently frozen — manual pause, the recap
+  /// dialog, hand-for-hand, or an away-timeout. This is the single source of
+  /// truth `_startRealtimeTicker` itself checks before advancing the clock;
+  /// surfaced so the UI's own client-side countdown extrapolation
+  /// (`LevelClockBadge`) can freeze in step with it instead of ticking down
+  /// on wall-clock time regardless of pause state.
+  bool get isPaused => _bgSimulator.isPaused;
 
   /// Pause background simulation of other tables.
   void pauseSimulation() {

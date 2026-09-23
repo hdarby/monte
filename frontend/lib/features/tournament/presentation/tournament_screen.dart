@@ -420,7 +420,7 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
                         Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            LevelClockBadge(tour: tour),
+                            LevelClockBadge(tour: tour, paused: state.simPaused),
                             const SizedBox(width: 8),
                             SimPauseButton(
                               isPaused: state.simPaused,
@@ -442,7 +442,9 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
                   snapshot: table,
                   isAllBots: false,
                   humanName: widget.humanName,
-                  isFinalTable: tour.atFinalTable,
+                  // The nominated feature table gets the same treatment as
+                  // the final table — it's the one with "the cameras on it".
+                  isFinalTable: tour.atFinalTable || tour.atFeatureTable,
                   // Tournament tables use a fixed 9-seat layout so
                   // consolidation doesn't redraw. Empty seats appear as
                   // players are eliminated.
@@ -461,7 +463,17 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
                   onOpenHistory: _noop,
                   showHeader: false,
                 ),
-                if (tour.atFinalTable)
+                // Final table and hand-for-hand are independent conditions
+                // (hand-for-hand starts near the bubble, often across
+                // several *still-separate* tables, well before the field
+                // consolidates to one) — gating this whole badge on
+                // `atFinalTable` alone made the "HAND FOR HAND" branch below
+                // unreachable: it only ever ran once already inside
+                // `if (tour.atFinalTable)`, at which point the ternary had
+                // already committed to "FINAL TABLE" instead. That's why the
+                // label disappeared exactly when it mattered most — nearing
+                // the bubble, before the final table.
+                if (tour.atFinalTable || tour.handForHand)
                   // Anchored near the top of the felt, not the bottom — the
                   // bottom edge is where the action bar's call/raise/fold
                   // buttons live. Excludes the standings panel's width on the

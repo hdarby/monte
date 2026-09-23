@@ -34,6 +34,8 @@ class TournamentSave {
     required this.tables,
     required this.profileIds,
     required this.payoutFractions,
+    this.clockMode = 'hands',
+    this.levelMinutes,
   });
 
   /// What the player called it. Unique per save; the store appends a datestamp.
@@ -70,6 +72,18 @@ class TournamentSave {
 
   final List<double> payoutFractions;
 
+  /// The live clock mode this tournament was actually running under
+  /// ('hands' or 'minutes') — [structure] used to hardcode `hands` regardless
+  /// of this, so a real-time event restored into a "hand N/M" countdown
+  /// instead of its timer. Defaults to 'hands' for saves taken before this
+  /// field existed (the same behaviour they always had).
+  final String clockMode;
+
+  /// The lobby's "minutes per level" setting when [clockMode] is 'minutes'
+  /// (applied uniformly via [TournamentStructure.withLevelMinutes]) — null
+  /// when the preset's own hand-based level lengths are used instead.
+  final int? levelMinutes;
+
   /// A display label: the name plus when it was taken.
   String get label => '$name — ${formatStamp(savedAt)}';
 
@@ -94,14 +108,24 @@ class TournamentSave {
   TournamentStructure? get structure {
     final base = TournamentStructure.presetByName(structureName);
     if (base == null) return null;
-    return TournamentStructure(
+    final mode = LevelClockMode.values.firstWhere(
+      (m) => m.name == clockMode,
+      orElse: () => LevelClockMode.hands,
+    );
+    final rebuilt = TournamentStructure(
       name: base.name,
       levels: base.levels,
-      clockMode: LevelClockMode.hands,
+      clockMode: mode,
       startingStack: startingStack,
       maxRebuys: base.maxRebuys,
       reentryLevelCutoff: base.reentryLevelCutoff,
     );
+    // withLevelMinutes both switches the mode and stamps every level with
+    // the same duration — reapplying it is how the lobby's setting was
+    // actually produced live, so this is the faithful way back to it.
+    return mode == LevelClockMode.minutes && levelMinutes != null
+        ? rebuilt.withLevelMinutes(levelMinutes!)
+        : rebuilt;
   }
 
   PayoutStructure get payouts => PayoutStructure(payoutFractions);
@@ -126,6 +150,8 @@ class TournamentSave {
         'tables': [for (final t in tables) t.toJson()],
         'profileIds': profileIds,
         'payoutFractions': payoutFractions,
+        'clockMode': clockMode,
+        'levelMinutes': levelMinutes,
       };
 
   static TournamentSave fromJson(Map<String, dynamic> j) => TournamentSave(
@@ -163,6 +189,8 @@ class TournamentSave {
           for (final v in (j['payoutFractions'] as List? ?? const []))
             (v as num).toDouble(),
         ],
+        clockMode: j['clockMode'] as String? ?? 'hands',
+        levelMinutes: (j['levelMinutes'] as num?)?.toInt(),
       );
 
   /// Captures [state] under [name].
@@ -202,6 +230,10 @@ class TournamentSave {
         ],
         profileIds: profileIds,
         payoutFractions: List.of(state.payouts.fractions),
+        clockMode: state.structure.clockMode.name,
+        levelMinutes: state.structure.clockMode == LevelClockMode.minutes
+            ? state.structure.levels.firstOrNull?.durationMinutes
+            : null,
       );
 }
 

@@ -133,6 +133,7 @@ class TournamentSnapshot {
     this.finalResults,
     this.resolvingRestOfField = false,
     this.topChipLeaders = const [],
+    this.atFeatureTable = false,
   });
 
   final TournamentStatus status;
@@ -225,6 +226,15 @@ class TournamentSnapshot {
   /// empty otherwise (nobody else pays for computing it every tick).
   final List<StandingRow> topChipLeaders;
 
+  /// True when the human is currently seated at the tournament's nominated
+  /// feature table — the single busiest table of recognisable personalities
+  /// (`TournamentController._nominatedFeatureTableId`), the same candidates
+  /// [atFinalTable]'s "protect from breaking" logic already favours. Table
+  /// screens dress this the same as [atFinalTable] (red felt, black rail) —
+  /// being on the table with the cameras on it deserves the same treatment
+  /// as being at the final table itself.
+  final bool atFeatureTable;
+
   bool get finished => status == TournamentStatus.finished;
 
   /// Real time left in the current level (minutes-mode only; null in
@@ -263,6 +273,7 @@ class TournamentSnapshot {
     LevelRecap? recap,
     bool resolvingRestOfField = false,
     List<StandingRow> topChipLeaders = const [],
+    bool atFeatureTable = false,
   }) {
     final level = state.currentLevel;
     final chips = chipSet ?? ChipSet.wsop();
@@ -365,6 +376,7 @@ class TournamentSnapshot {
       finalResults: results,
       resolvingRestOfField: resolvingRestOfField,
       topChipLeaders: topChipLeaders,
+      atFeatureTable: atFeatureTable,
     );
   }
 }

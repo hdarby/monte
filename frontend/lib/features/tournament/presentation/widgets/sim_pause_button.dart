@@ -15,8 +15,15 @@ import 'package:monte/features/tournament/domain/tournament_structure.dart';
 /// elapsed time as of whenever it was published; between publishes, this
 /// widget extrapolates forward from its own arrival time.
 class LevelClockBadge extends StatefulWidget {
-  const LevelClockBadge({super.key, required this.tour});
+  const LevelClockBadge({super.key, required this.tour, this.paused = false});
   final TournamentSnapshot tour;
+
+  /// True while the level clock is frozen (manual pause, recap dialog,
+  /// hand-for-hand, or an away-timeout) — see
+  /// `TournamentController.isPaused`. Stops this widget's own per-second
+  /// extrapolation, which otherwise keeps counting down on pure wall-clock
+  /// time between snapshots regardless of whether the game is paused.
+  final bool paused;
 
   @override
   State<LevelClockBadge> createState() => _LevelClockBadgeState();
@@ -56,9 +63,16 @@ class _LevelClockBadgeState extends State<LevelClockBadge> {
   Widget build(BuildContext context) {
     final tour = widget.tour;
     final asOfPublish = tour.timeRemainingInLevel;
+    // While paused, the snapshot's own `timeRemainingInLevel` is already
+    // frozen (the controller stops advancing its clock too) — showing it
+    // as-is, rather than extrapolating from `_receivedAt`, is what actually
+    // freezes the display instead of counting down on wall-clock time with
+    // nothing to correct it until the next (also-paused) snapshot arrives.
     final liveRemaining = asOfPublish == null
         ? null
-        : asOfPublish - DateTime.now().difference(_receivedAt);
+        : widget.paused
+            ? asOfPublish
+            : asOfPublish - DateTime.now().difference(_receivedAt);
     final remaining = liveRemaining == null
         ? null
         : (liveRemaining.isNegative ? Duration.zero : liveRemaining);
