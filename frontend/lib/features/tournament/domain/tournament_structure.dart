@@ -122,12 +122,32 @@ class TournamentStructure {
   /// number back, not a crash.
   static const int _maxExtendedLevels = 250;
 
+  /// The smallest physical chip denomination a tournament is ever played
+  /// with (`ChipSet.wsop()`'s first entry) — duplicated as a constant here,
+  /// rather than importing `chip_set.dart`, to keep this domain free of a
+  /// dependency on the display-chip model. [scale] rounds to a multiple of
+  /// this so extended levels stay chip-aligned; see its own doc for why that
+  /// matters.
+  static const int _smallestChip = 25;
+
   BlindLevel levelAt(int index) {
     if (index < levels.length) return levels[index];
     final last = levels.last;
     final n = (index - (levels.length - 1)).clamp(0, _maxExtendedLevels);
     final growth = pow(_extendedGrowth, n).toDouble();
-    int scale(int v) => (v * growth).round();
+    // Rounds to the nearest whole chip, not just the nearest integer.
+    // Rounding `smallBlind`/`bigBlind`/`ante` independently to the nearest
+    // *integer* let their common chip-denomination divisor drift apart after
+    // enough compounding — e.g. bb=91125 (a clean multiple of 25) alongside
+    // sb=45563 (91125/2 rounded to an odd integer, not a multiple of
+    // anything a real chip set carries). Every wager is later snapped to
+    // whatever `ChipSet.smallestChip` reports for the level, so a blind that
+    // isn't itself chip-aligned corrupts every pot built from it — the
+    // tournament ran long enough (a stalemate near the money, or a huge
+    // field) to reach these extended levels at all, which is exactly when
+    // whole-chip alignment matters most.
+    int scale(int v) =>
+        ((v * growth) / _smallestChip).round() * _smallestChip;
     final smallBlind = scale(last.smallBlind);
     final bigBlind = max(scale(last.bigBlind), smallBlind);
     return last.copyWith(

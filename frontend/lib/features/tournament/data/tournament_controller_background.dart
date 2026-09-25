@@ -307,27 +307,33 @@ extension TournamentControllerBackground on TournamentController {
     );
   }
 
-  /// If the new level retires a chip denomination, races off each table's odd
-  /// chips independently into whole new-unit chips (per-table total conserved),
-  /// applies the deltas to their stacks, and records the event for display.
+  /// If the new level retires a chip denomination, races off the field's odd
+  /// chips into whole new-unit chips, applies the deltas, and records the
+  /// event for display.
   void _maybeColorUp(BlindLevel before, BlindLevel after) {
     final oldUnit = _chipUnitFor(before);
     final newUnit = _chipUnitFor(after);
     if (newUnit <= oldUnit) return;
     if (newUnit > _displayChipUnit) _displayChipUnit = newUnit;
 
-    // Run color-up per table so spare chips stay at the table where they arose
-    final deltas = <String, int>{};
-    for (final table in state.tables) {
-      final tableStacks = {
-        for (final playerId in table.playerIds)
-          if (state.players[playerId] != null)
-            playerId: state.players[playerId]!.chips,
-      };
-      if (tableStacks.isEmpty) continue;
-      final tableDeltas = chips.colorUp(tableStacks, newUnit);
-      deltas.addAll(tableDeltas);
-    }
+    // Pooled across the whole field, not per table. `ChipSet.colorUp` assumes
+    // its pooled remainder is itself an exact multiple of `newUnit` — true
+    // for the tournament's total (fixed at entrants × startingStack, and
+    // every wager already a multiple of the *old* unit) but not necessarily
+    // true for one table's subset of it. A table whose own odd-chip count
+    // didn't happen to divide evenly left `colorUp`'s leftover-handling
+    // branch bolting a sub-unit remainder directly onto one player's stack —
+    // "keep the leftover so the total is conserved" conserved the *total*
+    // at the cost of that one player's alignment to the new chip, which is
+    // the bug `whole_chips_test` catches. Pooling globally is what actually
+    // guarantees the assumption `colorUp` already documents.
+    final allStacks = {
+      for (final p in state.players.values)
+        if (p.isActive) p.id: p.chips,
+    };
+    final deltas = allStacks.isEmpty
+        ? <String, int>{}
+        : chips.colorUp(allStacks, newUnit);
 
     final nonZero = <String, int>{};
     deltas.forEach((id, d) {
@@ -472,11 +478,14 @@ extension TournamentControllerBackground on TournamentController {
         expected - state.players.values.fold<int>(0, (a, p) => a + p.chips);
     if (drift == 0) return;
 
-    // Nudge by the smallest possible denomination (1), not the level's
-    // current chip unit — a drift smaller than that unit (observed: a
-    // 50-chip drift against a 100-unit level) made the loop below oscillate
-    // between +unit/-unit forever without ever landing on zero.
-    final unit = 1;
+    // Nudge in whole chip-unit increments, never literal single chips —
+    // every real wager is snapped to the level's smallest denomination, so
+    // any stack not aligned to it is itself a bug (see whole_chips_test).
+    // Nudging by 1 "fixed" a drift that couldn't be evenly unwound in whole
+    // units by instead handing out chip denominations that don't exist at
+    // the table, which is a worse bug: a player showing up with (say) 8302
+    // chips when the smallest chip in play is 25 or 100.
+    final unit = _chipUnitFor(state.currentLevel).clamp(1, 1 << 30);
     final candidates =
         state.players.values
             .where((p) => p.isActive && !p.isHuman && p.chips >= unit)
@@ -486,12 +495,8 @@ extension TournamentControllerBackground on TournamentController {
 
     var i = 0;
     // Bounded iterations: this is cosmetic bookkeeping, never a loop that
-    // should be able to hang on a stubborn remainder. Unit is now 1, so the
-    // bound has to scale with the drift's own size too, not just the
-    // candidate count — a larger drift needs proportionally more single-chip
-    // nudges to fully unwind.
-    final bound = candidates.length * 4 + drift.abs();
-    while (drift != 0 && i < bound) {
+    // should be able to hang on a stubborn remainder.
+    while (drift.abs() >= unit && i < candidates.length * 4) {
       final p = candidates[i % candidates.length];
       if (drift > 0) {
         p.chips += unit;
@@ -502,6 +507,11 @@ extension TournamentControllerBackground on TournamentController {
       }
       i++;
     }
+    // A residual smaller than one chip unit can't be corrected without
+    // handing out a denomination that doesn't exist at this level — leaving
+    // it alone keeps every stack chip-aligned, which matters more than the
+    // sub-chip cosmetic total. See CLAUDE.md/whole_chips_test: alignment is
+    // an invariant, not a rounding nicety.
   }
 
   /// The human is out (busted or railing): resolve the rest of the field with

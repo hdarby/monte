@@ -61,11 +61,22 @@ class ChipSet {
   }) {
     final units = [smallBlind, bigBlind, ante].where((u) => u > 0).toList();
     if (units.isEmpty) return denominations.first;
-    var best = denominations.first;
+    // No fallback to `denominations.first` when nothing actually divides
+    // evenly: that used to claim the smallest chip worked regardless,
+    // silently lying about alignment for a level whose blinds/ante don't
+    // actually share it as a common divisor (e.g. a mis-scaled extended
+    // level) instead of surfacing the bug loudly.
+    var best = 0;
     for (final d in denominations) {
       if (units.every((u) => u % d == 0)) best = d;
     }
-    return best;
+    assert(
+      best > 0,
+      'No chip denomination evenly divides smallBlind=$smallBlind '
+      'bigBlind=$bigBlind ante=$ante — the blind level itself is not '
+      'chip-aligned.',
+    );
+    return best == 0 ? denominations.first : best;
   }
 
   /// Runs a chip race that rounds every stack to a multiple of [newUnit],
