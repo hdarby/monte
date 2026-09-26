@@ -12,6 +12,8 @@ import 'package:monte/features/tournament/domain/tournament_structure.dart';
 import 'package:monte/features/tournament/presentation/career_screen.dart';
 import 'package:monte/features/tournament/presentation/tournament_screen.dart';
 import 'package:monte/features/tournament/presentation/widgets/lobby_widgets.dart';
+import 'package:monte/features/tournament/presentation/widgets/saved_tournaments_dialog.dart';
+import 'package:monte/features/eval_history/presentation/eval_history_provider.dart';
 
 /// Tournament lobby: pick a structure, size and buy-in, choose which
 /// personalities play, and let the rest of the field auto-fill with a mix of
@@ -163,6 +165,67 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen> {
     if (wipe ?? false) await svc.wipe();
   }
 
+  /// Opens the saved-tournaments browser and, if the player picks one,
+  /// pushes straight into it — this is the only way to resume a save now
+  /// that in-tournament icons for it are gone, since getting to a save used
+  /// to require starting a fresh tournament first just to reach the button.
+  Future<void> _openSaves() async {
+    final chosen = await SavedTournamentsDialog.show(
+      context,
+      ref.read(tournamentSaveStoreProvider),
+    );
+    if (chosen == null || !mounted) return;
+    final structure = chosen.structure;
+    if (structure == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'That save uses an unknown blind structure '
+            '("${chosen.structureName}") and cannot be loaded.',
+          ),
+        ),
+      );
+      return;
+    }
+    // Refuse a save whose tournament already ran to completion — normally
+    // `_recordCareer` deletes a save the moment its event finishes, but a
+    // save taken *after* that (unlikely, but not impossible) or one that
+    // predates this check could still be sitting around. Loading it would
+    // let the same deep run be replayed for a second shot at the same
+    // prize/career credit.
+    if (chosen.tournamentId.isNotEmpty) {
+      final results = await ref.read(tournamentResultStoreProvider).loadAll();
+      if (!mounted) return;
+      final alreadyFinished =
+          results.any((r) => r.tournamentId == chosen.tournamentId);
+      if (alreadyFinished) {
+        await ref.read(tournamentSaveStoreProvider).delete(chosen.id);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'That tournament already finished and cannot be replayed — '
+              'the stale save has been removed.',
+            ),
+          ),
+        );
+        return;
+      }
+    }
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => TournamentScreen(
+          structure: structure,
+          field: const [],
+          buyIn: chosen.buyIn,
+          tableSize: chosen.tableSize,
+          humanName: chosen.humanName,
+          restore: chosen,
+        ),
+      ),
+    );
+  }
+
   Future<void> _start() async {
     await _offerWipe();
     if (!mounted) return;
@@ -200,6 +263,11 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen> {
           onPressed: () => Navigator.of(context).pop(),
         ),
         actions: [
+          IconButton(
+            tooltip: 'Load a saved tournament',
+            icon: const Icon(Icons.folder_open_outlined),
+            onPressed: _openSaves,
+          ),
           IconButton(
             tooltip: 'Career',
             icon: const CareerIcon(),

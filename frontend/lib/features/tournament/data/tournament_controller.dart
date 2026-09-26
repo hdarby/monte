@@ -13,6 +13,7 @@ import 'package:monte/core/domain/hand_history.dart';
 import 'package:monte/features/coach/domain/hand_coach.dart';
 import 'package:monte/features/eval_history/domain/eval_hand.dart';
 import 'package:monte/features/tournament/data/tournament_result_store.dart';
+import 'package:monte/features/tournament/data/tournament_save_store.dart';
 import 'package:monte/features/tournament/domain/tournament_result.dart';
 import 'package:monte/features/reads/data/player_stats_store.dart';
 import 'package:monte/core/domain/ai/tournament_context.dart';
@@ -83,16 +84,20 @@ class TournamentController {
     this.statsService,
     this.onEvalHandRecorded,
     this.resultStore,
+    this.saveStore,
     this.buyIn = 0,
     this._identityBySeat = const {},
     this._profileBySeat = const {},
     this._yieldToFrame,
     TriggerLog? triggerLog,
     MentalTable? mental,
+    String? tournamentId,
   }) : _deciders = Map.of(deciders),
        _mental = mental ?? MentalTable(),
        _enginePlayers = Map.of(enginePlayers),
-       _triggerLog = triggerLog ?? TriggerLog();
+       _triggerLog = triggerLog ?? TriggerLog(),
+       tournamentId = tournamentId ??
+           'E${seed}_${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}';
 
   final TournamentState state;
   final SeatManager seatManager;
@@ -116,6 +121,18 @@ class TournamentController {
   /// Career record: one row per finished event. The hand log cannot answer a
   /// career question — it knows nothing about buy-ins, places or prizes.
   final TournamentResultStore? resultStore;
+
+  /// Where saved tournaments live — used only at completion, to purge any
+  /// lingering save of *this* tournament (see [tournamentId]) so it can't be
+  /// reloaded and replayed for a second shot at the same prize/career credit.
+  final TournamentSaveStore? saveStore;
+
+  /// Identifies this tournament — stable across every save/restore of the
+  /// same sitting (a restored controller is given the save's own id rather
+  /// than generating a new one), unlike [_sessionId] which is meant to be
+  /// unique per *controller instance*. This is what [_recordCareer] and
+  /// [restore] use to refuse crediting or replaying the same event twice.
+  final String tournamentId;
 
   /// What each seat paid to enter, for ROI.
   final int buyIn;
@@ -155,6 +172,11 @@ class TournamentController {
             : (state.players[humanId!]?.name ?? 'You'),
         structureName: structureName ?? _presetNameFor(state.structure),
         profileIds: {for (final e in _profileBySeat.entries) e.key: e.value.id},
+        generatedSeatIds: {
+          for (final e in _profileBySeat.entries)
+            if (e.value.generated) e.key,
+        },
+        tournamentId: tournamentId,
       );
 
   /// Which preset a structure came from, by matching its name.
@@ -463,6 +485,7 @@ class TournamentController {
     OpponentStatsService? statsService,
     void Function(EvalHand hand)? onEvalHandRecorded,
     TournamentResultStore? resultStore,
+    TournamentSaveStore? saveStore,
     bool icmAware = true,
     Future<void> Function()? yieldToFrame,
   }) {
@@ -483,7 +506,14 @@ class TournamentController {
     final hasHuman = humanFirst.isNotEmpty && humanFirst.first.isHuman;
     final bots = <PlayerProfile>[
       for (final p in humanFirst.skip(hasHuman ? 1 : 0))
-        byId[save.profileIds[p.id]] ?? builtInProfiles.first,
+        // The catalog template is never itself marked generated — that's a
+        // per-seat fact about *this* field, not the profile — so it has to
+        // be re-applied from the save rather than read off the template.
+        // Restoring the raw template silently turned every filler seat
+        // "bright" again, which is what made a restored large field look
+        // like the pro/rec distinction had been lost.
+        (byId[save.profileIds[p.id]] ?? builtInProfiles.first)
+            .renamed(p.name, generated: save.generatedSeatIds.contains(p.id)),
     ];
     return TournamentController.create(
       structure: structure,
@@ -498,6 +528,7 @@ class TournamentController {
       statsService: statsService,
       onEvalHandRecorded: onEvalHandRecorded,
       resultStore: resultStore,
+      saveStore: saveStore,
       restoreFrom: save,
       yieldToFrame: yieldToFrame,
     );
@@ -517,6 +548,7 @@ class TournamentController {
     OpponentStatsService? statsService,
     void Function(EvalHand hand)? onEvalHandRecorded,
     TournamentResultStore? resultStore,
+    TournamentSaveStore? saveStore,
     TournamentSave? restoreFrom,
     Future<void> Function()? yieldToFrame,
   }) {
@@ -703,12 +735,16 @@ class TournamentController {
       statsService: statsService,
       onEvalHandRecorded: onEvalHandRecorded,
       resultStore: resultStore,
+      saveStore: saveStore,
       buyIn: buyIn,
       triggerLog: triggerLog,
       mental: mental,
       identityBySeat: identityBySeat,
       profileBySeat: profileBySeat,
       yieldToFrame: yieldToFrame,
+      tournamentId: restoreFrom == null || restoreFrom.tournamentId.isEmpty
+          ? null
+          : restoreFrom.tournamentId,
     );
   }
 

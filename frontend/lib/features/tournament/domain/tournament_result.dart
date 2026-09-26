@@ -18,6 +18,7 @@ class TournamentResult {
     required this.buyIn,
     required this.entrants,
     required this.finishes,
+    this.tournamentId = '',
   });
 
   final int timestampMs;
@@ -27,6 +28,16 @@ class TournamentResult {
 
   /// Every entrant's finish, champion first.
   final List<TournamentFinish> finishes;
+
+  /// The sitting this result came from — stable across every save/restore of
+  /// the *same* event (see `TournamentController.tournamentId`), unlike
+  /// [timestampMs] which is just when this particular result was written.
+  /// Lets the controller refuse to record (or reload) the same tournament
+  /// twice: saving near the end and replaying that stretch over and over
+  /// would otherwise double- (or infinitely-) count one entry's buy-in and
+  /// prize in the career ledger. Empty for results written before this field
+  /// existed, which are never matched by the dedup check.
+  final String tournamentId;
 
   /// The human's finish, or null for an all-bots event.
   TournamentFinish? get human =>
@@ -42,6 +53,7 @@ class TournamentResult {
               .cast<Map<String, dynamic>>())
             TournamentFinish.fromJson(f),
         ],
+        tournamentId: j['tournamentId'] as String? ?? '',
       );
 
   Map<String, dynamic> toJson() => {
@@ -50,6 +62,7 @@ class TournamentResult {
         'buyIn': buyIn,
         'entrants': entrants,
         'finishes': [for (final f in finishes) f.toJson()],
+        'tournamentId': tournamentId,
       };
 }
 

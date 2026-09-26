@@ -79,7 +79,7 @@ class _SavedTournamentsDialogState extends State<SavedTournamentsDialog> {
                 ? const Center(
                     child: Text(
                       'No saved tournaments yet.\n'
-                      'Use the save button during a tournament to keep one.',
+                      'Leaving a running tournament offers to save it.',
                       textAlign: TextAlign.center,
                       style: TextStyle(color: Colors.white54),
                     ),

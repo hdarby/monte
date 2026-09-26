@@ -36,11 +36,22 @@ class TournamentSave {
     required this.payoutFractions,
     this.clockMode = 'hands',
     this.levelMinutes,
+    this.generatedSeatIds = const {},
+    this.tournamentId = '',
   });
 
   /// What the player called it. Unique per save; the store appends a datestamp.
   final String name;
   final DateTime savedAt;
+
+  /// The underlying sitting this save is a snapshot of — stable across every
+  /// save taken during the *same* tournament (see
+  /// `TournamentController.tournamentId`), unlike [id] which changes on every
+  /// save. Lets a restore refuse a save whose tournament has already run to
+  /// completion: without it, saving near the end and reloading that one save
+  /// repeatedly would let a player farm the same deep run's prize and career
+  /// credit over and over. Empty for saves written before this field existed.
+  final String tournamentId;
 
   /// The blind structure, by preset name — the ladder itself is code, not data,
   /// so storing the whole thing would only invite it drifting out of date.
@@ -83,6 +94,17 @@ class TournamentSave {
   /// (applied uniformly via [TournamentStructure.withLevelMinutes]) — null
   /// when the preset's own hand-based level lengths are used instead.
   final int? levelMinutes;
+
+  /// Seat ids whose personality was an anonymous auto-filled field entrant
+  /// rather than one the owner actually chose. [profileIds] alone isn't
+  /// enough to tell the two apart on restore — a generated seat and a
+  /// deliberately-picked one can share the same underlying profile id, and
+  /// only the standings/table seats' dimmed-vs-bright distinction depends on
+  /// this. Restoring straight from the catalog template (which is never
+  /// itself marked generated) silently turned every restored filler seat
+  /// bright, which is what made a large restored field look like it lost
+  /// the pro/rec distinction — the color hue survived, the brightness didn't.
+  final Set<String> generatedSeatIds;
 
   /// A display label: the name plus when it was taken.
   String get label => '$name — ${formatStamp(savedAt)}';
@@ -152,6 +174,8 @@ class TournamentSave {
         'payoutFractions': payoutFractions,
         'clockMode': clockMode,
         'levelMinutes': levelMinutes,
+        'generatedSeatIds': generatedSeatIds.toList(),
+        'tournamentId': tournamentId,
       };
 
   static TournamentSave fromJson(Map<String, dynamic> j) => TournamentSave(
@@ -191,6 +215,11 @@ class TournamentSave {
         ],
         clockMode: j['clockMode'] as String? ?? 'hands',
         levelMinutes: (j['levelMinutes'] as num?)?.toInt(),
+        generatedSeatIds: {
+          for (final v in (j['generatedSeatIds'] as List? ?? const []))
+            v as String,
+        },
+        tournamentId: j['tournamentId'] as String? ?? '',
       );
 
   /// Captures [state] under [name].
@@ -204,6 +233,8 @@ class TournamentSave {
     required String humanName,
     required String structureName,
     required Map<String, String> profileIds,
+    Set<String> generatedSeatIds = const {},
+    String tournamentId = '',
   }) =>
       TournamentSave(
         name: name,
@@ -234,6 +265,8 @@ class TournamentSave {
         levelMinutes: state.structure.clockMode == LevelClockMode.minutes
             ? state.structure.levels.firstOrNull?.durationMinutes
             : null,
+        generatedSeatIds: generatedSeatIds,
+        tournamentId: tournamentId,
       );
 }
 

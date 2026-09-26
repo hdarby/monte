@@ -152,6 +152,7 @@ class TournamentViewModel extends Notifier<TournamentUiState> {
     // the only hands that produced no record at all.
     onEvalHandRecorded: ref.read(evalHistoryStoreProvider).record,
     resultStore: ref.read(tournamentResultStoreProvider),
+    saveStore: ref.read(tournamentSaveStoreProvider),
     yieldToFrame: () => SchedulerBinding.instance.endOfFrame,
   );
 

@@ -132,6 +132,56 @@ void main() {
       resumed.dispose();
     });
 
+    test(
+      'keeps a mix of generated fillers and real personalities distinct',
+      () {
+        // A field where some bots are auto-filled (generated: true, matching
+        // a large field's anonymous seats) and some are the owner's own
+        // pick — restoring used to rebuild every bot from the pristine
+        // catalog template, which is never itself marked generated, so a
+        // restored filler silently came back looking like a deliberately
+        // chosen personality (bright rather than dimmed in the standings).
+        const entrants = 10;
+        final bots = [
+          for (var i = 0; i < entrants - 1; i++)
+            builtInProfiles[i % builtInProfiles.length]
+                .renamed('Filler $i', generated: i.isEven),
+        ];
+        final c = TournamentController.create(
+          structure: TournamentStructure.wsopCircuit(
+            clockMode: LevelClockMode.hands,
+          ),
+          entrants: entrants,
+          buyIn: 500,
+          tableSize: 9,
+          seed: 21,
+          humanSeat: true,
+          names: ['You', for (var i = 1; i < entrants; i++) 'Bot $i'],
+          botProfiles: bots,
+        );
+        for (
+          var i = 0;
+          i < 20 && c.state.status == TournamentStatus.running;
+          i++
+        ) {
+          c.step();
+        }
+        final before = {
+          for (final e in c.profileBySeat.entries) e.key: e.value.generated,
+        };
+        final save = TournamentSave.fromJson(c.saveAs('Mixed field').toJson());
+        c.dispose();
+
+        final resumed = TournamentController.restore(save);
+        final after = {
+          for (final e in resumed.profileBySeat.entries)
+            e.key: e.value.generated,
+        };
+        expect(after, before);
+        resumed.dispose();
+      },
+    );
+
     test('keeps playing from where it left off', () {
       final c = _running();
       final save = c.saveAs('Carry on');

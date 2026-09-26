@@ -5,7 +5,9 @@ import 'package:monte/core/domain/ai/player_profile.dart';
 import 'package:monte/core/presentation/money_format.dart';
 import 'package:monte/core/presentation/widgets/table_loading_view.dart';
 import 'package:monte/core/theme/app_theme.dart';
+import 'package:monte/features/table/domain/table_snapshot.dart';
 import 'package:monte/features/table/presentation/table_screen.dart';
+import 'package:monte/features/tournament/domain/tournament_snapshot.dart';
 import 'package:monte/features/tournament/domain/tournament_structure.dart';
 import 'package:monte/features/tournament/presentation/tournament_view_model.dart';
 import 'package:monte/features/tournament/presentation/widgets/chrome_button.dart';
@@ -89,6 +91,7 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
             statsService: ref.read(opponentStatsServiceProvider),
             onEvalHandRecorded: ref.read(evalHistoryStoreProvider).record,
             resultStore: ref.read(tournamentResultStoreProvider),
+            saveStore: ref.read(tournamentSaveStoreProvider),
             yieldToFrame: () => SchedulerBinding.instance.endOfFrame,
           ),
   );
@@ -109,42 +112,6 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text('Saved "\${save.name}"')));
-  }
-
-  /// Opens the browser, and replaces this screen with the chosen tournament.
-  Future<void> _openSaves() async {
-    final chosen = await SavedTournamentsDialog.show(
-      context,
-      ref.read(tournamentSaveStoreProvider),
-    );
-    if (chosen == null || !mounted) return;
-    final structure = chosen.structure;
-    if (structure == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'That save uses an unknown blind structure '
-            '("${chosen.structureName}") and cannot be loaded.',
-          ),
-        ),
-      );
-      return;
-    }
-    // Replace rather than stack: the controller owns timers and streams, and
-    // two live tournaments running behind one another is not a state worth
-    // supporting.
-    await Navigator.of(context).pushReplacement(
-      MaterialPageRoute<void>(
-        builder: (_) => TournamentScreen(
-          structure: structure,
-          field: const [],
-          buyIn: chosen.buyIn,
-          tableSize: chosen.tableSize,
-          humanName: chosen.humanName,
-          restore: chosen,
-        ),
-      ),
-    );
   }
 
   /// Asks whether to save the in-progress tournament, abandon it, or stay —
@@ -361,6 +328,24 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
     }
     final controller = ref.read(_vm.notifier);
 
+    // Intercepts the system back gesture/button too, not just the explicit
+    // "Leave tournament" chrome button — otherwise it popped straight out
+    // without ever offering to save, silently abandoning a running event.
+    return PopScope(
+      canPop: tour.finished,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _confirmLeave();
+      },
+      child: _body(tour, table, controller, state),
+    );
+  }
+
+  Widget _body(
+    TournamentSnapshot tour,
+    TableSnapshot table,
+    TournamentViewModel controller,
+    TournamentUiState state,
+  ) {
     // Tournament stacks are chips; the seat's BB readout needs the *current
     // level's* big blind, not the cash-settings default.
     return MoneyScope(
@@ -398,41 +383,18 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
                       humanName: widget.humanName,
                     ),
                   ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          ChromeButton(
-                            icon: Icons.save_outlined,
-                            tooltip: 'Save this tournament',
-                            onPressed: tour.finished ? null : _save,
-                          ),
-                          const SizedBox(width: 4),
-                          ChromeButton(
-                            icon: Icons.folder_open_outlined,
-                            tooltip: 'Saved tournaments',
-                            onPressed: _openSaves,
-                          ),
-                        ],
-                      ),
-                      if (!tour.finished) ...[
-                        const SizedBox(height: 4),
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            LevelClockBadge(tour: tour, paused: state.simPaused),
-                            const SizedBox(width: 8),
-                            SimPauseButton(
-                              isPaused: state.simPaused,
-                              onPauseToggle: controller.toggleSimulationPause,
-                            ),
-                          ],
+                  if (!tour.finished)
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        LevelClockBadge(tour: tour, paused: state.simPaused),
+                        const SizedBox(width: 8),
+                        SimPauseButton(
+                          isPaused: state.simPaused,
+                          onPauseToggle: controller.toggleSimulationPause,
                         ),
                       ],
-                    ],
-                  ),
+                    ),
                 ],
               ),
             ),

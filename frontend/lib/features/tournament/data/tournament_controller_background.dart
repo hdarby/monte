@@ -211,29 +211,55 @@ extension TournamentControllerBackground on TournamentController {
   void _recordCareer() {
     final store = resultStore;
     if (store == null || _careerRecorded) return;
+    // Flipped before the async dedup check below resolves, not after — a
+    // second `_maybeFinish()` call on *this* instance (shouldn't normally
+    // happen, but this is the only guard against it) must not race the
+    // first one's still-in-flight write.
     _careerRecorded = true;
     final faced = _facedHuman;
-    store.record(
-      TournamentResult(
-        timestampMs: DateTime.now().millisecondsSinceEpoch,
-        structureName: state.structure.name,
-        buyIn: buyIn,
-        entrants: state.players.length,
-        finishes: [
-          for (final p in state.players.values)
-            TournamentFinish(
-              profileId:
-                  _profileBySeat[p.id]?.id ?? (p.isHuman ? 'human' : p.id),
-              name: p.name,
-              place: p.finishPlace ?? 0,
-              prize: p.prizeWon,
-              isHuman: p.isHuman,
-              facedHuman: faced.contains(p.id),
-              generated: _profileBySeat[p.id]?.generated ?? false,
-            ),
-        ],
-      ),
+    final id = tournamentId;
+    final result = TournamentResult(
+      timestampMs: DateTime.now().millisecondsSinceEpoch,
+      structureName: state.structure.name,
+      buyIn: buyIn,
+      entrants: state.players.length,
+      finishes: [
+        for (final p in state.players.values)
+          TournamentFinish(
+            profileId:
+                _profileBySeat[p.id]?.id ?? (p.isHuman ? 'human' : p.id),
+            name: p.name,
+            place: p.finishPlace ?? 0,
+            prize: p.prizeWon,
+            isHuman: p.isHuman,
+            facedHuman: faced.contains(p.id),
+            generated: _profileBySeat[p.id]?.generated ?? false,
+          ),
+      ],
+      tournamentId: id,
     );
+    // A save taken near the end of this same tournament, reloaded and run to
+    // completion again, would otherwise be indistinguishable from a
+    // genuinely new entry — same buy-in credited twice, same prize paid out
+    // twice. Checked fresh against the store rather than a cache, so this
+    // holds even for a controller that never went through `startLive`
+    // (headless resolution, tests).
+    store.loadAll().then((results) {
+      if (id.isNotEmpty && results.any((r) => r.tournamentId == id)) return;
+      store.record(result);
+      // The event is over — any lingering save of it (e.g. one taken near
+      // the end, before the final hands played out) would otherwise let the
+      // same deep run be reloaded and replayed for another shot at this
+      // same prize/career credit. The check above already guards the
+      // credit; this removes the temptation to even try.
+      final saves = saveStore;
+      if (saves == null) return;
+      saves.list().then((all) async {
+        for (final s in all) {
+          if (s.tournamentId == id) await saves.delete(s.id);
+        }
+      });
+    });
   }
 
   /// Headless-only level tick (used by [step]/`runToCompletion`, tests): a
