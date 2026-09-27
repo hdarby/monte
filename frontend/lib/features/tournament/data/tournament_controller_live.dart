@@ -511,6 +511,17 @@ extension TournamentControllerLive on TournamentController {
     // tests can zero it out the same way they already zero out botDelay.
     await Future<void>.delayed(_nextHandDelay);
     if (_tableCtrl.isClosed) return;
+    // Busting out is the one hand where "next hand" is actually "leave the
+    // felt behind for the rest-of-field resolution screen" — the ordinary
+    // between-hands pause (tuned for a quick glance before the next deal)
+    // let that switch happen before the player had really seen how their
+    // tournament ended. A proportional multiple of the same delay so
+    // zeroing it for tests/headless play zeroes this too, rather than a
+    // second hardcoded constant to keep in sync.
+    if (humanId != null && busts.containsKey(humanId)) {
+      await Future<void>.delayed(_nextHandDelay * 2);
+      if (_tableCtrl.isClosed) return;
+    }
     // Don't deal the next hand out from under a dialog (recap, color-up) —
     // same shared pause flag `_runLiveBots` now waits on for the same reason.
     await _waitWhilePaused();
