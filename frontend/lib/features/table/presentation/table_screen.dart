@@ -47,6 +47,7 @@ class TableScreen extends StatefulWidget {
     this.onBack,
     this.showHeader = true,
     this.onShowPreviousHand,
+    this.showEndOfHandButtons = true,
   });
 
   final TableSnapshot snapshot;
@@ -114,6 +115,11 @@ class TableScreen extends StatefulWidget {
   /// without the tournament's per-hand chronicle).
   final VoidCallback? onShowPreviousHand;
 
+  /// Whether "New Game"/"Deal Next Hand" appear once a hand ends. Off for a
+  /// tournament table (see [ActionBar.showEndOfHandButtons]), which
+  /// auto-advances on its own.
+  final bool showEndOfHandButtons;
+
   /// Navigates back to the landing screen. Null hides the back arrow (e.g.
   /// inside a tournament, which has its own exit path).
   final VoidCallback? onBack;
@@ -148,6 +154,7 @@ class _TableScreenState extends State<TableScreen> {
   VoidCallback get onNewGame => widget.onNewGame;
   VoidCallback get onNextHand => widget.onNextHand;
   VoidCallback? get onShowPreviousHand => widget.onShowPreviousHand;
+  bool get showEndOfHandButtons => widget.showEndOfHandButtons;
   VoidCallback get onOpenSettings => widget.onOpenSettings;
   VoidCallback get onOpenHistory => widget.onOpenHistory;
 
@@ -187,6 +194,7 @@ class _TableScreenState extends State<TableScreen> {
               onNewGame: onNewGame,
               onNextHand: onNextHand,
               onShowPreviousHand: onShowPreviousHand,
+              showEndOfHandButtons: showEndOfHandButtons,
             ),
           ],
         ),

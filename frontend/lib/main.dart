@@ -100,8 +100,41 @@ Future<void> _resetStaleTuning(FileEvalHistoryStore store) async {
   }
 }
 
-class MonteApp extends StatelessWidget {
+class MonteApp extends ConsumerStatefulWidget {
   const MonteApp({super.key});
+
+  @override
+  ConsumerState<MonteApp> createState() => _MonteAppState();
+}
+
+class _MonteAppState extends ConsumerState<MonteApp>
+    with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // The per-opponent reads book only saves on a 3-second-quiet debounce —
+    // during active play (hands streaming in from a large field faster than
+    // that) the timer can keep getting cancelled and rescheduled without ever
+    // firing. Backgrounding or quitting mid-debounce silently dropped
+    // whatever hadn't been flushed yet, which is exactly what made an
+    // opponent's accumulated read on the player vanish between tournaments.
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached ||
+        state == AppLifecycleState.inactive) {
+      ref.read(opponentStatsServiceProvider)?.flush();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {

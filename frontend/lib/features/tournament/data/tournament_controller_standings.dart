@@ -125,15 +125,33 @@ extension TournamentControllerStandings on TournamentController {
         t.id,
   };
 
-  /// The single table a broadcast would actually put on screen: whichever
-  /// [_featureTables] candidate has the most recognisable players seated,
-  /// ties broken by the lower table id so the pick doesn't flicker between
-  /// two equally-loaded tables from one publish to the next. Null once
-  /// nothing qualifies (no table has two-plus named personalities).
-  int? get _nominatedFeatureTableId {
+  /// The single table a broadcast would actually put on screen — pinned for
+  /// the whole level (see [_pickFeatureTable]), not recomputed on every
+  /// publish. Recomputing per-hand used the table with the most recognisable
+  /// players *right now*, which flipped constantly as bust-outs and
+  /// rebalances shifted that count hand to hand — a broadcast doesn't re-pick
+  /// its featured table mid-level.
+  int? get _nominatedFeatureTableId => _pinnedFeatureTableId;
+
+  /// The table id nominated as this level's feature table, or null if
+  /// nothing currently qualifies. Public so the UI/tests can read the raw
+  /// pick directly, rather than only inferring it via a specific seat's
+  /// [TournamentSnapshot.atFeatureTable].
+  int? get featureTableId => _nominatedFeatureTableId;
+
+  /// Chooses the feature table for the level about to be played, by
+  /// [_featureTables]'s "most recognisable players seated" rule (ties broken
+  /// by the lower table id for determinism). Always recomputes from scratch —
+  /// this is a new level, so whatever was pinned before doesn't carry over.
+  /// Called once at the start of live play and again every time a level
+  /// advances; never on an ordinary hand/round, and never mid-level (see
+  /// [_dropFeatureTableIfBroken] for the one thing that *can* change it
+  /// mid-level).
+  void _pickFeatureTable() {
+    final candidates = _featureTables();
     int? best;
     var bestCount = 0;
-    for (final id in _featureTables()) {
+    for (final id in candidates) {
       final t = state.tables.firstWhere((t) => t.id == id);
       final count = t.playerIds
           .where((pid) => _profileBySeat[pid]?.generated == false)
@@ -143,8 +161,28 @@ extension TournamentControllerStandings on TournamentController {
         bestCount = count;
       }
     }
-    return best;
+    _pinnedFeatureTableId = best;
   }
+
+  /// Clears the pinned feature table if it has literally ceased to exist —
+  /// broken and consolidated into other tables by a rebalance. Deliberately
+  /// does not pick a substitute: the feature table is a once-per-level
+  /// broadcast choice (see [_pickFeatureTable]), and losing it entirely is
+  /// rare enough that finishing the level with none is better than a
+  /// mid-level swap to a table nobody was watching. Call after every
+  /// rebalance.
+  void _dropFeatureTableIfBroken() {
+    final id = _pinnedFeatureTableId;
+    if (id != null && !state.tables.any((t) => t.id == id)) {
+      _pinnedFeatureTableId = null;
+    }
+  }
+
+  /// Table ids a rebalance should break last — just the pinned feature
+  /// table, if there is one. Only one table is ever actually "on screen" at
+  /// a time, so protecting every table that merely *qualifies* as a
+  /// candidate (the old behaviour) shielded tables nobody was watching.
+  Set<int> _protectedTables() => {?_pinnedFeatureTableId};
 
   /// The named personalities dealt into [game] — the ones a viewer would
   /// recognise, as opposed to the anonymous profiles that fill out a field.

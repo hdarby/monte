@@ -10,6 +10,17 @@ List<String> _summary(_HandContext ctx) {
   final won = r.winnerHand.toLowerCase();
   final lost = r.loserHand.toLowerCase();
   final eq = ctx.winnerEquityWhenAllIn;
+  // Equity-when-all-in is a snapshot of the street the money actually went
+  // in on — it says nothing about who led on earlier streets. Claiming
+  // "stays ahead" for a hand that was actually behind on the flop or turn
+  // and only caught up later is exactly backwards: they came from behind.
+  final winnerSeat = r.seats.where((s) => s.name == r.winnerName).firstOrNull;
+  final comebackStreet =
+      winnerSeat == null ? null : ctx.tookLeadOn(winnerSeat);
+  final comebackLine = comebackStreet == null
+      ? null
+      : '${r.winnerName} was behind until catching up on the '
+            '${comebackStreet.name.toLowerCase()}.';
   if (eq != null && eq < 0.25) {
     out.add(ctx.voice.pick([
       'The money went in bad and got there. ${r.winnerName} was a '
@@ -60,6 +71,9 @@ List<String> _summary(_HandContext ctx) {
       '${r.winnerName} gets it in ahead — ${_pct(eq)}% — and stays ahead. '
           '$won over $lost, $size shipped.',
     ], 59));
+    // The equity above is only as of the street the money went in — true
+    // "stays ahead" only if that was also the flop.
+    if (comebackLine != null) out.add(comebackLine);
   } else if (r.allIn) {
     out.add(ctx.voice.pick([
       '$size in the middle and ${r.winnerName}\'s $won holds against $lost. '
@@ -70,6 +84,7 @@ List<String> _summary(_HandContext ctx) {
       '${r.winnerName} gets it in ahead and stays ahead. $won over $lost, '
           '$size shipped.',
     ], 59));
+    if (comebackLine != null) out.add(comebackLine);
   } else if (!r.reachedRiver) {
     out.add(ctx.voice.pick([
       '${r.winnerName} takes it down before showdown for $size. Pots like '

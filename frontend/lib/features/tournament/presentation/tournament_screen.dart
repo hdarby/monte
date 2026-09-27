@@ -154,6 +154,12 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
       await _save();
       if (!mounted) return;
     }
+    // The reads book only saves on a debounced timer — leaving is exactly
+    // the moment that timer is most likely to still be pending (a hand just
+    // finished and the player immediately backed out), so flush explicitly
+    // rather than trust the debounce to fire before the app might close.
+    await ref.read(opponentStatsServiceProvider)?.flush();
+    if (!mounted) return;
     nav.pop();
   }
 
@@ -226,6 +232,9 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
     } catch (_) {
       // A review must never trap the player in a finished tournament.
     }
+    // Same reasoning as `_confirmLeave`: don't trust the debounced save to
+    // have fired before the player closes the app right after finishing.
+    await ref.read(opponentStatsServiceProvider)?.flush();
     nav.pop();
   }
 
@@ -428,6 +437,7 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
                   onOpenSettings: _noop,
                   onOpenHistory: _noop,
                   showHeader: false,
+                  showEndOfHandButtons: false,
                 ),
                 // Final table and hand-for-hand are independent conditions
                 // (hand-for-hand starts near the bubble, often across

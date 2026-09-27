@@ -14,6 +14,7 @@ extension TournamentControllerLive on TournamentController {
     _loadWinDecorations();
     await _bgSimulator.initialize();
     _levelStartedAt = DateTime.now();
+    _pickFeatureTable();
     _recorder.beginLevel(
       state.activePlayers,
     ); // snapshot level 1's starting stacks
@@ -84,8 +85,9 @@ extension TournamentControllerLive on TournamentController {
     if (_rebalancePending) {
       _rebalancePending = false;
       _noteTableBreak(
-        seatManager.rebalance(state, tableSize, protect: _featureTables()),
+        seatManager.rebalance(state, tableSize, protect: _protectedTables()),
       );
+      _dropFeatureTableIfBroken();
       _reconcileChipDrift();
       _publishTournament();
     }
@@ -493,8 +495,9 @@ extension TournamentControllerLive on TournamentController {
           return;
         }
         _noteTableBreak(
-          seatManager.rebalance(state, tableSize, protect: _featureTables()),
+          seatManager.rebalance(state, tableSize, protect: _protectedTables()),
         );
+        _dropFeatureTableIfBroken();
         _reconcileChipDrift();
         _publishTournament();
       });

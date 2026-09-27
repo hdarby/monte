@@ -15,12 +15,19 @@ class ActionBar extends StatefulWidget {
     required this.onNewGame,
     required this.onNextHand,
     this.onShowPreviousHand,
+    this.showEndOfHandButtons = true,
   });
 
   final TableSnapshot snapshot;
   final ValueChanged<GameAction> onAction;
   final VoidCallback onNewGame;
   final VoidCallback onNextHand;
+
+  /// Whether "New Game"/"Deal Next Hand" appear once a hand ends. Off for a
+  /// tournament table, which auto-advances to the next hand on its own —
+  /// both buttons were wired to a no-op there, but still showed up and
+  /// invited a tap that did nothing.
+  final bool showEndOfHandButtons;
 
   /// Shows the previous hand's replay. Null hides the button.
   final VoidCallback? onShowPreviousHand;
@@ -221,20 +228,22 @@ class _ActionBarState extends State<ActionBar> {
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
           ),
         ),
-        _ActionButton(
-          label: 'New Game',
-          color: const Color(0xFF4A6572),
-          enabled: true,
-          onPressed: widget.onNewGame,
-        ),
-        const SizedBox(width: 12),
-        _ActionButton(
-          label: 'Deal Next Hand',
-          color: AppTheme.gold,
-          foreground: Colors.black,
-          enabled: true,
-          onPressed: widget.onNextHand,
-        ),
+        if (widget.showEndOfHandButtons) ...[
+          _ActionButton(
+            label: 'New Game',
+            color: const Color(0xFF4A6572),
+            enabled: true,
+            onPressed: widget.onNewGame,
+          ),
+          const SizedBox(width: 12),
+          _ActionButton(
+            label: 'Deal Next Hand',
+            color: AppTheme.gold,
+            foreground: Colors.black,
+            enabled: true,
+            onPressed: widget.onNextHand,
+          ),
+        ],
       ],
     );
   }

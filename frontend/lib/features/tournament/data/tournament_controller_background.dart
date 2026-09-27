@@ -42,8 +42,9 @@ extension TournamentControllerBackground on TournamentController {
     }
 
     _noteTableBreak(
-      seatManager.rebalance(state, tableSize, protect: _featureTables()),
+      seatManager.rebalance(state, tableSize, protect: _protectedTables()),
     );
+    _dropFeatureTableIfBroken();
     _reconcileChipDrift();
     _tickLevel();
     onRound?.call();
@@ -274,6 +275,7 @@ extension TournamentControllerBackground on TournamentController {
         state.clockElapsed += const Duration(minutes: 2);
     }
     if (state.maybeAdvanceLevel()) {
+      _pickFeatureTable();
       _maybeColorUp(before, state.currentLevel);
       _buildRecap(before.level, before.bigBlind);
       _recorder.beginLevel(
@@ -301,6 +303,7 @@ extension TournamentControllerBackground on TournamentController {
     }
     if (state.maybeAdvanceLevel()) {
       _levelStartedAt = DateTime.now();
+      _pickFeatureTable();
       _maybeColorUp(before, state.currentLevel);
       _buildRecap(before.level, before.bigBlind);
       _recorder.beginLevel(
@@ -412,6 +415,16 @@ extension TournamentControllerBackground on TournamentController {
   ///   scripts) — the coarser `_simYieldEvery` cadence, since a real frame
   ///   yield isn't available to wait on anyway and yielding every table
   ///   across a large field is pure overhead nobody is watching.
+  /// Below this many remaining background tables, each background hand gets
+  /// a little extra real pacing time (see [_simulateBackgroundTables]) — the
+  /// field is getting short enough that it's worth not blazing through it.
+  static const int _pacedTableThreshold = 30;
+
+  /// The extra pacing delay at the very last background table, tapering to
+  /// zero at [_pacedTableThreshold] tables remaining. Modest on purpose —
+  /// this is a little more breathing room, not a slowdown.
+  static const int _maxExtraPaceMs = 250;
+
   Future<bool> _simulateBackgroundTables(int humanTableId) async {
     final tables = [
       for (final t in List.of(state.tables))
@@ -461,6 +474,20 @@ extension TournamentControllerBackground on TournamentController {
           i == tables.length - 1) {
         _emitSim(i + 1, total);
         await (_yieldToFrame?.call() ?? Future<void>.delayed(Duration.zero));
+        if (_tableCtrl.isClosed) return true;
+      }
+      // A big field's background round is many tables deep, so each hand
+      // already gets a beat of real time just from the frame yields above —
+      // but that beat shrinks along with the field, and the business end
+      // (the stretch that actually matters to watch) ends up resolving in a
+      // blink purely because there are only a few tables left to churn
+      // through. A small, live-play-only extra pace — capped low, and only
+      // once the field is genuinely getting short — gives those hands a
+      // little more room without slowing down the bulk of the tournament.
+      if (yieldEveryTable && total <= _pacedTableThreshold) {
+        final extra = _maxExtraPaceMs *
+            (1 - total / _pacedTableThreshold).clamp(0.0, 1.0);
+        await Future<void>.delayed(Duration(milliseconds: extra.round()));
         if (_tableCtrl.isClosed) return true;
       }
     }

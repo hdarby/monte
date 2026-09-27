@@ -176,7 +176,7 @@ class _CareerTableState extends State<_CareerTable> {
           style: TextStyle(color: netColor),
         )),
         DataCell(Text(c.bestPlace >= 1 << 29 ? '—' : '${c.bestPlace}')),
-        DataCell(Text('${c.facedYou}')),
+        DataCell(Text(isYou ? '—' : '${c.facedYou}')),
       ],
     );
   }

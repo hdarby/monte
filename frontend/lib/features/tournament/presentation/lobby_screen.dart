@@ -41,7 +41,11 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen> {
 
   /// Real minutes per level — replaces picking a preset's baked-in hand count.
   /// The blind ramp still comes from the structure preset; only pacing does.
-  static const _levelMinutesOptions = [5, 10, 15, 20, 30, 45, 60];
+  /// Capped at 20: the real Main Event deals ~50 hands across a 120-minute
+  /// level, and this app's own pace plays hands much faster than a live
+  /// dealer — the longer options let far more hands pile up in one level
+  /// than a real tournament ever would.
+  static const _levelMinutesOptions = [3, 5, 8, 10, 15, 20];
 
   late final FieldBuilder _builder = FieldBuilder(humanName: widget.humanName);
 

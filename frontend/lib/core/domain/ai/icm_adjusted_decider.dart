@@ -131,7 +131,7 @@ class IcmAdjustedDecider implements DecisionPolicy {
   /// A continuous survival premium in `[0, 0.75]`, active on **every**
   /// tournament hand — 0 only for [TournamentContext.cash] (`playersLeft <= 0`).
   ///
-  /// The `0.18` baseline is deliberately not derived from [ladderPressure] or
+  /// The `0.12` baseline is deliberately not derived from [ladderPressure] or
   /// [bubbleFactor]: both are exactly zero far from the money in a large field
   /// (see `TournamentController._ladderPressure`), which is precisely the 300
   /// BB / level-1 spot the baseline exists for. "This bust is permanent" is
@@ -141,9 +141,14 @@ class IcmAdjustedDecider implements DecisionPolicy {
   /// A first-pass, reasoned constant rather than a measured one, in the same
   /// spirit as `OpenRanges.tableFactor`'s "a first stab, deliberately" — the
   /// tournament-vs-cash sizing test is what makes it checkable going forward.
+  /// Was `0.18`: measured play (more hands per level than intended — see the
+  /// level-length fix) showed early-level busts too frequent and sizing too
+  /// small overall, so the hand-one-regardless-of-the-money floor came down a
+  /// third. [ladderPressure]/[bubbleFactor] terms are untouched — the actual
+  /// bubble/ladder discipline they drive is not what read as "too tight".
   double _survivalPressure(TournamentContext ctx) {
     if (ctx.playersLeft <= 0) return 0; // the cash sentinel: no tournament
-    final pressure = 0.18 +
+    final pressure = 0.12 +
         0.4 * ctx.ladderPressure +
         0.15 * (ctx.bubbleFactor - 1).clamp(0.0, 2.0);
     return pressure.clamp(0.0, 0.75);

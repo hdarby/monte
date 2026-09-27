@@ -271,6 +271,93 @@ void main() {
     });
   });
 
+  group('call price reads', () {
+    // Ann leads the flop with a pair of kings, Bob trails with a worse
+    // pair of sevens. The turn pairs Bob's seven again for trip sevens — a
+    // genuine category jump (pair -> three of a kind) that passes Ann even
+    // though her own hand (still just a pair of kings) never got worse.
+    // She calls anyway: that is the "lost the lead and got bet into" spot.
+    test('flags a caller who was overtaken by a whole hand-rank category', () {
+      final r = HandNarrator.narrate(
+        _replay(
+          reachedRiver: false,
+          seats: [
+            _seat('a', 'Ann', ['Kh', 'Qd'], TablePosition.button),
+            _seat('b', 'Bob', ['7h', '8d'], TablePosition.bigBlind,
+                won: true),
+          ],
+          streets: [
+            ReplayStreet(
+              name: 'Flop',
+              round: BettingRound.flop,
+              boardAfter: const ['Kc', '7s', '2c'],
+              actions: const [],
+              potAfter: 600,
+            ),
+            ReplayStreet(
+              name: 'Turn',
+              round: BettingRound.turn,
+              boardAfter: const ['Kc', '7s', '2c', '7c'],
+              actions: [
+                _act('b', 'Bob', TablePosition.bigBlind, ActionType.bet,
+                    BettingRound.turn,
+                    amount: 400, potBefore: 600),
+                _act('a', 'Ann', TablePosition.button, ActionType.call,
+                    BettingRound.turn,
+                    amount: 400, potBefore: 1000, toCall: 400),
+              ],
+              potAfter: 1400,
+            ),
+          ],
+        ),
+      );
+      final text = _allText(r);
+      expect(text, contains('had the best hand a street ago'));
+      expect(text, contains('the lead did'));
+    });
+
+    // Ann leads the flop with trip queens; Bob's pocket nines pair the
+    // board on the turn for trip nines of his own. Both are three of a
+    // kind (same category — Ann's still wins on rank), so the lead never
+    // actually changes hands. Not the "obvious" overtaken case, so no read
+    // should fire.
+    test('stays quiet when the leader never actually changes', () {
+      final r = HandNarrator.narrate(
+        _replay(
+          reachedRiver: false,
+          seats: [
+            _seat('a', 'Ann', ['Qh', 'Qd'], TablePosition.button, won: true),
+            _seat('b', 'Bob', ['9h', '9d'], TablePosition.bigBlind),
+          ],
+          streets: [
+            ReplayStreet(
+              name: 'Flop',
+              round: BettingRound.flop,
+              boardAfter: const ['Qc', '4s', '2c'],
+              actions: const [],
+              potAfter: 600,
+            ),
+            ReplayStreet(
+              name: 'Turn',
+              round: BettingRound.turn,
+              boardAfter: const ['Qc', '4s', '2c', '9s'],
+              actions: [
+                _act('b', 'Bob', TablePosition.bigBlind, ActionType.bet,
+                    BettingRound.turn,
+                    amount: 400, potBefore: 600),
+                _act('a', 'Ann', TablePosition.button, ActionType.call,
+                    BettingRound.turn,
+                    amount: 400, potBefore: 1000, toCall: 400),
+              ],
+              potAfter: 1400,
+            ),
+          ],
+        ),
+      );
+      expect(_allText(r), isNot(contains('had the best hand a street ago')));
+    });
+  });
+
   group('bluff evaluation', () {
     test('endorses a well-chosen heads-up bluff in position', () {
       final r = HandNarrator.narrate(
@@ -492,6 +579,57 @@ void main() {
         ),
       );
       expect(r.commentary.join(' '), contains('turned on the turn'));
+    });
+
+    test('a winner who trailed and caught up is not called wire-to-wire',
+        () {
+      final r = HandNarrator.narrate(
+        _replay(
+          allIn: true,
+          seats: [
+            // Behind on the flop (a bare pocket pair vs top pair), then
+            // makes trips on the turn to take the lead.
+            _seat('a', 'Ann', ['3h', '3d'], TablePosition.button,
+                won: true, finalRank: HandRank.threeOfAKind),
+            _seat('b', 'Bob', ['Ah', 'Kh'], TablePosition.bigBlind,
+                finalRank: HandRank.pair),
+          ],
+          streets: [
+            ReplayStreet(
+              name: 'Preflop',
+              round: BettingRound.preflop,
+              boardAfter: const [],
+              actions: const [],
+              potAfter: 600,
+            ),
+            ReplayStreet(
+              name: 'Flop',
+              round: BettingRound.flop,
+              boardAfter: const ['Ac', '7s', '2c'],
+              actions: const [],
+              potAfter: 1200,
+            ),
+            ReplayStreet(
+              name: 'Turn',
+              round: BettingRound.turn,
+              boardAfter: const ['Ac', '7s', '2c', '3s'],
+              actions: const [],
+              potAfter: 4000,
+            ),
+            ReplayStreet(
+              name: 'River',
+              round: BettingRound.river,
+              boardAfter: const ['Ac', '7s', '2c', '3s', '9d'],
+              actions: const [],
+              potAfter: 4000,
+            ),
+          ],
+        ),
+      );
+      final text = _allText(r);
+      expect(text, isNot(contains('stays ahead')),
+          reason: 'Ann trailed on the flop; she did not stay ahead');
+      expect(text, contains('was behind until catching up on the turn'));
     });
 
     test('is deterministic — the same hand always gets the same words', () {

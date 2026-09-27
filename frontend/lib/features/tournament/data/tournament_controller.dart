@@ -355,6 +355,11 @@ class TournamentController {
   /// Writes the finished event to the career store, once.
   bool _careerRecorded = false;
 
+  /// The feature table chosen for the level in progress — see
+  /// `_pickFeatureTable`. Null before the first pick, or once nothing
+  /// qualifies.
+  int? _pinnedFeatureTableId;
+
   /// Past-event bracelets/rings by identity (`'human'` or profile id), for
   /// the standings' decorations. [TournamentResultStore.loadAll] is async
   /// and file-backed, but `standings()` is called synchronously on every

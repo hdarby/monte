@@ -252,6 +252,40 @@ class _HandContext {
     return leader != null && leader.playerId == seat.playerId;
   }
 
+  /// Whether [seat] has clearly been overtaken on [street] — the new leader
+  /// is a whole hand-rank *category* better (e.g. two pair over one pair),
+  /// not just a better kicker within the same category. The commentary can
+  /// see the exact `HandValue` either way, but a kicker-level "actually
+  /// they're behind" isn't the obvious read a real analyst would flag —
+  /// only a genuine category jump is.
+  bool obviouslyOvertaken(ReplaySeat seat, ReplayStreet street) {
+    final leader = leaderOn(street);
+    if (leader == null || leader.playerId == seat.playerId) return false;
+    final mine = rankOn(seat, street);
+    final theirs = rankOn(leader, street);
+    return mine != null && theirs != null && theirs.index > mine.index;
+  }
+
+  /// The first post-flop street [seat] actually held the best hand, or null
+  /// if they led from the flop onward. Used to tell "got it in ahead and
+  /// stayed ahead" apart from "was behind and caught up" — summarizing the
+  /// latter as wire-to-wire was the exact complaint: a real hand can lead on
+  /// the flop, get outdrawn on the turn, and retake the lead on the river,
+  /// and the money going in ahead on the river says nothing about the flop
+  /// or turn. Preflop is never checked — there is no board yet to rank hands
+  /// by, so "ahead preflop" isn't a comparable claim to "ahead on the flop".
+  ReplayStreet? tookLeadOn(ReplaySeat seat) {
+    ReplayStreet? firstBoardStreet;
+    for (final s in replay.streets) {
+      if (s.boardAfter.length < 3) continue; // preflop: no board to compare
+      firstBoardStreet ??= s;
+      if (hasBestHand(seat, s)) {
+        return identical(s, firstBoardStreet) ? null : s;
+      }
+    }
+    return null;
+  }
+
   /// Exact outs: how many unseen cards give this seat the best hand on the
   /// next street. Enumerates the remaining deck — cheap and precise, and much
   /// better commentary than a hand-wavy "he has a draw".
@@ -355,13 +389,41 @@ class _HandContext {
             .length >=
             2;
         final ahead = hasBestHand(seat, street);
+        // A hand can be "strong" (two pair or better) and still no longer be
+        // the best hand — a two-pair caller can be dead to trips just as
+        // easily as a one-pair caller can. "Slowplaying is defensible" was
+        // said regardless, as long as nobody had reraised — the same blind
+        // spot as the wire-to-wire summary line: strength was checked, the
+        // actual lead was not.
+        final overtaken = !ahead &&
+            previousLeader(street)?.playerId == seat.playerId &&
+            obviouslyOvertaken(seat, street);
         out.add(
           facingRaise
               ? '${a.name} calls the raise with ${made(seat, street)}'
                     '${ahead ? ' — right call, they are still ahead and there is no need to escalate' : ', and is behind. Calling is at least cheaper than raising, but this is the spot to consider that a strong hand can still be second best'}.'
-              : '${a.name} just calls with ${made(seat, street)}. Slowplaying is '
-                    'defensible on a static board, but it invites a free card on '
-                    'anything dynamic.',
+              : overtaken
+                    ? '${a.name} just calls with ${made(seat, street)} — they had '
+                          'the best hand a street ago, and do not anymore. The '
+                          'hand did not change; the lead did, and this call has '
+                          'to know that.'
+                    : '${a.name} just calls with ${made(seat, street)}. '
+                          'Slowplaying is defensible on a static board, but it '
+                          'invites a free card on anything dynamic.',
+        );
+      } else if (previousLeader(street)?.playerId == seat.playerId &&
+          obviouslyOvertaken(seat, street)) {
+        // Neither a draw nor (still) a strong hand, but they held the lead
+        // as of the previous street and have now been passed by a whole
+        // hand-rank category (not just out-kicked) — the spot a real
+        // analyst flags: the hand did not get worse, the lead did, and a
+        // call here has to be a conscious decision to keep playing behind,
+        // not a holdover from when it was good.
+        out.add(
+          '${a.name} calls ${bb(a.toCall)} with ${made(seat, street)} — '
+          'they had the best hand a street ago, and do not anymore. The '
+          'hand did not change; the lead did, and this call has to know '
+          'that.',
         );
       }
     }

@@ -159,14 +159,25 @@ class ReplayBuilder {
   }
 
   /// Whether a player was actually dealt in (put chips in or acted at all).
+  ///
+  /// `p.inHand` alone (`!hasFolded`) is true for a busted player who is still
+  /// sitting in `game.players` this hand purely because the seat hasn't been
+  /// dropped yet — `startHand` only deals hole cards to `stack > 0` players,
+  /// but never folding (they never get to act) leaves `hasFolded` false, so
+  /// `inHand` reads as "still live" for someone dealt no cards at all. Both
+  /// `foldedOn` and `_wasDealtIn`'s other two checks agree just as
+  /// incorrectly (no recorded action, no chip movement), so nothing else
+  /// catches this — it has to be excluded explicitly, by the one fact that's
+  /// actually true of them: no hole cards.
   static bool _wasDealtIn(
     Player p,
     List<ActionRecord> actions,
     Map<String, int> preChips,
   ) =>
-      actions.any((a) => a.playerId == p.id) ||
-      (preChips[p.id] ?? 0) != p.stack ||
-      p.inHand;
+      p.hole.length == 2 &&
+      (actions.any((a) => a.playerId == p.id) ||
+          (preChips[p.id] ?? 0) != p.stack ||
+          p.inHand);
 
   /// Rebuilds the per-street action, tracking the pot and what each action cost
   /// so the narrator can talk about sizing.
